@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <meta charset="UTF-8">
+    <title>Restaurant Application Approved</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f9f9f9;
+            padding: 40px;
+            margin: 0;
+        }
+
+        .container {
+            background-color: #ffffff;
+            padding: 40px;
+            border-radius: 8px;
+            max-width: 600px;
+            margin: 0 auto;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+
+        .logo {
+            color: #f43f5e;
+            font-size: 28px;
+            font-weight: bold;
+            margin: 0;
+        }
+
+        h2 {
+            color: #1e293b;
+            margin-top: 0;
+        }
+
+        p {
+            color: #475569;
+            line-height: 1.6;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+
+        .callout {
+            background-color: #ecfdf5;
+            border-radius: 6px;
+            padding: 20px;
+            text-align: center;
+            margin: 30px 0;
+            border: 1px solid #10b981;
+            color: #065f46;
+            font-weight: bold;
+        }
+
+        .footer {
+            margin-top: 40px;
+            text-align: center;
+            font-size: 14px;
+            color: #94a3b8;
+        }
+
+        .btn {
+            display: inline-block;
+            background-color: #f43f5e;
+            color: #ffffff;
+            text-decoration: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1 class="logo">TableSpot</h1>
+        </div>
+        <h2>Application Approved! 🎉</h2>
+        <p>Hi {{NAME}},</p>
+        <p>Congratulations! Your application for <strong>{{RESTAURANT_NAME}}</strong> has been reviewed and approved by
+            our team.</p>
+
+        <div class="callout">
+            Your restaurant is now live and can start accepting bookings on TableSpot!
+        </div>
+
+        <p>You can now manage your tables, menus, and monitor incoming bookings from your owner dashboard. We're excited
+            to have you on board as a partner.</p>
+
+        <div style="text-align: center;">
+            <a href="{{DASHBOARD_URL}}" class="btn">Go to Dashboard</a>
+        </div>
+
+        <div class="footer">
+            <p>&copy; {{YEAR}} TableSpot. All rights reserved.</p>
+        </div>
+    </div>
+</body>
+
+</html>
