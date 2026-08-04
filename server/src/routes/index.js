@@ -7,7 +7,8 @@ import foodRoutes from "./food.routes.js";
 import bookingRoutes from "./booking.routes.js";
 import billRoutes from "./bill.routes.js";
 import userRoutes from "./user.routes.js";
-import reviewRoutes from "./review.routes.js";
+import restaurantReviewRoutes from "./restaurantReview.routes.js";
+import foodReviewRoutes from "./foodReview.routes.js";
 import paymentRoutes from "./payment.routes.js";
 
 const apiRouter = Router();
@@ -19,8 +20,8 @@ apiRouter.use("/foods", foodRoutes);
 apiRouter.use("/bookings", bookingRoutes);
 apiRouter.use("/bills", billRoutes);
 apiRouter.use("/users", userRoutes);
-apiRouter.use("/reviews", reviewRoutes);
+apiRouter.use("/restaurant-reviews", restaurantReviewRoutes);
+apiRouter.use("/food-reviews", foodReviewRoutes);
 apiRouter.use("/payments", paymentRoutes);
 
 export default apiRouter;
-

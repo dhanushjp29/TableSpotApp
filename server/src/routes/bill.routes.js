@@ -8,6 +8,8 @@ import authenticate from "../middleware/authenticate.js";
 import {
     createBillSchema,
     updateBillSchema,
+    addBillPaymentSchema,
+    markBillStatusSchema,
 } from "../validators/bill.validator.js";
 
 const router = Router();
@@ -30,7 +32,15 @@ router.patch(
     asyncHandler(billController.update)
 );
 
-router.post("/:billId/payments", asyncHandler(billController.addPayment));
-router.patch("/:billId/status", asyncHandler(billController.markStatus));
+router.post(
+    "/:billId/payments",
+    validateRequest(addBillPaymentSchema),
+    asyncHandler(billController.addPayment)
+);
+router.patch(
+    "/:billId/status",
+    validateRequest(markBillStatusSchema),
+    asyncHandler(billController.markStatus)
+);
 
 export default router;

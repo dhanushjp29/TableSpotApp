@@ -1,6 +1,6 @@
 import mongoose from "mongoose";
 
-const reviewSchema = new mongoose.Schema(
+const restaurantReviewSchema = new mongoose.Schema(
     {
         reviewCode: {
             type: String,
@@ -89,11 +89,11 @@ const reviewSchema = new mongoose.Schema(
 );
 
 // One review per user per restaurant
-reviewSchema.index(
+restaurantReviewSchema.index(
     { userId: 1, restaurantId: 1 },
     { unique: true }
 );
 
-const Review = mongoose.model("Review", reviewSchema);
+const RestaurantReview = mongoose.model("RestaurantReview", restaurantReviewSchema);
 
-export default Review;
+export default RestaurantReview;

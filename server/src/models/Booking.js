@@ -184,8 +184,7 @@ const bookingSchema = new mongoose.Schema(
 
 bookingSchema.index({
   restaurantId: 1,
-  bookingDate: 1,
-  bookingTime: 1,
+  bookingDateTime: 1,
 });
 
 const Booking = mongoose.model("Booking", bookingSchema);

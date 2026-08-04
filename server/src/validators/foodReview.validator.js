@@ -7,6 +7,7 @@ import { REVIEW_STATUS_VALUES } from "../utils/constants.js";
 const reviewCoreSchema = z
   .object({
     restaurantId: mongoIdSchema,
+    foodId: mongoIdSchema,
     userId: mongoIdSchema.optional(),
     bookingId: mongoIdSchema.optional(),
     rating: z
@@ -24,12 +25,11 @@ const reviewCoreSchema = z
   })
   .strict();
 
-// Create Review
+// Create Food Review
 export const createReviewSchema = reviewCoreSchema.strict();
 
-// Update Review
-export const updateReviewSchema =
-  reviewCoreSchema.partial().strict();
+// Update Food Review
+export const updateReviewSchema = reviewCoreSchema.partial().strict();
 
 // Review Id
 export const reviewIdSchema = z

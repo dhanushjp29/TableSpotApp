@@ -33,7 +33,8 @@ const notificationSchema = new mongoose.Schema(
                 "System",
                 "Booking",
                 "Offer",
-                "Review",
+                "Restaurant Review",
+                "Food Review",
                 "Payment",
                 "Alert",
             ],
@@ -47,7 +48,14 @@ const notificationSchema = new mongoose.Schema(
 
         linkModel: {
             type: String,
-            enum: ["Booking", "Bill", "Restaurant", "Review", ""],
+            enum: [
+                "Booking",
+                "Bill",
+                "Restaurant",
+                "RestaurantReview",
+                "FoodReview",
+                "",
+            ],
             default: "",
         },
 

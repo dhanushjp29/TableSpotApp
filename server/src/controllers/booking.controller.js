@@ -2,22 +2,10 @@ import * as bookingService from "../services/booking.service.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import ApiError from "../utils/ApiError.js";
 import { USER_ROLE } from "../utils/constants.js";
-import Restaurant from "../models/Restaurant.js";
-
-const verifyBookingAccess = async (req, booking) => {
-    if (req.user.role === USER_ROLE.ADMIN) return true;
-
-    if (req.user.role === USER_ROLE.CUSTOMER) {
-        if (String(booking.userId._id) !== String(req.user._id)) {
-            throw new ApiError(403, "You can only access your own bookings.");
-        }
-    } else if (req.user.role === USER_ROLE.OWNER) {
-        const restaurant = await Restaurant.findById(booking.restaurantId).select("ownerId");
-        if (!restaurant || String(restaurant.ownerId) !== String(req.user._id)) {
-            throw new ApiError(403, "You can only access bookings for your restaurants.");
-        }
-    }
-};
+import {
+    verifyBookingAccess,
+    getOwnedRestaurantIds,
+} from "../middleware/ownership.js";
 
 export const create = async (req, res) => {
     const result = await bookingService.createBooking({
@@ -44,6 +32,11 @@ export const updateStatus = async (req, res) => {
     const { booking } = await bookingService.getBookingById({ bookingId });
     await verifyBookingAccess(req, booking);
 
+    // Only owners and admins can change booking status
+    if (req.user.role === USER_ROLE.CUSTOMER) {
+        throw new ApiError(403, "Only restaurant owners can update booking status.");
+    }
+
     const result = await bookingService.updateBookingStatus({
         bookingId,
         ...req.validatedData,
@@ -68,6 +61,11 @@ export const checkIn = async (req, res) => {
     const { booking } = await bookingService.getBookingById({ bookingId });
     await verifyBookingAccess(req, booking);
 
+    // Only owners and admins can check in a booking
+    if (req.user.role === USER_ROLE.CUSTOMER) {
+        throw new ApiError(403, "Only restaurant owners can check in a booking.");
+    }
+
     const result = await bookingService.checkInBooking({ bookingId });
     res.status(200).json(new ApiResponse(200, result.message, result));
 };
@@ -76,6 +74,11 @@ export const complete = async (req, res) => {
     const { bookingId } = req.params;
     const { booking } = await bookingService.getBookingById({ bookingId });
     await verifyBookingAccess(req, booking);
+
+    // Only owners and admins can complete a booking
+    if (req.user.role === USER_ROLE.CUSTOMER) {
+        throw new ApiError(403, "Only restaurant owners can complete a booking.");
+    }
 
     const result = await bookingService.completeBooking({ bookingId });
     res.status(200).json(new ApiResponse(200, result.message, result));
@@ -94,15 +97,12 @@ export const getAll = async (req, res) => {
 
     if (req.user.role === USER_ROLE.CUSTOMER) {
         query.userId = req.user._id;
+    } else if (req.user.role === USER_ROLE.OWNER) {
+        // Scope to only the owner's restaurants
+        const ownedRestaurantIds = await getOwnedRestaurantIds(req);
+        query.restaurantId = { $in: ownedRestaurantIds };
     }
 
     const result = await bookingService.getBookings(query);
-
-    if (req.user.role === USER_ROLE.OWNER) {
-        // Filter out rows not belonging to this owner by ensuring restaurantId matches their owned ones
-        // For a complex production app we'd inject this via query array or refactor service layer
-        // For now, doing it post-query or we expect frontend to pass valid restaurantIds
-    }
-
     res.status(200).json(new ApiResponse(200, "Bookings retrieved successfully.", result));
 };

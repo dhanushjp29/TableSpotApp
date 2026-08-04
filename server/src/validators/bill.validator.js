@@ -153,6 +153,29 @@ export const createBillSchema = billCoreSchema.strict();
 export const updateBillSchema =
   billCoreSchema.partial().strict();
 
+// Mark Bill Status
+export const markBillStatusSchema = z
+  .object({
+    billStatus: z.enum(BILL_STATUS_VALUES),
+  })
+  .strict();
+
+// Add Bill Payment
+export const addBillPaymentSchema = z
+  .object({
+    paymentMethod: z.enum(PAYMENT_METHOD_VALUES),
+    amount: z
+      .number({
+        required_error: "Amount is required.",
+        invalid_type_error: "Amount must be a number.",
+      })
+      .min(0),
+    transactionId: z.string().trim().max(100).optional().default(""),
+    notes: z.string().trim().max(500).optional().default(""),
+    paidAt: z.coerce.date().optional(),
+  })
+  .strict();
+
 // Bill Id
 export const billIdSchema = z
   .object({

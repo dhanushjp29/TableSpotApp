@@ -1,4 +1,4 @@
-import Review from "../models/Review.js";
+import RestaurantReview from "../models/RestaurantReview.js";
 import Restaurant from "../models/Restaurant.js";
 import User from "../models/User.js";
 
@@ -11,17 +11,17 @@ const normalizeStringArray = (values = []) =>
     values.map((v) => String(v).trim()).filter(Boolean);
 
 const getReviewOrThrow = async (reviewId) => {
-    const review = await Review.findById(reviewId);
+    const review = await RestaurantReview.findById(reviewId);
 
     if (!review || review.isDeleted) {
-        throw new ApiError(404, "Review not found.");
+        throw new ApiError(404, "Restaurant review not found.");
     }
 
     return review;
 };
 
 const recalculateRestaurantRating = async (restaurantId) => {
-    const result = await Review.aggregate([
+    const result = await RestaurantReview.aggregate([
         {
             $match: {
                 restaurantId,
@@ -68,7 +68,7 @@ export const createReview = async ({
         throw new ApiError(404, "Restaurant not found.");
     }
 
-    const existingReview = await Review.findOne({
+    const existingReview = await RestaurantReview.findOne({
         userId,
         restaurantId,
         isDeleted: false,
@@ -82,12 +82,12 @@ export const createReview = async ({
     }
 
     const reviewCode = await generateCode(
-        Review,
+        RestaurantReview,
         "reviewCode",
         CODE_PREFIX.REVIEW
     );
 
-    const review = await Review.create({
+    const review = await RestaurantReview.create({
         reviewCode,
         userId,
         restaurantId,
@@ -104,10 +104,10 @@ export const createReview = async ({
     }
 
     return {
-        review: await Review.findById(review._id)
+        review: await RestaurantReview.findById(review._id)
             .populate("userId", "userCode fullName email profileImage")
             .populate("restaurantId", "restaurantCode restaurantName slug"),
-        message: "Review submitted successfully.",
+        message: "Restaurant review submitted successfully.",
     };
 };
 
@@ -151,10 +151,10 @@ export const updateReview = async ({
     await recalculateRestaurantRating(review.restaurantId);
 
     return {
-        review: await Review.findById(review._id)
+        review: await RestaurantReview.findById(review._id)
             .populate("userId", "userCode fullName email profileImage")
             .populate("restaurantId", "restaurantCode restaurantName slug"),
-        message: "Review updated successfully.",
+        message: "Restaurant review updated successfully.",
     };
 };
 
@@ -171,18 +171,18 @@ export const deleteReview = async ({ reviewId }) => {
 
     return {
         review,
-        message: "Review deleted successfully.",
+        message: "Restaurant review deleted successfully.",
     };
 };
 
 export const getReviewById = async ({ reviewId }) => {
-    const review = await Review.findById(reviewId)
+    const review = await RestaurantReview.findById(reviewId)
         .populate("userId", "userCode fullName email profileImage")
         .populate("restaurantId", "restaurantCode restaurantName slug")
         .populate("bookingId", "bookingCode bookingDateTime");
 
     if (!review || review.isDeleted) {
-        throw new ApiError(404, "Review not found.");
+        throw new ApiError(404, "Restaurant review not found.");
     }
 
     return { review };
@@ -210,13 +210,13 @@ export const getReviewsByRestaurant = async ({
     const skip = (pageNumber - 1) * pageSize;
 
     const [reviews, total] = await Promise.all([
-        Review.find(query)
+        RestaurantReview.find(query)
             .sort({ createdAt: -1 })
             .skip(skip)
             .limit(pageSize)
             .populate("userId", "userCode fullName email profileImage")
             .populate("bookingId", "bookingCode bookingDateTime"),
-        Review.countDocuments(query),
+        RestaurantReview.countDocuments(query),
     ]);
 
     return {

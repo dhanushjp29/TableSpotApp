@@ -6,6 +6,7 @@ import User from "../models/User.js";
 
 import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
+import { getIO } from "../sockets/socket.handler.js";
 
 import {
   BOOKING_STATUS,
@@ -13,16 +14,11 @@ import {
   TABLE_STATUS,
 } from "../utils/constants.js";
 
-const normalizeOrderedFoods = (foods = []) =>
-  foods.map((item) => ({
-    foodId: item.foodId,
-    variantName: item.variantName?.trim() || "Regular",
-    quantity: Number(item.quantity),
-    price: Number(item.price),
-  }));
-
 const calculateOrderedFoodsTotal = (foods = []) =>
-  foods.reduce((sum, item) => sum + Number(item.price || 0), 0);
+  foods.reduce(
+    (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0),
+    0
+  );
 
 const getBookingOrThrow = async (bookingId) => {
   const booking = await Booking.findById(bookingId);
@@ -81,6 +77,66 @@ const setTableStateForBookingStatus = async ({
 
   await table.save();
   return table;
+};
+
+/**
+ * Validate pre-ordered foods against the Food model and
+ * use server-side prices (ignoring client-supplied prices).
+ */
+const validateAndResolveOrderedFoods = async ({
+  foods = [],
+  restaurantId,
+}) => {
+  if (foods.length === 0) return [];
+
+  const foodIds = foods.map((item) => item.foodId);
+  const validFoods = await Food.find({
+    _id: { $in: foodIds },
+    restaurantId,
+    isDeleted: false,
+    isAvailable: true,
+  });
+
+  if (validFoods.length !== foodIds.length) {
+    throw new ApiError(
+      400,
+      "One or more pre-ordered food items are invalid or unavailable."
+    );
+  }
+
+  const foodMap = new Map(validFoods.map((f) => [String(f._id), f]));
+
+  return foods.map((item) => {
+    const food = foodMap.get(String(item.foodId));
+    const variantName = item.variantName?.trim() || "Regular";
+
+    // Resolve price from the Food model (variant price or base price)
+    let price = 0;
+    if (food.hasVariants && food.variants?.length > 0) {
+      const variant = food.variants.find(
+        (v) => String(v.variantName).toLowerCase() === variantName.toLowerCase()
+      );
+      if (variant) {
+        price = variant.offerPrice > 0 ? variant.offerPrice : variant.price;
+      } else {
+        throw new ApiError(
+          400,
+          `Variant "${variantName}" not found for food "${food.foodName}".`
+        );
+      }
+    } else {
+      price = food.variants?.[0]?.offerPrice > 0
+        ? food.variants[0].offerPrice
+        : food.variants?.[0]?.price || 0;
+    }
+
+    return {
+      foodId: food._id,
+      variantName,
+      quantity: Number(item.quantity),
+      price: Number(price),
+    };
+  });
 };
 
 export const createBooking = async ({
@@ -158,26 +214,14 @@ export const createBooking = async ({
     );
   }
 
-  const orderedFoods = normalizeOrderedFoods(preOrderedFoods);
+  // Validate pre-ordered foods and resolve server-side prices
+  const orderedFoods = await validateAndResolveOrderedFoods({
+    foods: preOrderedFoods,
+    restaurantId: restaurant._id,
+  });
 
-  if (orderedFoods.length > 0) {
-    const foodIds = orderedFoods.map((item) => item.foodId);
-    const validFoods = await Food.find({
-      _id: { $in: foodIds },
-      restaurantId: restaurant._id,
-      isDeleted: false,
-    }).select("_id");
-
-    if (validFoods.length !== foodIds.length) {
-      throw new ApiError(
-        400,
-        "One or more pre-ordered food items are invalid."
-      );
-    }
-
-    if (!totalAmount) {
-      totalAmount = calculateOrderedFoodsTotal(orderedFoods);
-    }
+  if (orderedFoods.length > 0 && !totalAmount) {
+    totalAmount = calculateOrderedFoodsTotal(orderedFoods);
   }
 
   const bookingCode = await generateCode(
@@ -316,7 +360,10 @@ export const updateBooking = async ({
   }
 
   if (updates.preOrderedFoods !== undefined) {
-    const orderedFoods = normalizeOrderedFoods(updates.preOrderedFoods);
+    const orderedFoods = await validateAndResolveOrderedFoods({
+      foods: updates.preOrderedFoods,
+      restaurantId: booking.restaurantId,
+    });
     booking.preOrderedFoods = orderedFoods;
     if (!updates.totalAmount) {
       booking.totalAmount = calculateOrderedFoodsTotal(orderedFoods);
@@ -346,8 +393,6 @@ export const updateBooking = async ({
     message: "Booking updated successfully.",
   };
 };
-
-import { getIO } from "../sockets/socket.handler.js";
 
 export const updateBookingStatus = async ({
   bookingId,

@@ -1,0 +1,13 @@
+export const REVIEW_STATUS = {
+  PENDING: "Pending",
+  PUBLISHED: "Published",
+  HIDDEN: "Hidden",
+  REJECTED: "Rejected",
+};
+
+export const REVIEW_STATUS_VALUES = [
+  REVIEW_STATUS.PENDING,
+  REVIEW_STATUS.PUBLISHED,
+  REVIEW_STATUS.HIDDEN,
+  REVIEW_STATUS.REJECTED,
+];
