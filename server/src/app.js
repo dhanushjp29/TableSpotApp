@@ -12,16 +12,32 @@ import apiRouter from "./routes/index.js";
 
 const app = express();
 
-const limiter = rateLimit({
+const rateLimitMessage = {
+  success: false,
+  statusCode: 429,
+  message: "Too many requests, please try again later.",
+};
+
+// Generous general limiter: protects against abuse without blocking normal
+// multi-tab / multi-user usage (logins, token refreshes, data fetches all
+// share the client IP).
+const generalLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per `window` (here, per 15 minutes)
-  standardHeaders: true, // Return rate limit info in the `RateLimit-*` headers
-  legacyHeaders: false, // Disable the `X-RateLimit-*` headers
-  message: {
-    success: false,
-    statusCode: 429,
-    message: "Too many requests, please try again later.",
-  },
+  max: 1000,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: rateLimitMessage,
+});
+
+// Strict limiter for brute-force prone auth endpoints only.
+// Successful requests are not counted, so real users are unaffected.
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20,
+  skipSuccessfulRequests: true,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: rateLimitMessage,
 });
 
 app.use(helmet());
@@ -31,7 +47,18 @@ app.use(morgan("dev"));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
-app.use(limiter);
+app.use(generalLimiter);
+
+// Strict rate limiting only on sensitive auth endpoints.
+// /refresh-token and /logout are excluded so sessions never get dropped.
+app.use("/api/v1/auth/login", authLimiter);
+app.use("/api/v1/auth/register", authLimiter);
+app.use("/api/v1/auth/google-login", authLimiter);
+app.use("/api/v1/auth/verify-email", authLimiter);
+app.use("/api/v1/auth/resend-otp", authLimiter);
+app.use("/api/v1/auth/forgot-password", authLimiter);
+app.use("/api/v1/auth/reset-password", authLimiter);
+app.use("/api/v1/auth/change-password", authLimiter);
 
 // Health Check
 app.get("/", (_req, res) => {

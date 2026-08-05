@@ -2,23 +2,36 @@ import { v2 as cloudinary } from "cloudinary";
 
 import ApiError from "./ApiError.js";
 
-const {
-  CLOUDINARY_CLOUD_NAME,
-  CLOUDINARY_API_KEY,
-  CLOUDINARY_API_SECRET,
-} = process.env;
+const getCloudinaryConfig = () => {
+  const {
+    CLOUDINARY_CLOUD_NAME,
+    CLOUDINARY_API_KEY,
+    CLOUDINARY_API_SECRET,
+  } = process.env;
 
-if (
-  CLOUDINARY_CLOUD_NAME &&
-  CLOUDINARY_API_KEY &&
-  CLOUDINARY_API_SECRET
-) {
-  cloudinary.config({
+  if (!CLOUDINARY_CLOUD_NAME || !CLOUDINARY_API_KEY || !CLOUDINARY_API_SECRET) {
+    return null;
+  }
+
+  return {
     cloud_name: CLOUDINARY_CLOUD_NAME,
     api_key: CLOUDINARY_API_KEY,
     api_secret: CLOUDINARY_API_SECRET,
-  });
-}
+  };
+};
+
+const ensureCloudinaryConfig = () => {
+  const config = getCloudinaryConfig();
+
+  if (!config) {
+    throw new ApiError(
+      500,
+      "Cloudinary is not configured. Set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET in server/src/.env"
+    );
+  }
+
+  cloudinary.config(config);
+};
 
 const uploadBufferToCloudinary = ({
   buffer,
@@ -60,6 +73,8 @@ export const uploadImage = async ({
   publicId = "",
   transformation = [],
 }) => {
+  ensureCloudinaryConfig();
+
   const result = await uploadBufferToCloudinary({
     buffer,
     folder,
@@ -97,6 +112,8 @@ export const deleteImage = async (publicId) => {
   if (!publicId) {
     throw new ApiError(400, "Public ID is required.");
   }
+
+  ensureCloudinaryConfig();
 
   const result = await cloudinary.uploader.destroy(publicId);
 

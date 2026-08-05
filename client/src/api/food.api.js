@@ -1,6 +1,11 @@
 import apiClient from "./apiClient.js";
 
 export const foodApi = {
+  async getAll(params = {}) {
+    const response = await apiClient.get("/foods", { params });
+    return response.data;
+  },
+
   async getByRestaurant(restaurantId, params = {}) {
     const response = await apiClient.get(`/foods/restaurant/${restaurantId}`, {
       params,

@@ -7,6 +7,7 @@ const initialUser = storage.get("user");
 const initialState = {
   user: initialUser,
   isAuthenticated: Boolean(initialUser),
+  isInitialized: false,
   isLoading: false,
   error: null,
 };
@@ -31,9 +32,13 @@ const authSlice = createSlice({
         storage.remove("user");
       }
     },
+    setInitialized(state) {
+      state.isInitialized = true;
+    },
     clearAuth(state) {
       state.user = null;
       state.isAuthenticated = false;
+      state.isInitialized = true;
       state.error = null;
       storage.remove("user");
       storage.remove("refreshToken");
@@ -41,8 +46,34 @@ const authSlice = createSlice({
   },
 });
 
-export const { setLoading, setError, setAuthenticated, clearAuth } =
+export const { setLoading, setError, setAuthenticated, setInitialized, clearAuth } =
   authSlice.actions;
+
+/**
+ * Initialize auth on app load.
+ * If a refresh token exists in storage, verify the session by calling /auth/me.
+ * This prevents redirecting to login before the session check completes.
+ */
+export const initializeAuth = () => async (dispatch) => {
+  const refreshToken = storage.get("refreshToken");
+
+  if (!refreshToken) {
+    dispatch(setInitialized());
+    return;
+  }
+
+  dispatch(setLoading(true));
+  try {
+    const response = await authApi.getMe();
+    dispatch(setAuthenticated(response.data?.user || response.data));
+  } catch {
+    // Session expired or invalid - clear auth state
+    dispatch(clearAuth());
+  } finally {
+    dispatch(setLoading(false));
+    dispatch(setInitialized());
+  }
+};
 
 // Async thunks
 export const loginUser = (data) => async (dispatch) => {
@@ -55,6 +86,23 @@ export const loginUser = (data) => async (dispatch) => {
   } catch (error) {
     const message =
       error.response?.data?.message || "Login failed. Please try again.";
+    dispatch(setError(message));
+    throw error;
+  } finally {
+    dispatch(setLoading(false));
+  }
+};
+
+export const googleLoginUser = (data) => async (dispatch) => {
+  dispatch(setLoading(true));
+  dispatch(setError(null));
+  try {
+    const response = await authApi.googleLogin(data);
+    dispatch(setAuthenticated(response.data.user));
+    return response;
+  } catch (error) {
+    const message =
+      error.response?.data?.message || "Google login failed. Please try again.";
     dispatch(setError(message));
     throw error;
   } finally {

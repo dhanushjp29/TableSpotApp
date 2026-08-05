@@ -54,3 +54,15 @@ export const getByRestaurant = async (req, res) => {
     });
     res.status(200).json(new ApiResponse(200, "Food items retrieved successfully.", result));
 };
+
+export const getAll = async (req, res) => {
+    const params = { ...req.query };
+
+    // Owners should only ever see food belonging to their own restaurants
+    if (req.user.role === USER_ROLE.OWNER) {
+        params.ownerId = req.user._id;
+    }
+
+    const result = await foodService.getFoods(params);
+    res.status(200).json(new ApiResponse(200, "Food items retrieved successfully.", result));
+};

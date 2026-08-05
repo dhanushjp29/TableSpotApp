@@ -63,6 +63,14 @@ const userSchema = new mongoose.Schema(
       default: [],
     },
 
+    favoriteRestaurantIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Restaurant",
+        default: [],
+      },
+    ],
+
     isEmailVerified: {
       type: Boolean,
       default: false,

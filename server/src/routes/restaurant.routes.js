@@ -11,6 +11,7 @@ import {
     createRestaurantSchema,
     updateRestaurantSchema,
     restaurantIdSchema,
+    verifyRestaurantSchema,
 } from "../validators/restaurant.validator.js";
 
 const router = Router();
@@ -48,6 +49,7 @@ router.delete(
 router.patch(
     "/:restaurantId/verify",
     authorize(USER_ROLE.ADMIN),
+    validateRequest(verifyRestaurantSchema),
     asyncHandler(restaurantController.verify)
 );
 

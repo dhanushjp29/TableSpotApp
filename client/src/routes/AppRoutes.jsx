@@ -21,24 +21,25 @@ import RegisterPage from "../pages/auth/RegisterPage.jsx";
 import ResetPasswordPage from "../pages/auth/ResetPasswordPage.jsx";
 import VerifyEmailPage from "../pages/auth/VerifyEmailPage.jsx";
 
+import ChangePasswordPage from "../pages/customer/ChangePasswordPage.jsx";
 import CustomerDashboardPage from "../pages/customer/CustomerDashboardPage.jsx";
+import BookingPage from "../pages/customer/BookingPage.jsx";
+import BookingConfirmationPage from "../pages/customer/BookingConfirmationPage.jsx";
 import {
   CustomerBookingsPage,
   CustomerFavoritesPage,
-  CustomerNotificationsPage,
-  CustomerProfilePage,
 } from "../pages/customer/CustomerPlaceholderPages.jsx";
+import NotificationsPage from "../pages/notifications/NotificationsPage.jsx";
+import ProfilePage from "../pages/profile/ProfilePage.jsx";
 
-import {
-  OwnerBillingPage,
-  OwnerDashboardPage,
-  OwnerFoodsPage,
-  OwnerReportsPage,
-  OwnerReservationsPage,
-  OwnerRestaurantPage,
-  OwnerReviewsPage,
-  OwnerTablesPage,
-} from "../pages/owner/OwnerPlaceholderPages.jsx";
+import OwnerDashboardPage from "../pages/owner/OwnerDashboardPage.jsx";
+import OwnerRestaurantPage from "../pages/owner/OwnerRestaurantPage.jsx";
+import OwnerTablesPage from "../pages/owner/OwnerTablesPage.jsx";
+import OwnerFoodsPage from "../pages/owner/OwnerFoodsPage.jsx";
+import OwnerReservationsPage from "../pages/owner/OwnerReservationsPage.jsx";
+import OwnerBillingPage from "../pages/owner/OwnerBillingPage.jsx";
+import OwnerReviewsPage from "../pages/owner/OwnerReviewsPage.jsx";
+import OwnerReportsPage from "../pages/owner/OwnerReportsPage.jsx";
 
 import {
   AdminDashboardPage,
@@ -111,8 +112,11 @@ function AppRoutes() {
         <Route path={ROUTES.CUSTOMER_DASHBOARD} element={<CustomerDashboardPage />} />
         <Route path={ROUTES.CUSTOMER_BOOKINGS} element={<CustomerBookingsPage />} />
         <Route path={ROUTES.CUSTOMER_FAVORITES} element={<CustomerFavoritesPage />} />
-        <Route path={ROUTES.CUSTOMER_PROFILE} element={<CustomerProfilePage />} />
-        <Route path={ROUTES.CUSTOMER_NOTIFICATIONS} element={<CustomerNotificationsPage />} />
+        <Route path={ROUTES.CUSTOMER_PROFILE} element={<ProfilePage />} />
+        <Route path={ROUTES.CUSTOMER_CHANGE_PASSWORD} element={<ChangePasswordPage />} />
+        <Route path={ROUTES.CUSTOMER_NOTIFICATIONS} element={<NotificationsPage />} />
+        <Route path={ROUTES.BOOKING} element={<BookingPage />} />
+        <Route path={ROUTES.BOOKING_CONFIRMATION} element={<BookingConfirmationPage />} />
       </Route>
 
       {/* ===== Owner Routes ===== */}
@@ -133,6 +137,8 @@ function AppRoutes() {
         <Route path={ROUTES.OWNER_BILLING} element={<OwnerBillingPage />} />
         <Route path={ROUTES.OWNER_REVIEWS} element={<OwnerReviewsPage />} />
         <Route path={ROUTES.OWNER_REPORTS} element={<OwnerReportsPage />} />
+        <Route path={ROUTES.OWNER_NOTIFICATIONS} element={<NotificationsPage />} />
+        <Route path={ROUTES.OWNER_PROFILE} element={<ProfilePage />} />
       </Route>
 
       {/* ===== Admin Routes ===== */}
@@ -150,6 +156,8 @@ function AppRoutes() {
         <Route path={ROUTES.ADMIN_RESTAURANTS} element={<AdminRestaurantsPage />} />
         <Route path={ROUTES.ADMIN_REVIEWS} element={<AdminReviewsPage />} />
         <Route path={ROUTES.ADMIN_REPORTS} element={<AdminReportsPage />} />
+        <Route path={ROUTES.ADMIN_NOTIFICATIONS} element={<NotificationsPage />} />
+        <Route path={ROUTES.ADMIN_PROFILE} element={<ProfilePage />} />
       </Route>
 
       {/* ===== Fallback ===== */}

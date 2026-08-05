@@ -23,6 +23,8 @@ router.get("/:tableId", asyncHandler(tableController.getById));
 router.use(authenticate);
 router.use(authorize(USER_ROLE.OWNER, USER_ROLE.ADMIN));
 
+router.get("/", asyncHandler(tableController.getAll));
+
 router.post(
     "/",
     validateRequest(createTableSchema),

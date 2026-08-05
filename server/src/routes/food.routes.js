@@ -22,6 +22,9 @@ router.get("/:foodId", asyncHandler(foodController.getById));
 router.use(authenticate);
 router.use(authorize(USER_ROLE.OWNER, USER_ROLE.ADMIN));
 
+// List all foods (authenticated)
+router.get("/", asyncHandler(foodController.getAll));
+
 router.post(
     "/",
     validateRequest(createFoodSchema),

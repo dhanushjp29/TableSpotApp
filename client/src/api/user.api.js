@@ -12,14 +12,25 @@ export const userApi = {
     return response.data;
   },
 
+  // Favorites
+  async getFavoriteRestaurants() {
+    const response = await apiClient.get("/users/favorites");
+    return response.data;
+  },
+
+  async toggleFavorite(restaurantId) {
+    const response = await apiClient.post(`/users/favorites/${restaurantId}`);
+    return response.data;
+  },
+
   // Admin
   async getAll(params = {}) {
     const response = await apiClient.get("/users", { params });
     return response.data;
   },
 
-  async toggleActive(userId) {
-    const response = await apiClient.patch(`/users/${userId}/status`);
+  async toggleActive(userId, data = {}) {
+    const response = await apiClient.patch(`/users/${userId}/status`, data);
     return response.data;
   },
 

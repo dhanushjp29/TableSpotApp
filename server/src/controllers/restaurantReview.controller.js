@@ -53,3 +53,10 @@ export const getByRestaurant = async (req, res) => {
     const result = await restaurantReviewService.getReviewsByRestaurant({ restaurantId, ...req.query });
     res.status(200).json(new ApiResponse(200, "Restaurant reviews retrieved successfully.", result));
 };
+
+export const getAll = async (req, res) => {
+    const result = await restaurantReviewService.getReviews({
+        ...req.query,
+    });
+    res.status(200).json(new ApiResponse(200, "Restaurant reviews retrieved successfully.", result));
+};

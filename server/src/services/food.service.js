@@ -217,6 +217,67 @@ export const getFoodById = async ({ foodId }) => {
     return { food };
 };
 
+export const getFoods = async ({
+    page = 1,
+    limit = 50,
+    category = "",
+    foodType = "",
+    search = "",
+    isAvailable,
+    restaurantId = null,
+    ownerId = null,
+}) => {
+    const query = { isDeleted: false };
+
+    if (restaurantId) {
+        query.restaurantId = restaurantId;
+    }
+
+    if (ownerId) {
+        const ownedRestaurants = await Restaurant.find({ ownerId }).select("_id");
+        const ownedRestaurantIds = ownedRestaurants.map((r) => r._id);
+        query.restaurantId = { $in: ownedRestaurantIds };
+    }
+
+    if (category) {
+        query.category = category;
+    }
+
+    if (foodType) {
+        query.foodType = foodType;
+    }
+
+    if (isAvailable !== undefined) {
+        query.isAvailable = isAvailable;
+    }
+
+    if (search) {
+        query.foodName = new RegExp(search.trim(), "i");
+    }
+
+    const pageNumber = Math.max(Number(page) || 1, 1);
+    const pageSize = Math.min(Math.max(Number(limit) || 50, 1), 100);
+    const skip = (pageNumber - 1) * pageSize;
+
+    const [foods, total] = await Promise.all([
+        Food.find(query)
+            .sort({ displayOrder: 1, createdAt: -1 })
+            .skip(skip)
+            .limit(pageSize),
+        Food.countDocuments(query),
+    ]);
+
+    return {
+        foods,
+        meta: {
+            page: pageNumber,
+            limit: pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize) || 1,
+        },
+    };
+};
+
 export const getFoodsByRestaurant = async ({
     restaurantId,
     page = 1,

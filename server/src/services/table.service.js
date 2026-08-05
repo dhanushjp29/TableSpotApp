@@ -253,3 +253,56 @@ export const getTablesByRestaurant = async ({
 
     return { tables };
 };
+
+export const getTables = async ({
+    page = 1,
+    limit = 50,
+    status = "",
+    tableType = "",
+    isActive = true,
+    restaurantId = null,
+    ownerId = null,
+}) => {
+    const query = { isActive };
+
+    if (restaurantId) {
+        query.restaurantId = restaurantId;
+    }
+
+    if (ownerId) {
+        const ownedRestaurants = await Restaurant.find({ ownerId }).select("_id");
+        const ownedRestaurantIds = ownedRestaurants.map((r) => r._id);
+        query.restaurantId = { $in: ownedRestaurantIds };
+    }
+
+    if (status) {
+        query.status = status;
+    }
+
+    if (tableType) {
+        query.tableType = tableType;
+    }
+
+    const pageNumber = Math.max(Number(page) || 1, 1);
+    const pageSize = Math.min(Math.max(Number(limit) || 50, 1), 100);
+    const skip = (pageNumber - 1) * pageSize;
+
+    const [tables, total] = await Promise.all([
+        RestaurantTable.find(query)
+            .sort({ displayOrder: 1, tableNumber: 1 })
+            .skip(skip)
+            .limit(pageSize)
+            .populate("restaurantId", "restaurantCode restaurantName slug city state"),
+        RestaurantTable.countDocuments(query),
+    ]);
+
+    return {
+        tables,
+        meta: {
+            page: pageNumber,
+            limit: pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize) || 1,
+        },
+    };
+};

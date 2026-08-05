@@ -7,6 +7,7 @@ import User from "../models/User.js";
 import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
 import { getIO } from "../sockets/socket.handler.js";
+import { createNotification } from "./notification.service.js";
 
 import {
   BOOKING_STATUS,
@@ -276,6 +277,21 @@ export const createBooking = async ({
     console.error("Socket error on booking creation:", error);
   }
 
+  if (restaurant.ownerId) {
+    try {
+      await createNotification({
+        userId: restaurant.ownerId,
+        title: "New Booking Received",
+        message: `A new booking request (${booking.bookingCode}) has been received for ${restaurant.restaurantName}.`,
+        type: "Booking",
+        linkId: booking._id,
+        linkModel: "Booking",
+      });
+    } catch (error) {
+      console.error("Notification error on booking creation:", error.message);
+    }
+  }
+
   return {
     booking: await Booking.findById(booking._id)
       .populate("userId", "userCode fullName email phoneNumber role profileImage")
@@ -442,6 +458,19 @@ export const updateBookingStatus = async ({
     });
   } catch (error) {
     console.error("Socket error on booking status update:", error);
+  }
+
+  try {
+    await createNotification({
+      userId: booking.userId,
+      title: "Booking Update",
+      message: `Your booking (${booking.bookingCode}) has been ${booking.bookingStatus.toLowerCase()}.`,
+      type: "Booking",
+      linkId: booking._id,
+      linkModel: "Booking",
+    });
+  } catch (error) {
+    console.error("Notification error on booking status update:", error.message);
   }
 
   return {

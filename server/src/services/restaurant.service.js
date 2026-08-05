@@ -7,8 +7,68 @@ import User from "../models/User.js";
 import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
 import generateSlug from "../utils/generateSlug.js";
+import { createNotification } from "./notification.service.js";
 
-import { CODE_PREFIX } from "../utils/constants.js";
+import {
+  CODE_PREFIX,
+  TABLE_STATUS,
+  USER_ROLE,
+} from "../utils/constants.js";
+
+const TABLE_DEFAULTS = {
+  tableType: "Normal",
+  tableLocation: "Indoor",
+  status: TABLE_STATUS.AVAILABLE,
+};
+
+const normalizeTableInput = (table = {}) => {
+  const tableNumber = Number(table.tableNumber);
+  const capacity = Number(table.capacity);
+  const minimumCapacity = Number(table.minimumCapacity) || 1;
+
+  if (!Number.isInteger(tableNumber) || tableNumber < 1) {
+    throw new ApiError(
+      400,
+      "Each table needs a valid table number (positive whole number)."
+    );
+  }
+
+  if (!Number.isInteger(capacity) || capacity < 1 || capacity > 100) {
+    throw new ApiError(
+      400,
+      "Each table needs a valid capacity between 1 and 100."
+    );
+  }
+
+  if (
+    !Number.isInteger(minimumCapacity) ||
+    minimumCapacity < 1 ||
+    minimumCapacity > capacity
+  ) {
+    throw new ApiError(
+      400,
+      "Minimum capacity must be at least 1 and not exceed the table capacity."
+    );
+  }
+
+  return {
+    tableCode: "",
+    restaurantId: null,
+    tableNumber,
+    tableName: String(table.tableName || "").trim(),
+    capacity,
+    minimumCapacity,
+    tableType: table.tableType || TABLE_DEFAULTS.tableType,
+    otherTableType: String(table.otherTableType || "").trim(),
+    tableLocation: table.tableLocation || TABLE_DEFAULTS.tableLocation,
+    otherTableLocation: String(table.otherTableLocation || "").trim(),
+    floor: String(table.floor || "").trim(),
+    status: table.status || TABLE_DEFAULTS.status,
+    isReservable: table.isReservable !== false,
+    displayOrder: Number(table.displayOrder) || 1,
+    description: String(table.description || "").trim(),
+  };
+};
 
 const normalizeStringArray = (values = []) =>
   values
@@ -68,6 +128,7 @@ export const createRestaurant = async ({
   verificationStatus = "Pending",
   isFeatured = false,
   isActive = true,
+  tables = [],
 }) => {
   if (!ownerId) {
     throw new ApiError(400, "Owner is required.");
@@ -83,6 +144,25 @@ export const createRestaurant = async ({
     throw new ApiError(400, "Restaurant name is required.");
   }
 
+  if (!Array.isArray(tables) || tables.length === 0) {
+    throw new ApiError(
+      400,
+      "Add at least one table before submitting your restaurant for approval."
+    );
+  }
+
+  const tableNumbers = tables.map((table) => Number(table.tableNumber));
+  const duplicateTableNumber = tableNumbers.find(
+    (number, index) => number && tableNumbers.indexOf(number) !== index
+  );
+
+  if (duplicateTableNumber !== undefined) {
+    throw new ApiError(
+      409,
+      `Table number ${duplicateTableNumber} is duplicated. Each table needs a unique number.`
+    );
+  }
+
   const restaurantCode = await generateCode(
     Restaurant,
     "restaurantCode",
@@ -91,6 +171,23 @@ export const createRestaurant = async ({
 
   const baseSlug = generateSlug(restaurantName);
   const slug = await ensureUniqueSlug(baseSlug);
+
+  const baseTableCode = await generateCode(
+    RestaurantTable,
+    "tableCode",
+    CODE_PREFIX.TABLE
+  );
+  const baseTableNumber = Number(baseTableCode.replace(CODE_PREFIX.TABLE, ""));
+  const tableCodes = tables.map((_, index) => {
+    const nextNumber = baseTableNumber + index;
+    return `${CODE_PREFIX.TABLE}${String(nextNumber).padStart(6, "0")}`;
+  });
+
+  const normalizedTables = tables.map((table, index) => {
+    const normalized = normalizeTableInput(table);
+    normalized.tableCode = tableCodes[index];
+    return normalized;
+  });
 
   const restaurant = await Restaurant.create({
     restaurantCode,
@@ -120,6 +217,49 @@ export const createRestaurant = async ({
     isFeatured,
     isActive,
   });
+
+  try {
+    await RestaurantTable.insertMany(
+      normalizedTables.map((table) => ({ ...table, restaurantId: restaurant._id }))
+    );
+  } catch (error) {
+    console.error("Failed to create restaurant tables:", error.message);
+    await RestaurantTable.deleteMany({ restaurantId: restaurant._id });
+    await Restaurant.findByIdAndUpdate(restaurant._id, {
+      isActive: false,
+      isDeleted: true,
+      deletedAt: new Date(),
+    });
+    throw new ApiError(
+      500,
+      "Failed to create restaurant tables. Please try again."
+    );
+  }
+
+  try {
+    const admins = await User.find({
+      role: USER_ROLE.ADMIN,
+      isActive: true,
+      isDeleted: false,
+    }).select("_id");
+
+    for (const admin of admins) {
+      try {
+        await createNotification({
+          userId: admin._id,
+          title: "New Restaurant for Approval",
+          message: `"${restaurant.restaurantName}" (${restaurant.restaurantCode}) has been submitted for approval.`,
+          type: "System",
+          linkId: restaurant._id,
+          linkModel: "Restaurant",
+        });
+      } catch (error) {
+        console.error("Notification error on restaurant creation:", error.message);
+      }
+    }
+  } catch (error) {
+    console.error("Notification error on restaurant creation:", error.message);
+  }
 
   return {
     restaurant,
@@ -242,6 +382,34 @@ export const verifyRestaurant = async ({
   restaurant.rejectionReason = verificationStatus === "Rejected" ? rejectionReason.trim() : "";
 
   await restaurant.save();
+
+  if (
+    verificationStatus === "Verified" ||
+    verificationStatus === "Rejected"
+  ) {
+    const isApproved = verificationStatus === "Verified";
+    const reason = restaurant.rejectionReason
+      ? ` Reason: ${restaurant.rejectionReason}`
+      : "";
+
+    try {
+      await createNotification({
+        userId: restaurant.ownerId,
+        title: isApproved ? "Restaurant Approved" : "Restaurant Rejected",
+        message: isApproved
+          ? `Congratulations! "${restaurant.restaurantName}" has been approved and is now live.`
+          : `"${restaurant.restaurantName}" was rejected.${reason}`,
+        type: "System",
+        linkId: restaurant._id,
+        linkModel: "Restaurant",
+      });
+    } catch (error) {
+      console.error(
+        "Notification error on restaurant verification:",
+        error.message
+      );
+    }
+  }
 
   return {
     restaurant,

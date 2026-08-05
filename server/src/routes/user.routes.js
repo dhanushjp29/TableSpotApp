@@ -14,6 +14,10 @@ router.use(authenticate);
 router.get("/profile", asyncHandler(userController.getProfile));
 router.patch("/profile", asyncHandler(userController.updateProfile));
 
+// Favorites
+router.get("/favorites", asyncHandler(userController.getFavorites));
+router.post("/favorites/:restaurantId", asyncHandler(userController.toggleFavorite));
+
 // Admin management
 router.use(authorize(USER_ROLE.ADMIN));
 

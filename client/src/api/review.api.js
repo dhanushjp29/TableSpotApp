@@ -1,6 +1,11 @@
 import apiClient from "./apiClient.js";
 
 export const restaurantReviewApi = {
+  async getAll(params = {}) {
+    const response = await apiClient.get("/restaurant-reviews", { params });
+    return response.data;
+  },
+
   async getByRestaurant(restaurantId, params = {}) {
     const response = await apiClient.get(
       `/restaurant-reviews/restaurant/${restaurantId}`,
@@ -31,6 +36,11 @@ export const restaurantReviewApi = {
 };
 
 export const foodReviewApi = {
+  async getAll(params = {}) {
+    const response = await apiClient.get("/food-reviews", { params });
+    return response.data;
+  },
+
   async getByFood(foodId, params = {}) {
     const response = await apiClient.get(`/food-reviews/food/${foodId}`, {
       params,

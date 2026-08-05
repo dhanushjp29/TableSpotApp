@@ -42,6 +42,9 @@ export const initSocket = (server) => {
     io.on("connection", (socket) => {
         console.log(`Socket connected: ${socket.id} (user: ${socket.user._id})`);
 
+        // Join a per-user room so we can push live notifications
+        socket.join(`user_${socket.user._id}`);
+
         // Join a room specifically for a restaurant's staff
         socket.on("join:restaurant", async (restaurantId, callback) => {
             try {

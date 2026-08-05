@@ -1,17 +1,20 @@
 const generateCode = async (Model, fieldName, prefix) => {
-  const latestDocument = await Model.findOne()
-    .sort({ createdAt: -1 })
-    .select(fieldName);
+  const docs = await Model.find({}, { [fieldName]: 1 }).lean();
 
-  let nextNumber = 1;
+  let max = 0;
+  for (const doc of docs) {
+    const code = doc[fieldName];
+    if (typeof code !== "string" || !code.startsWith(prefix)) continue;
 
-  if (latestDocument && latestDocument[fieldName]) {
-    const numericPart = latestDocument[fieldName].replace(prefix, "");
+    const numericPart = code.slice(prefix.length);
+    const parsed = Number(numericPart);
 
-    nextNumber = Number(numericPart) + 1;
+    if (Number.isInteger(parsed) && parsed >= 0 && parsed > max) {
+      max = parsed;
+    }
   }
 
-  return `${prefix}${String(nextNumber).padStart(6, "0")}`;
+  return `${prefix}${String(max + 1).padStart(6, "0")}`;
 };
 
 export default generateCode;

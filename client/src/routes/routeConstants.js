@@ -18,7 +18,10 @@ export const ROUTES = {
   CUSTOMER_BOOKINGS: "/customer/bookings",
   CUSTOMER_FAVORITES: "/customer/favorites",
   CUSTOMER_PROFILE: "/customer/profile",
+  CUSTOMER_CHANGE_PASSWORD: "/customer/change-password",
   CUSTOMER_NOTIFICATIONS: "/customer/notifications",
+  BOOKING: "/restaurants/:restaurantId/book",
+  BOOKING_CONFIRMATION: "/booking/:bookingId/confirmation",
 
   // Owner
   OWNER_HOME: "/owner",
@@ -30,6 +33,8 @@ export const ROUTES = {
   OWNER_BILLING: "/owner/billing",
   OWNER_REVIEWS: "/owner/reviews",
   OWNER_REPORTS: "/owner/reports",
+  OWNER_NOTIFICATIONS: "/owner/notifications",
+  OWNER_PROFILE: "/owner/profile",
 
   // Admin
   ADMIN_HOME: "/admin",
@@ -38,4 +43,6 @@ export const ROUTES = {
   ADMIN_RESTAURANTS: "/admin/restaurants",
   ADMIN_REVIEWS: "/admin/reviews",
   ADMIN_REPORTS: "/admin/reports",
+  ADMIN_NOTIFICATIONS: "/admin/notifications",
+  ADMIN_PROFILE: "/admin/profile",
 };

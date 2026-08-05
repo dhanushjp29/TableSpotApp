@@ -24,7 +24,7 @@ function VerifyEmailPage() {
   const {
     register,
     handleSubmit,
-    watch,
+    getValues,
     formState: { errors },
   } = useForm({
     resolver: zodResolver(verifyEmailSchema),
@@ -33,7 +33,7 @@ function VerifyEmailPage() {
     },
   });
 
-  const emailValue = watch("email");
+
 
   const onSubmit = async (data) => {
     setIsSubmitting(true);
@@ -49,6 +49,7 @@ function VerifyEmailPage() {
   };
 
   const handleResend = async () => {
+    const emailValue = getValues("email");
     if (!emailValue) {
       toast.error("Please enter your email first.");
       return;

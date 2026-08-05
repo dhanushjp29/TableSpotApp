@@ -15,10 +15,9 @@ import {
 import {
   AUTH_PROVIDER,
   CODE_PREFIX,
-  MAX_ACTIVE_SESSIONS,
-  REFRESH_TOKEN_EXPIRY_DAYS,
-  SALT_ROUNDS,
+  SALT_ROUNDS
 } from "../../utils/constants.js";
+import { createOrReuseSession } from "./session.service.js";
 
 const PENDING_REFRESH_TOKEN = "__PENDING_REFRESH_TOKEN__";
 
@@ -89,50 +88,9 @@ export const googleLogin = async ({
     await user.save();
   }
 
-  const activeSessionCount = await Session.countDocuments({
-    userId: user._id,
-    isActive: true,
-  });
 
-  if (activeSessionCount >= MAX_ACTIVE_SESSIONS) {
-    const oldestSession = await Session.findOne({
-      userId: user._id,
-      isActive: true,
-    })
-      .sort({ createdAt: 1 })
-      .select("_id");
 
-    if (oldestSession) {
-      await Session.findByIdAndUpdate(oldestSession._id, {
-        isActive: false,
-      });
-    }
-  }
-
-  const sessionCode = await generateCode(
-    Session,
-    "sessionCode",
-    CODE_PREFIX.SESSION
-  );
-
-  const session = await Session.create({
-    sessionCode,
-    userId: user._id,
-    refreshToken: PENDING_REFRESH_TOKEN,
-    deviceName: deviceInfo.deviceName || "",
-    browser: deviceInfo.browser || "",
-    operatingSystem: deviceInfo.operatingSystem || "",
-    ipAddress: deviceInfo.ipAddress || "",
-    userAgent: deviceInfo.userAgent || "",
-    expiresAt: new Date(
-      Date.now() +
-        REFRESH_TOKEN_EXPIRY_DAYS *
-          24 *
-          60 *
-          60 *
-          1000
-    ),
-  });
+  const session = await createOrReuseSession({ userId: user._id, deviceInfo });
 
   const refreshToken = generateRefreshToken({
     userId: user._id,

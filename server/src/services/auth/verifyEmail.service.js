@@ -1,10 +1,9 @@
 import bcrypt from "bcryptjs";
 
-import User from "../../models/User.js";
 import Session from "../../models/Session.js";
+import User from "../../models/User.js";
 
 import ApiError from "../../utils/ApiError.js";
-import generateCode from "../../utils/generateCode.js";
 import buildUserResponse from "../../utils/buildUserResponse.js";
 
 import { verifyOTP } from "../otp.service.js";
@@ -16,9 +15,7 @@ import {
 
 import {
   OTP_PURPOSE,
-  CODE_PREFIX,
-  SALT_ROUNDS,
-  REFRESH_TOKEN_EXPIRY_DAYS,
+  SALT_ROUNDS
 } from "../../utils/constants.js";
 
 const PENDING_REFRESH_TOKEN = "__PENDING_REFRESH_TOKEN__";
@@ -48,32 +45,9 @@ export const verifyEmail = async ({
 
   await user.save();
 
-  const sessionCode = await generateCode(
-    Session,
-    "sessionCode",
-    CODE_PREFIX.SESSION
-  );
-
-  const session = await Session.create({
-    sessionCode,
-    userId: user._id,
-    refreshToken: PENDING_REFRESH_TOKEN,
-
-    deviceName: deviceInfo.deviceName || "",
-    browser: deviceInfo.browser || "",
-    operatingSystem: deviceInfo.operatingSystem || "",
-    ipAddress: deviceInfo.ipAddress || "",
-    userAgent: deviceInfo.userAgent || "",
-
-    expiresAt: new Date(
-      Date.now() +
-        REFRESH_TOKEN_EXPIRY_DAYS *
-          24 *
-          60 *
-          60 *
-      1000
-    ),
-  });
+  // Create or reuse existing session for this device
+  const { createOrReuseSession } = await import("./session.service.js");
+  const session = await createOrReuseSession({ userId: user._id, deviceInfo });
 
   const refreshToken = generateRefreshToken({
     userId: user._id,

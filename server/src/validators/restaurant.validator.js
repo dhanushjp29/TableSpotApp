@@ -12,6 +12,9 @@ import {
   PRICE_RANGE_VALUES,
   RESTAURANT_OFFER_TYPE_VALUES,
   RESTAURANT_VERIFICATION_STATUS_VALUES,
+  TABLE_LOCATION_VALUES,
+  TABLE_STATUS_VALUES,
+  TABLE_TYPE_VALUES,
   WEEKDAY_VALUES,
 } from "../utils/constants.js";
 
@@ -87,8 +90,56 @@ const restaurantCoreSchema = z
   })
   .strict();
 
+const tableDraftSchema = z
+  .object({
+    tableNumber: z.coerce
+      .number({
+        invalid_type_error: "Table number must be a number.",
+      })
+      .int("Table number must be a whole number.")
+      .positive("Table number must be greater than 0."),
+    tableName: z.string().trim().max(50).optional().default(""),
+    capacity: z.coerce
+      .number({
+        invalid_type_error: "Capacity must be a number.",
+      })
+      .int("Capacity must be a whole number.")
+      .min(1, "Capacity must be at least 1.")
+      .max(100, "Capacity cannot exceed 100."),
+    minimumCapacity: z.coerce
+      .number({
+        invalid_type_error: "Minimum capacity must be a number.",
+      })
+      .int("Minimum capacity must be a whole number.")
+      .min(1)
+      .optional()
+      .default(1),
+    tableType: z.enum(TABLE_TYPE_VALUES).optional(),
+    otherTableType: z.string().trim().max(50).optional().default(""),
+    tableLocation: z.enum(TABLE_LOCATION_VALUES).optional(),
+    otherTableLocation: z.string().trim().max(50).optional().default(""),
+    floor: z.string().trim().max(50).optional().default(""),
+    status: z.enum(TABLE_STATUS_VALUES).optional(),
+    isReservable: z.boolean().optional(),
+    displayOrder: z.coerce
+      .number()
+      .int()
+      .min(1)
+      .optional()
+      .default(1),
+    description: z.string().trim().max(500).optional().default(""),
+  })
+  .strict();
+
 // Create Restaurant
-export const createRestaurantSchema = restaurantCoreSchema.strict();
+export const createRestaurantSchema = restaurantCoreSchema
+  .extend({
+    tables: z
+      .array(tableDraftSchema)
+      .min(1, "Add at least one table for your restaurant.")
+      .default([]),
+  })
+  .strict();
 
 // Update Restaurant
 export const updateRestaurantSchema =
@@ -98,5 +149,13 @@ export const updateRestaurantSchema =
 export const restaurantIdSchema = z
   .object({
     restaurantId: mongoIdSchema,
+  })
+  .strict();
+
+// Verify / Reject Restaurant
+export const verifyRestaurantSchema = z
+  .object({
+    verificationStatus: z.enum(RESTAURANT_VERIFICATION_STATUS_VALUES),
+    rejectionReason: z.string().trim().max(500).optional().default(""),
   })
   .strict();

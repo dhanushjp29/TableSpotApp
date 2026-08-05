@@ -1,6 +1,11 @@
 import apiClient from "./apiClient.js";
 
 export const tableApi = {
+  async getAll(params = {}) {
+    const response = await apiClient.get("/tables", { params });
+    return response.data;
+  },
+
   async getByRestaurant(restaurantId, params = {}) {
     const response = await apiClient.get(`/tables/restaurant/${restaurantId}`, {
       params,

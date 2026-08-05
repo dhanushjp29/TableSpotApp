@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 import {
@@ -21,7 +21,9 @@ import { useAuth } from "../hooks/useAuth.js";
 import { logoutUser } from "../store/slices/authSlice.js";
 import { toggleSidebar } from "../store/slices/uiSlice.js";
 import { ROUTES } from "../routes/routeConstants.js";
+import { notificationApi } from "../api/notification.api.js";
 import Avatar from "../components/ui/Avatar.jsx";
+import ConfirmDialog from "../components/ui/ConfirmDialog.jsx";
 
 const roleNavConfig = {
   customer: [
@@ -40,6 +42,8 @@ const roleNavConfig = {
     { to: ROUTES.OWNER_BILLING, label: "Billing", icon: ReceiptText },
     { to: ROUTES.OWNER_REVIEWS, label: "Reviews", icon: Star },
     { to: ROUTES.OWNER_REPORTS, label: "Reports", icon: BarChart3 },
+    { to: ROUTES.OWNER_NOTIFICATIONS, label: "Notifications", icon: Bell },
+    { to: ROUTES.OWNER_PROFILE, label: "Profile", icon: User },
   ],
   admin: [
     { to: ROUTES.ADMIN_DASHBOARD, label: "Dashboard", icon: LayoutDashboard },
@@ -47,7 +51,15 @@ const roleNavConfig = {
     { to: ROUTES.ADMIN_RESTAURANTS, label: "Restaurants", icon: Building2 },
     { to: ROUTES.ADMIN_REVIEWS, label: "Reviews", icon: Star },
     { to: ROUTES.ADMIN_REPORTS, label: "Reports", icon: BarChart3 },
+    { to: ROUTES.ADMIN_NOTIFICATIONS, label: "Notifications", icon: Bell },
+    { to: ROUTES.ADMIN_PROFILE, label: "Profile", icon: User },
   ],
+};
+
+const NOTIFICATION_ROUTE = {
+  customer: ROUTES.CUSTOMER_NOTIFICATIONS,
+  owner: ROUTES.OWNER_NOTIFICATIONS,
+  admin: ROUTES.ADMIN_NOTIFICATIONS,
 };
 
 function DashboardLayout() {
@@ -55,8 +67,34 @@ function DashboardLayout() {
   const navigate = useNavigate();
   const { user, role } = useAuth();
   const sidebarOpen = useSelector((state) => state.ui.sidebarOpen);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [logoutOpen, setLogoutOpen] = useState(false);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const navItems = roleNavConfig[role] || [];
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const fetchUnreadCount = async () => {
+      try {
+        const { data } = await notificationApi.getUnreadCount();
+        if (!cancelled) setUnreadCount(data?.count || 0);
+      } catch {
+        if (!cancelled) setUnreadCount(0);
+      }
+    };
+
+    fetchUnreadCount();
+    const interval = setInterval(fetchUnreadCount, 20000);
+    const handleUpdated = () => fetchUnreadCount();
+    window.addEventListener("notifications-updated", handleUpdated);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+      window.removeEventListener("notifications-updated", handleUpdated);
+    };
+  }, []);
 
   useEffect(() => {
     if (!role) {
@@ -64,7 +102,8 @@ function DashboardLayout() {
     }
   }, [role, navigate]);
 
-  const handleLogout = async () => {
+  const handleLogoutConfirm = async () => {
+    setIsLoggingOut(true);
     await dispatch(logoutUser());
     navigate(ROUTES.LOGIN, { replace: true });
   };
@@ -116,6 +155,11 @@ function DashboardLayout() {
               >
                 <Icon size={18} aria-hidden="true" />
                 {item.label}
+                {item.label === "Notifications" && unreadCount > 0 && (
+                  <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
               </NavLink>
             );
           })}
@@ -135,11 +179,16 @@ function DashboardLayout() {
 
           <div className="flex items-center gap-4 ml-auto">
             <Link
-              to={ROUTES.CUSTOMER_NOTIFICATIONS}
-              className="p-2 rounded-lg hover:bg-gray-100 text-muted"
+              to={NOTIFICATION_ROUTE[role] || ROUTES.CUSTOMER_NOTIFICATIONS}
+              className="relative p-2 rounded-lg hover:bg-gray-100 text-muted"
               aria-label="Notifications"
             >
               <Bell size={20} />
+              {unreadCount > 0 && (
+                <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                  {unreadCount > 99 ? "99+" : unreadCount}
+                </span>
+              )}
             </Link>
             <div className="flex items-center gap-3">
               <Avatar user={user} size={36} />
@@ -149,7 +198,7 @@ function DashboardLayout() {
               </div>
             </div>
             <button
-              onClick={handleLogout}
+              onClick={() => setLogoutOpen(true)}
               className="p-2 rounded-lg hover:bg-gray-100 text-muted"
               aria-label="Logout"
             >
@@ -162,6 +211,18 @@ function DashboardLayout() {
           <Outlet />
         </main>
       </div>
+
+      <ConfirmDialog
+        isOpen={logoutOpen}
+        onClose={() => setLogoutOpen(false)}
+        onConfirm={handleLogoutConfirm}
+        title="Log out?"
+        description="Are you sure you want to log out of your account?"
+        confirmText="Log out"
+        cancelText="Cancel"
+        variant="danger"
+        isLoading={isLoggingOut}
+      />
     </div>
   );
 }

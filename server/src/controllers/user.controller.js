@@ -22,13 +22,37 @@ export const getAll = async (req, res) => {
 
 export const toggleActive = async (req, res) => {
     const { userId } = req.params;
-    const { isActive } = req.body;
-    const result = await userService.toggleUserActive({ userId, isActive });
+    const { isActive } = req.body || {};
+    const result = await userService.toggleUserActive({
+        userId,
+        isActive,
+        actorId: req.user._id,
+    });
     res.status(200).json(new ApiResponse(200, result.message, result));
 };
 
 export const deleteUser = async (req, res) => {
     const { userId } = req.params;
-    const result = await userService.softDeleteUser({ userId });
+    const result = await userService.softDeleteUser({
+        userId,
+        actorId: req.user._id,
+    });
+    res.status(200).json(new ApiResponse(200, result.message, result));
+};
+
+// Favorites (any authenticated user)
+export const getFavorites = async (req, res) => {
+    const result = await userService.getFavoriteRestaurants({
+        userId: req.user._id,
+    });
+    res.status(200).json(new ApiResponse(200, "Favorite restaurants retrieved.", result));
+};
+
+export const toggleFavorite = async (req, res) => {
+    const { restaurantId } = req.params;
+    const result = await userService.toggleFavoriteRestaurant({
+        userId: req.user._id,
+        restaurantId,
+    });
     res.status(200).json(new ApiResponse(200, result.message, result));
 };

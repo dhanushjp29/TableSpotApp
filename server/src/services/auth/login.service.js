@@ -5,7 +5,6 @@ import User from "../../models/User.js";
 
 import ApiError from "../../utils/ApiError.js";
 import buildUserResponse from "../../utils/buildUserResponse.js";
-import generateCode from "../../utils/generateCode.js";
 
 import {
   generateAccessToken,
@@ -13,11 +12,9 @@ import {
 } from "../../utils/jwt.js";
 
 import {
-  CODE_PREFIX,
-  MAX_ACTIVE_SESSIONS,
-  REFRESH_TOKEN_EXPIRY_DAYS,
-  SALT_ROUNDS,
+  SALT_ROUNDS
 } from "../../utils/constants.js";
+import { createOrReuseSession } from "./session.service.js";
 
 const PENDING_REFRESH_TOKEN = "__PENDING_REFRESH_TOKEN__";
 
@@ -59,56 +56,10 @@ export const login = async ({
     throw new ApiError(401, "Invalid email or password.");
   }
 
-  // Check active session count
-  const activeSessionCount = await Session.countDocuments({
-    userId: user._id,
-    isActive: true,
-  });
 
-  if (activeSessionCount >= MAX_ACTIVE_SESSIONS) {
-    // Find the oldest active session
-    const oldestSession = await Session.findOne({
-      userId: user._id,
-      isActive: true,
-    })
-      .sort({ createdAt: 1 })
-      .select("_id");
 
-    if (oldestSession) {
-      await Session.findByIdAndUpdate(oldestSession._id, {
-        isActive: false,
-      });
-    }
-  }
-
-  // Generate Session Code
-  const sessionCode = await generateCode(
-    Session,
-    "sessionCode",
-    CODE_PREFIX.SESSION
-  );
-
-  // Create Session
-  const session = await Session.create({
-    sessionCode,
-    userId: user._id,
-    refreshToken: PENDING_REFRESH_TOKEN,
-
-    deviceName: deviceInfo.deviceName || "",
-    browser: deviceInfo.browser || "",
-    operatingSystem: deviceInfo.operatingSystem || "",
-    ipAddress: deviceInfo.ipAddress || "",
-    userAgent: deviceInfo.userAgent || "",
-
-    expiresAt: new Date(
-      Date.now() +
-      REFRESH_TOKEN_EXPIRY_DAYS *
-      24 *
-      60 *
-      60 *
-      1000
-    ),
-  });
+  // Create or reuse existing session for this device
+  const session = await createOrReuseSession({ userId: user._id, deviceInfo });
 
   const refreshToken = generateRefreshToken({
     userId: user._id,
