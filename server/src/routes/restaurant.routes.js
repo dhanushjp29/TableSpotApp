@@ -18,6 +18,7 @@ const router = Router();
 
 // Public Routes
 router.get("/", asyncHandler(restaurantController.getAll));
+router.get("/cities", asyncHandler(restaurantController.getCities));
 router.get("/slug/:slug", asyncHandler(restaurantController.getBySlug));
 router.get("/:restaurantId", asyncHandler(restaurantController.getById));
 

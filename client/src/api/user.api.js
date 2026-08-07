@@ -23,6 +23,16 @@ export const userApi = {
     return response.data;
   },
 
+  async getFavoriteFoods() {
+    const response = await apiClient.get("/users/favorites/foods");
+    return response.data;
+  },
+
+  async toggleFavoriteFood(foodId) {
+    const response = await apiClient.post(`/users/favorites/foods/${foodId}`);
+    return response.data;
+  },
+
   // Admin
   async getAll(params = {}) {
     const response = await apiClient.get("/users", { params });

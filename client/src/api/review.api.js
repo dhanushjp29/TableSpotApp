@@ -14,6 +14,14 @@ export const restaurantReviewApi = {
     return response.data;
   },
 
+  async getEligibility(restaurantId, bookingId = null) {
+    const response = await apiClient.get(
+      `/restaurant-reviews/eligibility/${restaurantId}`,
+      { params: bookingId ? { bookingId } : {} }
+    );
+    return response.data;
+  },
+
   async getById(reviewId) {
     const response = await apiClient.get(`/restaurant-reviews/${reviewId}`);
     return response.data;

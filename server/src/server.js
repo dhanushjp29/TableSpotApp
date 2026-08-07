@@ -11,6 +11,7 @@ dotenv.config({ path: path.join(__dirname, ".env") });
 import app from "./app.js";
 import connectDatabase from "./config/database.js";
 import { initSocket } from "./sockets/socket.handler.js";
+import { startDeadlineCron } from "./services/deadlineCron.service.js";
 
 const PORT = process.env.PORT || 5000;
 
@@ -22,6 +23,9 @@ const startServer = async () => {
 
         // Initialize Socket.io
         initSocket(server);
+
+        // Start scheduled deadline tasks (no-show grace, refund deadlines)
+        startDeadlineCron();
 
         const activeServer = server.listen(PORT, () => {
             console.log(`Server is running on port ${PORT}`);

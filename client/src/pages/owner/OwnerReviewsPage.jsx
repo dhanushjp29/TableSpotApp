@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { useSelector } from "react-redux";
-import { Star, MessageSquare, ThumbsUp } from "lucide-react";
+import { Star, MessageSquare, ThumbsUp, CornerDownRight } from "lucide-react";
+import toast from "react-hot-toast";
 
 import { restaurantReviewApi, foodReviewApi } from "../../api/review.api.js";
 import { restaurantApi } from "../../api/restaurant.api.js";
 import Card from "../../components/ui/Card.jsx";
 import Badge from "../../components/ui/Badge.jsx";
 import Rating from "../../components/ui/Rating.jsx";
+import Button from "../../components/ui/Button.jsx";
 import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
@@ -21,6 +23,9 @@ export default function OwnerReviewsPage() {
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState("restaurant"); // 'restaurant' or 'food'
   const [starFilter, setStarFilter] = useState(0);
+  const [replyingTo, setReplyingTo] = useState(null);
+  const [replyDraft, setReplyDraft] = useState({});
+  const [isReplying, setIsReplying] = useState(false);
 
   const loadReviews = async () => {
     const restRes = await restaurantApi.getAll({
@@ -114,6 +119,34 @@ export default function OwnerReviewsPage() {
     if (starFilter === 0) return true;
     return Math.round(r.rating) === starFilter;
   });
+
+  const handleToggleReply = (reviewId) => {
+    setReplyingTo((prev) => (prev === reviewId ? null : reviewId));
+  };
+
+  const handleSaveReply = async (review) => {
+    const text = (replyDraft[review._id] || "").trim();
+    if (!text) {
+      toast.error("Please write a reply before saving.");
+      return;
+    }
+    setIsReplying(true);
+    try {
+      if (activeTab === "restaurant") {
+        await restaurantReviewApi.update(review._id, { ownerReply: text });
+      } else {
+        await foodReviewApi.update(review._id, { ownerReply: text });
+      }
+      toast.success("Reply posted to the customer.");
+      setReplyingTo(null);
+      setReplyDraft((prev) => ({ ...prev, [review._id]: "" }));
+      await fetchReviews();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to save reply.");
+    } finally {
+      setIsReplying(false);
+    }
+  };
 
   const avgRating =
     currentList.length > 0
@@ -263,6 +296,86 @@ export default function OwnerReviewsPage() {
                   <p className="mt-3 text-sm text-text bg-gray-50/80 p-3 rounded-lg italic">
                     "{rev.comment}"
                   </p>
+                )}
+
+                {rev.images?.length > 0 && (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {rev.images.map((img, idx) => (
+                      <img
+                        key={idx}
+                        src={img}
+                        alt={`Review image ${idx + 1}`}
+                        className="h-20 w-20 rounded-lg object-cover border border-gray-100"
+                        loading="lazy"
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Owner reply */}
+                {rev.ownerReply && (
+                  <div className="mt-4 flex gap-2 rounded-lg border border-primary/15 bg-primary/5 p-3">
+                    <CornerDownRight
+                      size={16}
+                      className="mt-0.5 shrink-0 text-primary"
+                    />
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold text-primary">
+                        Your reply
+                        {rev.ownerRepliedAt
+                          ? ` • ${formatDate(new Date(rev.ownerRepliedAt))}`
+                          : ""}
+                      </p>
+                      <p className="mt-0.5 text-sm text-text">{rev.ownerReply}</p>
+                    </div>
+                  </div>
+                )}
+
+                {replyingTo === rev._id ? (
+                  <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50/60 p-3">
+                    <label className="mb-1 block text-xs font-medium text-muted">
+                      Reply to this review
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={replyDraft[rev._id] || ""}
+                      onChange={(e) =>
+                        setReplyDraft((prev) => ({
+                          ...prev,
+                          [rev._id]: e.target.value,
+                        }))
+                      }
+                      placeholder="Thank the guest and address their feedback..."
+                      className="w-full rounded-lg border border-gray-200 p-2 text-sm focus:border-primary focus:outline-none"
+                    />
+                    <div className="mt-2 flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => handleToggleReply(rev._id)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        size="sm"
+                        isLoading={isReplying}
+                        onClick={() => handleSaveReply(rev)}
+                      >
+                        Post Reply
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-4">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleToggleReply(rev._id)}
+                    >
+                      <CornerDownRight size={14} className="mr-1" />
+                      {rev.ownerReply ? "Edit Reply" : "Reply"}
+                    </Button>
+                  </div>
                 )}
               </Card>
             );

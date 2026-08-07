@@ -9,6 +9,11 @@ import {
 } from "./common.validator.js";
 
 import {
+  BOOKING_PAYMENT_POLICY,
+  BOOKING_PAYMENT_POLICY_VALUES,
+  BOOKING_PAYMENT_TYPE,
+  BOOKING_PAYMENT_TYPE_VALUES,
+  MAX_BOOKING_ADVANCE_AMOUNT,
   PRICE_RANGE_VALUES,
   RESTAURANT_OFFER_TYPE_VALUES,
   RESTAURANT_VERIFICATION_STATUS_VALUES,
@@ -51,11 +56,117 @@ const locationSchema = z
   })
   .strict();
 
+const bookingPaymentPolicySchema = z
+  .object({
+    type: z.enum(BOOKING_PAYMENT_POLICY_VALUES),
+    paymentType: z.enum(BOOKING_PAYMENT_TYPE_VALUES).optional(),
+    fixedAmount: z
+      .number({
+        invalid_type_error: "Fixed amount must be a number.",
+      })
+      .min(0)
+      .max(MAX_BOOKING_ADVANCE_AMOUNT)
+      .optional(),
+    percentage: z
+      .number({
+        invalid_type_error: "Percentage must be a number.",
+      })
+      .min(0)
+      .max(100)
+      .optional(),
+    maximumAmount: z
+      .number({
+        invalid_type_error: "Maximum amount must be a number.",
+      })
+      .min(0)
+      .max(MAX_BOOKING_ADVANCE_AMOUNT)
+      .optional(),
+  })
+  .strict()
+  .superRefine((policy, ctx) => {
+    if (policy.type === BOOKING_PAYMENT_POLICY.PAY_ON_SPOT) {
+      return;
+    }
+
+    if (!policy.paymentType) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["paymentType"],
+        message:
+          "Payment type is required when Pay Amount to Book is selected.",
+      });
+      return;
+    }
+
+    if (policy.paymentType === BOOKING_PAYMENT_TYPE.FIXED_AMOUNT) {
+      if (
+        policy.fixedAmount === undefined ||
+        policy.fixedAmount <= 0 ||
+        policy.fixedAmount > MAX_BOOKING_ADVANCE_AMOUNT
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["fixedAmount"],
+          message: `Fixed amount must be between ₹1 and ₹${MAX_BOOKING_ADVANCE_AMOUNT}.`,
+        });
+      }
+    }
+
+    if (policy.paymentType === BOOKING_PAYMENT_TYPE.PERCENTAGE) {
+      if (policy.percentage === undefined || policy.percentage <= 0) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["percentage"],
+          message: "Percentage must be between 1 and 100.",
+        });
+      }
+
+      if (
+        policy.maximumAmount !== undefined &&
+        policy.maximumAmount > MAX_BOOKING_ADVANCE_AMOUNT
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["maximumAmount"],
+          message: `Maximum amount cannot exceed ₹${MAX_BOOKING_ADVANCE_AMOUNT}.`,
+        });
+      }
+    }
+  });
+
+const cancellationPolicySchema = z
+  .object({
+    isEnabled: z.boolean().optional(),
+    hoursBeforeBooking: z
+      .number({
+        invalid_type_error: "Cancellation cutoff hours must be a number.",
+      })
+      .int()
+      .min(1)
+      .max(168)
+      .optional(),
+    refundPercentage: z
+      .number({
+        invalid_type_error: "Refund percentage must be a number.",
+      })
+      .min(0)
+      .max(100)
+      .optional(),
+    noShowRefundPercentage: z
+      .number({
+        invalid_type_error: "No-show refund percentage must be a number.",
+      })
+      .min(0)
+      .max(100)
+      .optional(),
+  })
+  .strict();
+
 const restaurantCoreSchema = z
   .object({
     ownerId: mongoIdSchema.optional(),
     restaurantName: z.string().trim().min(3).max(100),
-    description: z.string().trim().max(500).optional().default(""),
+    description: z.string().trim().max(500).optional(),
     contactPerson: z.string().trim().min(3).max(100),
     phoneNumber: phoneNumberSchema,
     email: emailSchema,
@@ -70,17 +181,28 @@ const restaurantCoreSchema = z
       .array(z.string().trim().min(1))
       .min(3, "Gallery must contain at least 3 images.")
       .max(10, "Gallery cannot exceed 10 images."),
-    cuisineTypes: z.array(z.string().trim().min(1)).default([]),
-    operatingHours: z.array(operatingHourSchema).default([]),
-    amenities: z.array(z.string().trim().min(1)).default([]),
-    services: z.array(z.string().trim().min(1)).default([]),
-    currentOffers: z.array(offerSchema).default([]),
+    cuisineTypes: z.array(z.string().trim().min(1)).optional(),
+    operatingHours: z.array(operatingHourSchema).optional(),
+    amenities: z.array(z.string().trim().min(1)).optional(),
+    services: z.array(z.string().trim().min(1)).optional(),
+    currentOffers: z.array(offerSchema).optional(),
     priceRange: z.enum(PRICE_RANGE_VALUES).optional(),
     averageCostForTwo: z
       .number({
         invalid_type_error: "Average cost must be a number.",
       })
       .min(0)
+      .optional(),
+    gstin: z.string().trim().regex(/^[0-9A-Za-z]{15}$/, "GSTIN must be a valid 15-character GST number.").optional(),
+    bookingPaymentPolicy: bookingPaymentPolicySchema,
+    cancellationPolicy: cancellationPolicySchema.optional(),
+    customerWaitingPeriod: z
+      .number({
+        invalid_type_error: "Customer waiting period must be a number.",
+      })
+      .int()
+      .min(5)
+      .max(180)
       .optional(),
     verificationStatus: z
       .enum(RESTAURANT_VERIFICATION_STATUS_VALUES)
@@ -138,6 +260,12 @@ export const createRestaurantSchema = restaurantCoreSchema
       .array(tableDraftSchema)
       .min(1, "Add at least one table for your restaurant.")
       .default([]),
+    description: z.string().trim().max(500).optional().default(""),
+    cuisineTypes: z.array(z.string().trim().min(1)).default([]),
+    operatingHours: z.array(operatingHourSchema).default([]),
+    amenities: z.array(z.string().trim().min(1)).default([]),
+    services: z.array(z.string().trim().min(1)).default([]),
+    currentOffers: z.array(offerSchema).default([]),
   })
   .strict();
 

@@ -1,10 +1,17 @@
 import { useEffect } from "react";
-import { BrowserRouter } from "react-router-dom";
+import { BrowserRouter, useLocation } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { useDispatch } from "react-redux";
 
 import AppRoutes from "./routes/AppRoutes.jsx";
+import ErrorBoundary from "./components/common/ErrorBoundary.jsx";
 import { initializeAuth } from "./store/slices/authSlice.js";
+
+function RouteAwareErrorBoundary({ children }) {
+  const location = useLocation();
+
+  return <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>;
+}
 
 function App() {
   const dispatch = useDispatch();
@@ -16,7 +23,9 @@ function App() {
 
   return (
     <BrowserRouter>
-      <AppRoutes />
+      <RouteAwareErrorBoundary>
+        <AppRoutes />
+      </RouteAwareErrorBoundary>
       <Toaster
         position="top-right"
         containerStyle={{ top: 72 }}

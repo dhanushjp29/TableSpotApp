@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useState } from "react";
-import { Bell, BellRing, CheckCheck } from "lucide-react";
+import { Bell, BellRing, CheckCheck, HandCoins, MessageSquareWarning } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { notificationApi } from "../../api/notification.api.js";
+import { refundApi } from "../../api/refund.api.js";
 import Card from "../../components/ui/Card.jsx";
 import Button from "../../components/ui/Button.jsx";
 import Badge from "../../components/ui/Badge.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
 import { SkeletonText } from "../../components/ui/Skeleton.jsx";
+
+const REFUND_AWAITING = "REFUND_AWAITING_CUSTOMER_CONFIRMATION";
 
 const TYPE_VARIANT = {
   System: "info",
@@ -49,6 +52,8 @@ function NotificationsPage() {
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [error, setError] = useState("");
   const [unreadCount, setUnreadCount] = useState(0);
+  const [refundStatuses, setRefundStatuses] = useState({});
+  const [processingRefund, setProcessingRefund] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -87,6 +92,32 @@ function NotificationsPage() {
       cancelled = true;
     };
   }, [filter]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const refundNotifications = notifications.filter(
+      (item) => item.linkModel === "Refund" && item.linkId
+    );
+
+    refundNotifications.forEach(async (item) => {
+      try {
+        const { data } = await refundApi.getById(item.linkId);
+        if (!cancelled) {
+          setRefundStatuses((prev) => ({
+            ...prev,
+            [item._id]: data?.refund?.refundStatus || "",
+          }));
+        }
+      } catch {
+        // Refund may be deleted or inaccessible; leave status unknown.
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [notifications]);
 
   const loadNotifications = useCallback(async (page = 1, reset = true) => {
     try {
@@ -141,6 +172,46 @@ function NotificationsPage() {
       toast.success("All notifications marked as read.");
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to mark notifications as read.");
+    }
+  };
+
+  const handleConfirmRefund = async (notification) => {
+    if (!window.confirm("I received the refund in cash. Confirm receipt?")) return;
+    setProcessingRefund(notification._id);
+    try {
+      await refundApi.confirmReceipt(notification.linkId);
+      setRefundStatuses((prev) => ({ ...prev, [notification._id]: "REFUNDED" }));
+      toast.success("Refund receipt confirmed. Thank you!");
+      if (!notification.isRead) {
+        await notificationApi.markAsRead(notification._id);
+        notifyLayout();
+      }
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to confirm refund.");
+    } finally {
+      setProcessingRefund("");
+    }
+  };
+
+  const handleDisputeRefund = async (notification) => {
+    const reason = window.prompt(
+      "Please tell us why you did not receive this refund (at least 5 characters):"
+    );
+    if (reason === null) return;
+    const trimmed = String(reason || "").trim();
+    if (trimmed.length < 5) {
+      toast.error("A dispute reason of at least 5 characters is required.");
+      return;
+    }
+    setProcessingRefund(notification._id);
+    try {
+      await refundApi.dispute(notification.linkId, trimmed);
+      setRefundStatuses((prev) => ({ ...prev, [notification._id]: "REFUND_DISPUTED" }));
+      toast.success("Refund disputed. The restaurant has been notified.");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to dispute refund.");
+    } finally {
+      setProcessingRefund("");
     }
   };
 
@@ -268,6 +339,54 @@ function NotificationsPage() {
                       <Badge variant="primary">New</Badge>
                     )}
                   </div>
+
+                  {notification.linkModel === "Refund" &&
+                    refundStatuses[notification._id] === REFUND_AWAITING && (
+                      <div
+                        className="mt-3 flex flex-wrap items-center gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3"
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <div className="flex-1 min-w-[220px]">
+                          <p className="text-xs font-semibold text-amber-800">
+                            Confirm your refund receipt
+                          </p>
+                          <p className="text-[11px] text-amber-700">
+                            Did you receive the refund? Your confirmation closes
+                            this request.
+                          </p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            isLoading={processingRefund === notification._id}
+                            onClick={() => handleConfirmRefund(notification)}
+                          >
+                            <HandCoins size={14} className="mr-1" />
+                            I received it in cash
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="text-red-600 border-red-200 hover:bg-red-50"
+                            onClick={() => handleDisputeRefund(notification)}
+                          >
+                            <MessageSquareWarning size={14} className="mr-1" />
+                            I didn't receive it
+                          </Button>
+                        </div>
+                      </div>
+                    )}
+
+                  {notification.linkModel === "Refund" &&
+                    refundStatuses[notification._id] &&
+                    refundStatuses[notification._id] !== REFUND_AWAITING && (
+                      <div className="mt-3">
+                        <Badge variant="info">
+                          Refund status: {refundStatuses[notification._id]}
+                        </Badge>
+                      </div>
+                    )}
                 </div>
               </Card>
             ))}

@@ -1,4 +1,4 @@
-import { List, Map as MapIcon, Search } from "lucide-react";
+import { ArrowLeft, List, Map as MapIcon, Search } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
@@ -15,6 +15,7 @@ import ErrorState from "../../components/ui/ErrorState.jsx";
 import Pagination from "../../components/ui/Pagination.jsx";
 import Select from "../../components/ui/Select.jsx";
 import { SkeletonCard } from "../../components/ui/Skeleton.jsx";
+import { ROUTES } from "../../routes/routeConstants.js";
 
 const PRICE_RANGE_OPTIONS = ["₹", "₹₹", "₹₹₹", "₹₹₹₹"];
 const RATING_OPTIONS = [
@@ -35,6 +36,7 @@ function RestaurantsPage() {
   const [selectedRestaurantId, setSelectedRestaurantId] = useState(null);
   const [mobileView, setMobileView] = useState("list");
   const [favoriteIds, setFavoriteIds] = useState(() => new Set());
+  const [cities, setCities] = useState([]);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -78,6 +80,21 @@ function RestaurantsPage() {
   }, [page, debouncedSearch, city]);
 
   useEffect(() => {
+    let isMounted = true;
+    restaurantApi
+      .getCities()
+      .then((response) => {
+        if (isMounted) {
+          setCities(response.data?.cities || []);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!isAuthenticated) return;
     let isMounted = true;
     userApi
@@ -99,18 +116,20 @@ function RestaurantsPage() {
       return;
     }
     try {
-      await userApi.toggleFavorite(restaurantId);
+      const res = await userApi.toggleFavorite(restaurantId);
+      const isFavorite = res?.data?.isFavorite;
       setFavoriteIds((prev) => {
         const next = new Set(prev);
         if (next.has(String(restaurantId))) {
           next.delete(String(restaurantId));
-          toast.success("Removed from favorites.");
         } else {
           next.add(String(restaurantId));
-          toast.success("Added to favorites.");
         }
         return next;
       });
+      toast.success(
+        isFavorite ? "Added to favorites." : "Removed from favorites."
+      );
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to update favorites.");
     }
@@ -132,6 +151,14 @@ function RestaurantsPage() {
     }
   };
 
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate(ROUTES.HOME);
+    }
+  };
+
   const handlePageChange = (newPage) => {
     setPage(newPage);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -146,6 +173,13 @@ function RestaurantsPage() {
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       {/* Header */}
       <div className="mb-6">
+        <button
+          onClick={handleBack}
+          className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-primary"
+        >
+          <ArrowLeft size={16} />
+          Back
+        </button>
         <h1 className="text-2xl font-bold text-text">Explore Restaurants</h1>
         <p className="mt-1 text-sm text-muted">
           Discover and reserve tables at the best restaurants near you.
@@ -170,10 +204,18 @@ function RestaurantsPage() {
           </div>
           <Select
             value={city}
-            onChange={(e) => setCity(e.target.value)}
+            onChange={(e) => {
+              setCity(e.target.value);
+              setPage(1);
+            }}
             className="sm:w-40"
           >
             <option value="">All Cities</option>
+            {cities.map((c) => (
+              <option key={c} value={c}>
+                {c}
+              </option>
+            ))}
           </Select>
           <Select
             value={cuisine}
@@ -292,12 +334,12 @@ function RestaurantsPage() {
         <div
           className={`${mobileView === "map" ? "block" : "hidden"
             } lg:block lg:w-1/2 lg:sticky lg:top-20 lg:self-start`}
-          style={{ minHeight: "500px" }}
+          style={{ minHeight: "650px" }}
         >
           {isLoading ? (
-            <div className="h-full min-h-[500px] animate-pulse rounded-xl bg-gray-100" />
+            <div className="h-full min-h-[650px] animate-pulse rounded-xl bg-gray-100" />
           ) : error ? (
-            <div className="flex h-full min-h-[500px] items-center justify-center rounded-xl bg-gray-50">
+            <div className="flex h-full min-h-[650px] items-center justify-center rounded-xl bg-gray-50">
               <p className="text-sm text-muted">Map unavailable</p>
             </div>
           ) : (

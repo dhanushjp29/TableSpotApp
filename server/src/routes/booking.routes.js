@@ -7,6 +7,7 @@ import authenticate from "../middleware/authenticate.js";
 
 import {
     createBookingSchema,
+    markNoShowSchema,
     updateBookingSchema,
     updateBookingStatusSchema,
 } from "../validators/booking.validator.js";
@@ -40,5 +41,16 @@ router.patch(
 router.post("/:bookingId/cancel", asyncHandler(bookingController.cancel));
 router.post("/:bookingId/check-in", asyncHandler(bookingController.checkIn));
 router.post("/:bookingId/complete", asyncHandler(bookingController.complete));
+router.post(
+    "/:bookingId/no-show",
+    validateRequest(markNoShowSchema),
+    asyncHandler(bookingController.markNoShow)
+);
+
+router.post(
+    "/walk-in",
+    validateRequest(createBookingSchema),
+    asyncHandler(bookingController.createWalkIn)
+);
 
 export default router;

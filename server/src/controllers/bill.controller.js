@@ -1,5 +1,6 @@
 import * as billService from "../services/bill.service.js";
 import ApiResponse from "../utils/ApiResponse.js";
+import ApiError from "../utils/ApiError.js";
 import { USER_ROLE } from "../utils/constants.js";
 import Booking from "../models/Booking.js";
 import {
@@ -7,7 +8,23 @@ import {
     getOwnedRestaurantIds,
 } from "../middleware/ownership.js";
 
+// Bill WRITE operations (create/update/add-payment/mark-status) are restricted
+// to the restaurant owner and admins. Customers only ever get read access to
+// their own bills, so they can never mark their own bill Paid or alter totals.
+const assertBillWriteAccess = (req) => {
+    if (
+        req.user.role !== USER_ROLE.OWNER &&
+        req.user.role !== USER_ROLE.ADMIN
+    ) {
+        throw new ApiError(
+            403,
+            "Only restaurant owners or admins can modify bills."
+        );
+    }
+};
+
 export const create = async (req, res) => {
+    assertBillWriteAccess(req);
     await verifyBillAccess(req, req.validatedData.bookingId);
 
     const result = await billService.createBill({
@@ -17,7 +34,20 @@ export const create = async (req, res) => {
     res.status(201).json(new ApiResponse(201, result.message, result));
 };
 
+export const convert = async (req, res) => {
+    assertBillWriteAccess(req);
+    await verifyBillAccess(req, req.params.bookingId);
+
+    const result = await billService.convertBookingToBill({
+        bookingId: req.params.bookingId,
+        generatedBy: req.user._id,
+        notes: req.body?.notes || "",
+    });
+    res.status(201).json(new ApiResponse(201, result.message, result));
+};
+
 export const update = async (req, res) => {
+    assertBillWriteAccess(req);
     const { billId } = req.params;
     const { bill } = await billService.getBillById({ billId });
     await verifyBillAccess(req, bill.bookingId._id);
@@ -30,6 +60,7 @@ export const update = async (req, res) => {
 };
 
 export const addPayment = async (req, res) => {
+    assertBillWriteAccess(req);
     const { billId } = req.params;
     const { bill } = await billService.getBillById({ billId });
     await verifyBillAccess(req, bill.bookingId._id);
@@ -42,6 +73,7 @@ export const addPayment = async (req, res) => {
 };
 
 export const markStatus = async (req, res) => {
+    assertBillWriteAccess(req);
     const { billId } = req.params;
     const { bill } = await billService.getBillById({ billId });
     await verifyBillAccess(req, bill.bookingId._id);

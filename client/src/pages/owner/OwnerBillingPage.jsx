@@ -28,13 +28,16 @@ export default function OwnerBillingPage() {
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
 
-  // Create Bill Modal State
+  // Create Bill (Convert) Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
   const [selectedBookingId, setSelectedBookingId] = useState("");
-  const [subtotal, setSubtotal] = useState("");
-  const [taxAmount, setTaxAmount] = useState("0");
-  const [discountAmount, setDiscountAmount] = useState("0");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Manage Bill Modal State (spot payments)
+  const [manageBill, setManageBill] = useState(null);
+  const [spotPaymentMethod, setSpotPaymentMethod] = useState("Cash");
+  const [spotAmount, setSpotAmount] = useState("");
+  const [isPaymentSubmitting, setIsPaymentSubmitting] = useState(false);
 
   // Print / View Receipt Modal State
   const [activeReceiptBill, setActiveReceiptBill] = useState(null);
@@ -75,40 +78,49 @@ export default function OwnerBillingPage() {
     };
   }, []);
 
-  const handleCreateBill = async (e) => {
+  const handleConvertBooking = async (e) => {
     e.preventDefault();
     if (!selectedBookingId) {
       toast.error("Please select a reservation.");
       return;
     }
-    const numSubtotal = Number(subtotal);
-    const numTax = Number(taxAmount || 0);
-    const numDiscount = Number(discountAmount || 0);
-    const grandTotal = numSubtotal + numTax - numDiscount;
-
-    const booking = bookings.find((b) => b._id === selectedBookingId);
-
     setIsSubmitting(true);
     try {
-      await billApi.create({
-        bookingId: selectedBookingId,
-        restaurantId: booking?.restaurantId?._id || booking?.restaurantId,
-        tableId: booking?.tableId?._id || booking?.tableId,
-        subtotal: numSubtotal,
-        taxAmount: numTax,
-        discountAmount: numDiscount,
-        grandTotal,
-        paymentStatus: "Pending",
-      });
-      toast.success("Bill generated successfully!");
+      await billApi.convertToBill(selectedBookingId);
+      toast.success("Bill created from reservation successfully!");
       setIsCreateModalOpen(false);
       setSelectedBookingId("");
-      setSubtotal("");
       fetchData();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to generate bill.");
     } finally {
       setIsSubmitting(false);
+    }
+  };
+
+  const handleAddSpotPayment = async (e) => {
+    e.preventDefault();
+    if (!manageBill) return;
+    const amount = Number(spotAmount);
+    if (!amount || amount <= 0) {
+      toast.error("Enter a valid payment amount.");
+      return;
+    }
+    setIsPaymentSubmitting(true);
+    try {
+      await billApi.addPayment(manageBill._id, {
+        paymentMethod: spotPaymentMethod,
+        amount,
+        notes: "Spot payment",
+      });
+      toast.success("Spot payment recorded!");
+      setManageBill(null);
+      setSpotAmount("");
+      fetchData();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to record payment.");
+    } finally {
+      setIsPaymentSubmitting(false);
     }
   };
 
@@ -207,6 +219,14 @@ export default function OwnerBillingPage() {
                   </td>
                   <td className="px-5 py-4 text-right">
                     <div className="flex items-center justify-end gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setManageBill(bill)}
+                      >
+                        <CreditCard size={14} className="mr-1" />
+                        Manage
+                      </Button>
                       {bill.paymentStatus !== "Paid" && (
                         <Button
                           size="sm"
@@ -234,69 +254,32 @@ export default function OwnerBillingPage() {
         </div>
       )}
 
-      {/* Create Bill Modal */}
+      {/* Convert Booking to Bill Modal */}
       <Modal
         isOpen={isCreateModalOpen}
         onClose={() => setIsCreateModalOpen(false)}
         title="Generate Reservation Bill"
       >
-        <form onSubmit={handleCreateBill} className="space-y-4 pt-2">
+        <form onSubmit={handleConvertBooking} className="space-y-4 pt-2">
           <Select
             label="Select Customer Reservation"
             value={selectedBookingId}
             onChange={(e) => setSelectedBookingId(e.target.value)}
           >
             <option value="">-- Choose Reservation --</option>
-            {bookings.map((b) => (
-              <option key={b._id} value={b._id}>
-                {b.bookingCode || "Booking"} - {b.userId?.fullName || "Guest"} - {formatDate(new Date(b.bookingDateTime))} ({b.numberOfGuests} guests)
-              </option>
-            ))}
+            {bookings
+              .filter((b) => !b.billId)
+              .map((b) => (
+                <option key={b._id} value={b._id}>
+                  {b.bookingCode || "Booking"} - {b.userId?.fullName || "Guest"} - {formatDate(new Date(b.bookingDateTime))} ({b.numberOfGuests} guests)
+                </option>
+              ))}
           </Select>
 
-          <div>
-            <label className="block text-sm font-medium text-text mb-1">Subtotal Amount (₹)</label>
-            <Input
-              type="number"
-              min="0"
-              value={subtotal}
-              onChange={(e) => setSubtotal(e.target.value)}
-              required
-              placeholder="e.g. 1500"
-            />
-          </div>
-
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">GST Tax (₹)</label>
-
-                <Input
-                  type="number"
-                  min="0"
-                  value={taxAmount}
-                  onChange={(e) => setTaxAmount(e.target.value)}
-                />
-
-            </div>
-            <div>
-              <label className="block text-sm font-medium text-text mb-1">Discount (₹)</label>
-
-                <Input
-                  type="number"
-                  min="0"
-                  value={discountAmount}
-                  onChange={(e) => setDiscountAmount(e.target.value)}
-                />
-
-            </div>
-          </div>
-
-          <div className="bg-gray-50 p-3 rounded-lg flex items-center justify-between text-sm font-bold text-text">
-            <span>Grand Total:</span>
-            <span className="text-primary text-base">
-              ₹{(Number(subtotal || 0) + Number(taxAmount || 0) - Number(discountAmount || 0))}
-            </span>
-          </div>
+          <p className="rounded-lg bg-gray-50 p-3 text-xs text-muted">
+            The bill is created from the reservation's pre-ordered items and any
+            online advance is carried into the bill ledger.
+          </p>
 
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={() => setIsCreateModalOpen(false)}>
@@ -308,6 +291,65 @@ export default function OwnerBillingPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Manage Bill Modal */}
+      {manageBill && (
+        <Modal
+          isOpen={!!manageBill}
+          onClose={() => setManageBill(null)}
+          title={`Manage Bill ${manageBill.billCode || `#${manageBill._id.slice(-6)}`}`}
+        >
+          <div className="space-y-4 pt-2">
+            <div className="rounded-lg bg-gray-50 p-3 text-sm text-text">
+              <div className="flex justify-between">
+                <span>Grand Total</span>
+                <span className="font-bold">₹{manageBill.grandTotal || manageBill.subtotal || 0}</span>
+              </div>
+              <div className="mt-1 flex justify-between">
+                <span>Balance Due</span>
+                <span className="font-bold text-primary">
+                  ₹{manageBill.payment?.balanceDue ?? (manageBill.paymentStatus === "Paid" ? 0 : manageBill.grandTotal || 0)}
+                </span>
+              </div>
+            </div>
+
+            <form onSubmit={handleAddSpotPayment} className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                <Select
+                  label="Payment Method"
+                  value={spotPaymentMethod}
+                  onChange={(e) => setSpotPaymentMethod(e.target.value)}
+                >
+                  <option value="Cash">Cash</option>
+                  <option value="UPI">UPI</option>
+                  <option value="Card">Card</option>
+                  <option value="NetBanking">Net Banking</option>
+                </Select>
+                <div>
+                  <label className="block text-sm font-medium text-text mb-1">Amount (₹)</label>
+                  <Input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={spotAmount}
+                    onChange={(e) => setSpotAmount(e.target.value)}
+                    placeholder="e.g. 500"
+                  />
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <Button type="button" variant="outline" onClick={() => setManageBill(null)}>
+                  Close
+                </Button>
+                <Button type="submit" isLoading={isPaymentSubmitting}>
+                  Add Spot Payment
+                </Button>
+              </div>
+            </form>
+          </div>
+        </Modal>
+      )}
 
       {/* Printable Receipt Modal */}
       {activeReceiptBill && (

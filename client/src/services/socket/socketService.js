@@ -9,17 +9,26 @@ export function getSocket() {
     socket = io(SOCKET_URL, {
       autoConnect: false,
       transports: ["websocket"],
+      withCredentials: true,
     });
   }
   return socket;
 }
 
-export function connectSocket(token) {
+export function ensureSocketConnected() {
   const s = getSocket();
   if (!s.connected) {
-    s.auth = { token };
     s.connect();
   }
+  return s;
+}
+
+export function connectSocket(token) {
+  const s = getSocket();
+  if (token) {
+    s.auth = { token };
+  }
+  ensureSocketConnected();
   return s;
 }
 
@@ -30,7 +39,7 @@ export function disconnectSocket() {
 }
 
 export function subscribeToBookingUpdates(restaurantId, handler) {
-  const s = getSocket();
+  const s = ensureSocketConnected();
   s.emit("subscribe:bookings", { restaurantId });
   s.off("booking:updated", handler);
   s.on("booking:updated", handler);
@@ -40,7 +49,7 @@ export function subscribeToBookingUpdates(restaurantId, handler) {
 }
 
 export function subscribeToTableUpdates(restaurantId, handler) {
-  const s = getSocket();
+  const s = ensureSocketConnected();
   s.emit("subscribe:tables", { restaurantId });
   s.off("table:updated", handler);
   s.on("table:updated", handler);

@@ -2,6 +2,7 @@ import * as foodReviewService from "../services/foodReview.service.js";
 import ApiResponse from "../utils/ApiResponse.js";
 import { USER_ROLE } from "../utils/constants.js";
 import ApiError from "../utils/ApiError.js";
+import Restaurant from "../models/Restaurant.js";
 
 export const create = async (req, res) => {
     const result = await foodReviewService.createReview({
@@ -13,17 +14,40 @@ export const create = async (req, res) => {
 
 export const update = async (req, res) => {
     const { reviewId } = req.params;
+    const updates = req.validatedData || req.body;
 
     if (req.user.role === USER_ROLE.CUSTOMER) {
         const { review } = await foodReviewService.getReviewById({ reviewId });
         if (String(review.userId._id) !== String(req.user._id)) {
             throw new ApiError(403, "You can only update your own reviews.");
         }
+        if (updates.ownerReply !== undefined) {
+            throw new ApiError(403, "Only the restaurant owner can reply to a review.");
+        }
+    }
+
+    if (req.user.role === USER_ROLE.OWNER) {
+        const { review } = await foodReviewService.getReviewById({ reviewId });
+        const owned = await Restaurant.exists({
+            _id: review.restaurantId,
+            ownerId: req.user._id,
+            isDeleted: false,
+        });
+        if (!owned) {
+            throw new ApiError(403, "You can only reply to reviews for your own restaurant.");
+        }
+        const allowedKeys = ["ownerReply"];
+        const disallowed = Object.keys(updates || {}).filter(
+            (key) => !allowedKeys.includes(key)
+        );
+        if (disallowed.length > 0) {
+            throw new ApiError(403, "Owners can only update the reply on a review.");
+        }
     }
 
     const result = await foodReviewService.updateReview({
         reviewId,
-        updates: req.validatedData || req.body,
+        updates,
     });
     res.status(200).json(new ApiResponse(200, result.message, result));
 };

@@ -1,12 +1,26 @@
+import Booking from "../models/Booking.js";
 import Restaurant from "../models/Restaurant.js";
 import RestaurantTable from "../models/RestaurantTable.js";
 
 import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
+import {
+    buildSeatLabel,
+    deriveTableLabel,
+    generateSeats,
+    getMaxSeatsForShape,
+    getPositionsForShape,
+} from "../utils/seatLayout.js";
 
 import {
+    BOOKING_STATUS,
     CODE_PREFIX,
+    SEAT_SELECTION_MODE,
+    TABLE_LOCATION_VALUES,
+    TABLE_SHAPE,
     TABLE_STATUS,
+    TABLE_STATUS_VALUES,
+    TABLE_TYPE_VALUES,
 } from "../utils/constants.js";
 
 const getRestaurantOrThrow = async (restaurantId) => {
@@ -19,6 +33,28 @@ const getRestaurantOrThrow = async (restaurantId) => {
     return restaurant;
 };
 
+const TABLE_ENUM_DEFAULTS = {
+    tableType: TABLE_TYPE_VALUES[0],
+    tableLocation: TABLE_LOCATION_VALUES[0],
+    status: TABLE_STATUS.AVAILABLE,
+};
+
+const TABLE_ENUM_VALUES = {
+    tableType: TABLE_TYPE_VALUES,
+    tableLocation: TABLE_LOCATION_VALUES,
+    status: TABLE_STATUS_VALUES,
+};
+
+const sanitizeEnumFields = (table) => {
+    for (const field of Object.keys(TABLE_ENUM_VALUES)) {
+        const allowed = TABLE_ENUM_VALUES[field];
+
+        if (!allowed.includes(table[field])) {
+            table[field] = TABLE_ENUM_DEFAULTS[field];
+        }
+    }
+};
+
 const getTableOrThrow = async (tableId) => {
     const table = await RestaurantTable.findById(tableId);
 
@@ -29,10 +65,116 @@ const getTableOrThrow = async (tableId) => {
     return table;
 };
 
+const BOOKED_STATUSES = [
+    BOOKING_STATUS.PENDING,
+    BOOKING_STATUS.CONFIRMED,
+    BOOKING_STATUS.CHECKED_IN,
+];
+
+const preserveSeatIds = (submittedSeats, existingSeats) => {
+    const existingById = new Map();
+
+    (existingSeats || []).forEach((seat) => {
+        if (seat._id) {
+            existingById.set(String(seat._id), seat);
+        }
+    });
+
+    return submittedSeats.map((seat) => {
+        let _id;
+
+        if (seat._id) {
+            const existing = existingById.get(String(seat._id));
+            _id = existing ? existing._id : undefined;
+        }
+
+        return {
+            ...(_id ? { _id } : {}),
+            seatIndex: Number(seat.seatIndex),
+            seatLabel: String(seat.seatLabel).trim().slice(0, 10),
+            position: {
+                x: Number(seat.position.x),
+                y: Number(seat.position.y),
+            },
+            isActive: seat.isActive !== false,
+        };
+    });
+};
+
+const regenerateSeatsPreservingIds = ({ table, shape, tableLabel, count }) => {
+    const existingSeats = table.seats || [];
+    const layout = getPositionsForShape(shape, count);
+
+    return layout.map((item, index) => {
+        const existing = existingSeats[index];
+
+        return {
+            ...(existing && existing._id ? { _id: existing._id } : {}),
+            seatIndex: index + 1,
+            seatLabel: buildSeatLabel(tableLabel, index + 1),
+            position: item.position,
+            isActive: true,
+        };
+    });
+};
+
+const plainSeats = (seats = []) =>
+    seats.map((seat) => ({
+        _id: seat._id,
+        seatIndex: seat.seatIndex,
+        seatLabel: seat.seatLabel,
+        position: { x: seat.position.x, y: seat.position.y },
+        isActive: seat.isActive,
+    }));
+
+const assertUniqueSeatLabels = (seats) => {
+    const activeLabels = seats
+        .filter((seat) => seat.isActive !== false)
+        .map((seat) => String(seat.seatLabel).toUpperCase());
+
+    if (new Set(activeLabels).size !== activeLabels.length) {
+        throw new ApiError(400, "Seat labels must be unique within a table.");
+    }
+};
+
+const ensureNoBookedSeatsRemoved = async (tableId, newActiveSeatIds) => {
+    const futureBookings = await Booking.find({
+        tableId,
+        bookingStatus: { $in: BOOKED_STATUSES },
+        bookingDateTime: { $gte: new Date() },
+        seatIds: { $exists: true, $ne: [] },
+    }).select("seatIds");
+
+    const bookedIds = new Set();
+
+    futureBookings.forEach((booking) => {
+        booking.seatIds.forEach((id) => bookedIds.add(String(id)));
+    });
+
+    if (bookedIds.size === 0) return;
+
+    const activeSet = new Set(
+        (newActiveSeatIds || []).map((id) => String(id))
+    );
+
+    for (const bookedId of bookedIds) {
+        if (!activeSet.has(bookedId)) {
+            throw new ApiError(
+                409,
+                "Cannot remove or deactivate a seat that has upcoming bookings."
+            );
+        }
+    }
+};
+
 export const createTable = async ({
     restaurantId,
     tableNumber,
     tableName = "",
+    tableLabel = "",
+    shape = TABLE_SHAPE.SQUARE,
+    seatSelectionMode = SEAT_SELECTION_MODE.FULL_TABLE,
+    seats = [],
     capacity,
     minimumCapacity = 1,
     tableType = "Normal",
@@ -60,6 +202,37 @@ export const createTable = async ({
         );
     }
 
+    const maxSeats = getMaxSeatsForShape(shape);
+
+    if (Number(capacity) > maxSeats) {
+        throw new ApiError(
+            400,
+            `Shape "${shape}" supports a maximum of ${maxSeats} seats.`
+        );
+    }
+
+    const resolvedLabel = deriveTableLabel({
+        tableLabel,
+        tableName,
+        tableNumber,
+    });
+
+    const resolvedSeats =
+        Array.isArray(seats) && seats.length > 0
+            ? preserveSeatIds(seats, [])
+            : generateSeats({ label: resolvedLabel, count: capacity, shape });
+
+    assertUniqueSeatLabels(resolvedSeats);
+
+    const resolvedCapacity = resolvedSeats.length;
+
+    if (Number(minimumCapacity) > resolvedCapacity) {
+        throw new ApiError(
+            400,
+            "Minimum capacity cannot exceed the table capacity."
+        );
+    }
+
     const tableCode = await generateCode(
         RestaurantTable,
         "tableCode",
@@ -71,7 +244,11 @@ export const createTable = async ({
         restaurantId: restaurant._id,
         tableNumber,
         tableName: tableName.trim(),
-        capacity,
+        tableLabel: resolvedLabel,
+        shape,
+        seatSelectionMode,
+        seats: resolvedSeats,
+        capacity: resolvedCapacity,
         minimumCapacity,
         tableType,
         otherTableType: otherTableType.trim(),
@@ -117,6 +294,83 @@ export const updateTable = async ({
         table.tableNumber = updates.tableNumber;
     }
 
+    // --- Seats-aware fields (shape, label, mode, capacity, seats) ---
+    const shape =
+        updates.shape !== undefined ? updates.shape : table.shape;
+    const tableLabel =
+        updates.tableLabel !== undefined
+            ? deriveTableLabel({
+                  tableLabel: updates.tableLabel,
+                  tableName: table.tableName,
+                  tableNumber: table.tableNumber,
+              })
+            : table.tableLabel;
+    const seatSelectionMode =
+        updates.seatSelectionMode !== undefined
+            ? updates.seatSelectionMode
+            : table.seatSelectionMode;
+
+    let resolvedSeats;
+
+    if (Array.isArray(updates.seats) && updates.seats.length > 0) {
+        resolvedSeats = preserveSeatIds(updates.seats, table.seats || []);
+    } else {
+        const capacityRequested =
+            updates.capacity !== undefined
+                ? Number(updates.capacity)
+                : table.capacity;
+
+        const shapeChanged = shape !== table.shape;
+        const labelChanged = tableLabel !== table.tableLabel;
+        const capacityChanged = capacityRequested !== table.capacity;
+
+        if (shapeChanged || labelChanged || capacityChanged) {
+            const maxSeats = getMaxSeatsForShape(shape);
+
+            if (capacityRequested > maxSeats) {
+                throw new ApiError(
+                    400,
+                    `Shape "${shape}" supports a maximum of ${maxSeats} seats.`
+                );
+            }
+
+            resolvedSeats = regenerateSeatsPreservingIds({
+                table,
+                shape,
+                tableLabel,
+                count: capacityRequested,
+            });
+        } else {
+            resolvedSeats = plainSeats(table.seats || []);
+        }
+    }
+
+    assertUniqueSeatLabels(resolvedSeats);
+
+    const activeSeatIds = resolvedSeats
+        .filter((seat) => seat.isActive !== false)
+        .map((seat) => seat._id || seat.seatIndex);
+
+    await ensureNoBookedSeatsRemoved(table._id, activeSeatIds);
+
+    const resolvedCapacity = resolvedSeats.length;
+
+    if (
+        updates.minimumCapacity !== undefined &&
+        Number(updates.minimumCapacity) > resolvedCapacity
+    ) {
+        throw new ApiError(
+            400,
+            "Minimum capacity cannot exceed the table capacity."
+        );
+    }
+
+    table.shape = shape;
+    table.tableLabel = tableLabel;
+    table.seatSelectionMode = seatSelectionMode;
+    table.seats = resolvedSeats;
+    table.capacity = resolvedCapacity;
+
     const stringFields = [
         "tableName",
         "otherTableType",
@@ -131,7 +385,7 @@ export const updateTable = async ({
         }
     }
 
-    const numericFields = ["capacity", "minimumCapacity", "displayOrder"];
+    const numericFields = ["minimumCapacity", "displayOrder"];
 
     for (const field of numericFields) {
         if (updates[field] !== undefined) {
@@ -154,6 +408,8 @@ export const updateTable = async ({
             table[field] = Boolean(updates[field]);
         }
     }
+
+    sanitizeEnumFields(table);
 
     await table.save();
 
@@ -303,6 +559,190 @@ export const getTables = async ({
             limit: pageSize,
             total,
             totalPages: Math.ceil(total / pageSize) || 1,
+        },
+    };
+};
+
+export const backfillTableSeats = async () => {
+    const tables = await RestaurantTable.find({
+        $expr: {
+            $ne: [
+                { $size: { $ifNull: ["$seats", []] } },
+                "$capacity",
+            ],
+        },
+    });
+
+    let updated = 0;
+
+    for (const table of tables) {
+        const shape = table.shape || TABLE_SHAPE.SQUARE;
+        const tableLabel = deriveTableLabel({
+            tableLabel: table.tableLabel,
+            tableName: table.tableName,
+            tableNumber: table.tableNumber,
+        });
+
+        table.shape = shape;
+        table.tableLabel = tableLabel;
+        table.seatSelectionMode =
+            table.seatSelectionMode || SEAT_SELECTION_MODE.FULL_TABLE;
+        table.seats = generateSeats({
+            label: tableLabel,
+            count: table.capacity,
+            shape,
+        });
+
+        sanitizeEnumFields(table);
+
+        await table.save();
+        updated += 1;
+    }
+
+    return { updated };
+};
+
+const parseAvailabilityStart = ({ datetime, date, time }) => {
+    if (datetime) {
+        const parsed = new Date(datetime);
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    if (date && time) {
+        const parsed = new Date(`${date}T${time}`);
+        if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+
+    throw new ApiError(400, "A valid date and time are required.");
+};
+
+export const getTablesWithAvailability = async ({
+    restaurantId,
+    date,
+    time,
+    datetime = "",
+    duration = 120,
+    guests = 0,
+}) => {
+    const restaurant = await getRestaurantOrThrow(restaurantId);
+
+    const start = parseAvailabilityStart({ datetime, date, time });
+    const end = new Date(start.getTime() + Number(duration) * 60 * 1000);
+
+    const [tables, overlappingBookings] = await Promise.all([
+        RestaurantTable.find({
+            restaurantId: restaurant._id,
+            isActive: true,
+            isReservable: true,
+            status: {
+                $nin: [TABLE_STATUS.MAINTENANCE, TABLE_STATUS.CLEANING],
+            },
+        }).sort({ displayOrder: 1, tableNumber: 1 }),
+        Booking.find({
+            restaurantId: restaurant._id,
+            bookingStatus: { $in: BOOKED_STATUSES },
+            bookingDateTime: { $lt: end },
+            $expr: {
+                $gt: [
+                    {
+                        $add: [
+                            "$bookingDateTime",
+                            {
+                                $multiply: [
+                                    { $ifNull: ["$expectedDuration", 120] },
+                                    60000,
+                                ],
+                            },
+                        ],
+                    },
+                    start,
+                ],
+            },
+        })
+            .select("_id tableId tableIds seatIds bookingDateTime expectedDuration")
+            .lean(),
+    ]);
+
+    const bookingsByTable = new Map();
+
+    overlappingBookings.forEach((booking) => {
+        const covered = new Set([
+            String(booking.tableId),
+            ...(booking.tableIds || []).map((id) => String(id)),
+        ]);
+        covered.forEach((tableId) => {
+            if (!bookingsByTable.has(tableId)) {
+                bookingsByTable.set(tableId, []);
+            }
+            bookingsByTable.get(tableId).push(booking);
+        });
+    });
+
+    const availableTables = tables.map((table) => {
+        const tableBookings = bookingsByTable.get(String(table._id)) || [];
+        const isSeatMode =
+            table.seatSelectionMode === SEAT_SELECTION_MODE.INDIVIDUAL_SEATS;
+
+        const occupiedSeatIds = new Set();
+        tableBookings.forEach((booking) => {
+            (booking.seatIds || []).forEach((id) =>
+                occupiedSeatIds.add(String(id))
+            );
+        });
+
+        const activeSeats = (table.seats || []).filter(
+            (seat) => seat.isActive !== false
+        );
+
+        let freeSeatIds = [];
+        let available = false;
+
+        if (isSeatMode) {
+            freeSeatIds = activeSeats
+                .filter((seat) => !occupiedSeatIds.has(String(seat._id)))
+                .map((seat) => String(seat._id));
+
+            // Any free seat is selectable: multiple tables can be combined to
+            // reach the requested guest count.
+            available = freeSeatIds.length > 0;
+        } else {
+            // Whole tables stay selectable regardless of capacity so a party
+            // can reserve several tables to reach the requested guest count.
+            available = tableBookings.length === 0;
+        }
+
+        return {
+            table: {
+                _id: table._id,
+                tableCode: table.tableCode,
+                tableNumber: table.tableNumber,
+                tableName: table.tableName,
+                tableLabel: table.tableLabel,
+                shape: table.shape,
+                seatSelectionMode: table.seatSelectionMode,
+                capacity: table.capacity,
+                minimumCapacity: table.minimumCapacity,
+                tableType: table.tableType,
+                tableLocation: table.tableLocation,
+                floor: table.floor,
+                status: table.status,
+                isReservable: table.isReservable,
+                seats: table.seats,
+            },
+            available,
+            fullyAvailable: tableBookings.length === 0,
+            freeSeatIds,
+            freeSeatCount: freeSeatIds.length,
+            occupiedSeatCount: occupiedSeatIds.size,
+        };
+    });
+
+    return {
+        tables: availableTables,
+        meta: {
+            start: start.toISOString(),
+            end: end.toISOString(),
+            durationMinutes: Number(duration),
         },
     };
 };

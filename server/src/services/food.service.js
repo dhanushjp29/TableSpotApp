@@ -4,7 +4,7 @@ import Restaurant from "../models/Restaurant.js";
 import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
 
-import { CODE_PREFIX } from "../utils/constants.js";
+import { CODE_PREFIX, CURRENCY, getGstRateForCategory } from "../utils/constants.js";
 
 const getRestaurantOrThrow = async (restaurantId) => {
     const restaurant = await Restaurant.findById(restaurantId);
@@ -38,6 +38,7 @@ export const createFood = async ({
     foodType,
     spiceLevel = "Medium",
     hasVariants = false,
+    currency = CURRENCY,
     variants = [],
     preparationTime = 0,
     coverImage,
@@ -77,6 +78,8 @@ export const createFood = async ({
         foodType,
         spiceLevel,
         hasVariants,
+        currency,
+        gstRate: getGstRateForCategory(category),
         variants,
         preparationTime,
         coverImage: coverImage.trim(),
@@ -135,12 +138,18 @@ export const updateFood = async ({
         }
     }
 
-    const enumFields = ["category", "foodType", "spiceLevel"];
+    const enumFields = ["category", "foodType", "spiceLevel", "currency"];
 
     for (const field of enumFields) {
         if (updates[field] !== undefined) {
             food[field] = updates[field];
         }
+    }
+
+    if (updates.category !== undefined) {
+        food.gstRate = getGstRateForCategory(updates.category);
+    } else if (updates.gstRate !== undefined) {
+        food.gstRate = Number(updates.gstRate);
     }
 
     const booleanFields = [
@@ -224,6 +233,9 @@ export const getFoods = async ({
     foodType = "",
     search = "",
     isAvailable,
+    isRecommended,
+    isPopular,
+    sortBy = "",
     restaurantId = null,
     ownerId = null,
 }) => {
@@ -237,6 +249,15 @@ export const getFoods = async ({
         const ownedRestaurants = await Restaurant.find({ ownerId }).select("_id");
         const ownedRestaurantIds = ownedRestaurants.map((r) => r._id);
         query.restaurantId = { $in: ownedRestaurantIds };
+    } else {
+        // Public browsing should only surface food from live, verified
+        // restaurants so the explore page is trustworthy.
+        const publicRestaurants = await Restaurant.find({
+            isDeleted: false,
+            isActive: true,
+            verificationStatus: "Verified",
+        }).select("_id");
+        query.restaurantId = { $in: publicRestaurants.map((r) => r._id) };
     }
 
     if (category) {
@@ -251,6 +272,14 @@ export const getFoods = async ({
         query.isAvailable = isAvailable;
     }
 
+    if (isRecommended !== undefined) {
+        query.isRecommended = isRecommended;
+    }
+
+    if (isPopular !== undefined) {
+        query.isPopular = isPopular;
+    }
+
     if (search) {
         query.foodName = new RegExp(search.trim(), "i");
     }
@@ -259,11 +288,23 @@ export const getFoods = async ({
     const pageSize = Math.min(Math.max(Number(limit) || 50, 1), 100);
     const skip = (pageNumber - 1) * pageSize;
 
+    const sortOptions = {
+        rating: { averageRating: -1, totalReviews: -1 },
+        popular: { totalOrders: -1 },
+        new: { createdAt: -1 },
+    };
+
+    const sort = sortOptions[sortBy] || { displayOrder: 1, createdAt: -1 };
+
     const [foods, total] = await Promise.all([
         Food.find(query)
-            .sort({ displayOrder: 1, createdAt: -1 })
+            .sort(sort)
             .skip(skip)
-            .limit(pageSize),
+            .limit(pageSize)
+            .populate(
+                "restaurantId",
+                "restaurantCode restaurantName city state location coverImage averageRating totalReviews cuisineTypes priceRange isFeatured"
+            ),
         Food.countDocuments(query),
     ]);
 

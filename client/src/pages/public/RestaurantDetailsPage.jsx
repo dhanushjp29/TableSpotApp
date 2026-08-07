@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import {
   MapPin,
   Clock,
@@ -8,11 +8,17 @@ import {
   Star,
   Calendar,
   UtensilsCrossed,
+  Pencil,
+  Trash2,
+  ArrowLeft,
 } from "lucide-react";
+import toast from "react-hot-toast";
 
 import { restaurantApi } from "../../api/restaurant.api.js";
 import { foodApi } from "../../api/food.api.js";
 import { restaurantReviewApi } from "../../api/review.api.js";
+import { useAuth } from "../../hooks/useAuth.js";
+import { ROUTES } from "../../routes/routeConstants.js";
 
 import Rating from "../../components/ui/Rating.jsx";
 import Badge from "../../components/ui/Badge.jsx";
@@ -25,12 +31,17 @@ import { formatCurrency } from "../../utils/formatCurrency.js";
 
 function RestaurantDetailsPage() {
   const { restaurantId } = useParams();
+  const navigate = useNavigate();
+  const { isAuthenticated, user } = useAuth();
   const [restaurant, setRestaurant] = useState(null);
   const [foods, setFoods] = useState([]);
   const [reviews, setReviews] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
+  const [editingReview, setEditingReview] = useState(null);
+  const [reviewFoods, setReviewFoods] = useState([]);
+  const [reviewBookingId, setReviewBookingId] = useState(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -59,6 +70,67 @@ function RestaurantDetailsPage() {
 
     fetchData();
   }, [restaurantId]);
+
+  const refreshReviews = () => {
+    restaurantReviewApi
+      .getByRestaurant(restaurantId, { limit: 5 })
+      .then((res) => setReviews(res.data?.reviews || []))
+      .catch(() => {});
+  };
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+    } else {
+      navigate(ROUTES.HOME);
+    }
+  };
+
+  const handleWriteReview = async () => {
+    if (!isAuthenticated) {
+      toast.error("Please log in to write a review.");
+      navigate("/login");
+      return;
+    }
+    try {
+      const res = await restaurantReviewApi.getEligibility(restaurantId);
+      if (!res?.data?.canReview) {
+        toast(
+          "You can write a review only after your billing is completed for this restaurant."
+        );
+        return;
+      }
+      // Only foods from the user's paid bill are eligible for food sub-reviews
+      setReviewFoods(res?.data?.billOrderedItems || []);
+      setReviewBookingId(res?.data?.booking?._id || null);
+      setEditingReview(null);
+      setReviewModalOpen(true);
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message || "Unable to start a review right now."
+      );
+    }
+  };
+
+  const handleEditReview = (review) => {
+    setEditingReview(review);
+    setReviewModalOpen(true);
+  };
+
+  const handleDeleteReview = async (review) => {
+    if (!window.confirm("Delete this review?")) return;
+    try {
+      await restaurantReviewApi.remove(review._id);
+      toast.success("Review deleted.");
+      refreshReviews();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to delete review.");
+    }
+  };
+
+  const isOwnReview = (review) =>
+    user &&
+    String(review.userId?._id || review.userId) === String(user?._id || user?.id);
 
   if (isLoading) {
     return (
@@ -99,6 +171,15 @@ function RestaurantDetailsPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      {/* Back Link */}
+      <button
+        onClick={handleBack}
+        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-primary"
+      >
+        <ArrowLeft size={16} />
+        Back
+      </button>
+
       {/* Cover Image */}
       <div className="relative h-64 overflow-hidden rounded-xl bg-gray-100 sm:h-80">
         {restaurant.coverImage && (
@@ -146,7 +227,7 @@ function RestaurantDetailsPage() {
             Reserve a Table
           </Button>
         </Link>
-        <Button variant="outline" onClick={() => setReviewModalOpen(true)}>
+        <Button variant="outline" onClick={handleWriteReview}>
           <Star size={16} />
           Write a Review
         </Button>
@@ -154,16 +235,17 @@ function RestaurantDetailsPage() {
 
       <ReviewModal
         isOpen={reviewModalOpen}
-        onClose={() => setReviewModalOpen(false)}
+        onClose={() => {
+          setReviewModalOpen(false);
+          setEditingReview(null);
+        }}
         targetType="restaurant"
         targetId={restaurant._id}
         targetName={restaurant.restaurantName}
-        onSuccess={() => {
-          restaurantReviewApi
-            .getByRestaurant(restaurantId, { limit: 5 })
-            .then((res) => setReviews(res.data?.reviews || []))
-            .catch(() => {});
-        }}
+        foods={reviewFoods}
+        reviewData={editingReview}
+        bookingId={reviewBookingId}
+        onSuccess={refreshReviews}
       />
 
       {/* Content Grid */}
@@ -194,9 +276,10 @@ function RestaurantDetailsPage() {
             ) : (
               <div className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-2">
                 {foods.map((food) => (
-                  <div
+                  <Link
                     key={food._id}
-                    className="flex gap-3 rounded-lg border border-gray-100 p-3"
+                    to={`/foods/${food._id}`}
+                    className="flex gap-3 rounded-lg border border-gray-100 p-3 transition-all hover:border-primary hover:shadow-sm"
                   >
                     <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
                       {food.coverImage && (
@@ -234,7 +317,7 @@ function RestaurantDetailsPage() {
                         )}
                       </div>
                     </div>
-                  </div>
+                  </Link>
                 ))}
               </div>
             )}
@@ -269,9 +352,31 @@ function RestaurantDetailsPage() {
                           showValue={false}
                         />
                       </div>
-                      <span className="text-xs text-muted">
-                        {new Date(review.createdAt).toLocaleDateString()}
-                      </span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs text-muted">
+                          {new Date(review.createdAt).toLocaleDateString()}
+                        </span>
+                        {isOwnReview(review) && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => handleEditReview(review)}
+                              className="rounded p-1 text-muted transition-colors hover:bg-primary/10 hover:text-primary"
+                              aria-label="Edit review"
+                            >
+                              <Pencil size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteReview(review)}
+                              className="rounded p-1 text-muted transition-colors hover:bg-red-50 hover:text-red-600"
+                              aria-label="Delete review"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </div>
                     {review.title && (
                       <h4 className="mt-1 text-sm font-medium text-text">
@@ -281,6 +386,19 @@ function RestaurantDetailsPage() {
                     <p className="mt-1 text-sm text-muted">
                       {review.comment}
                     </p>
+                    {review.images?.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {review.images.map((img, idx) => (
+                          <img
+                            key={idx}
+                            src={img}
+                            alt={`Review image ${idx + 1}`}
+                            className="h-20 w-20 rounded-lg object-cover border border-gray-100"
+                            loading="lazy"
+                          />
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

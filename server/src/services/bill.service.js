@@ -1,37 +1,173 @@
 import Bill from "../models/Bill.js";
 import Booking from "../models/Booking.js";
+import Food from "../models/food.js";
+import Payment from "../models/Payment.js";
+import Refund from "../models/Refund.js";
+import Restaurant from "../models/Restaurant.js";
 import User from "../models/User.js";
 
 import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
+import { createAuditLog } from "./auditLog.service.js";
+import { createRefund } from "./refund.service.js";
 
 import {
   BILL_STATUS,
+  BOOKING_STATUS,
   CODE_PREFIX,
   DISCOUNT_TYPE,
+  getGstRateForCategory,
+  ORDER_SOURCE,
   PAYMENT_METHOD,
   PAYMENT_STATUS,
+  REFUND_REASON,
+  REFUND_STATUS,
 } from "../utils/constants.js";
 
 const roundAmount = (value) => Math.round(Number(value || 0) * 100) / 100;
 
-const normalizeOrderedItems = (items = []) =>
-  items.map((item) => ({
-    foodId: item.foodId,
-    foodName: String(item.foodName).trim(),
-    variantName: item.variantName?.trim() || "Regular",
-    quantity: Number(item.quantity),
-    unitPrice: Number(item.unitPrice),
-    offerPrice: Number(item.offerPrice || 0),
-    totalPrice:
-      item.totalPrice !== undefined && item.totalPrice !== null
-        ? Number(item.totalPrice)
-        : roundAmount(
-            Number(item.quantity || 0) *
-              Math.max(0, Number(item.unitPrice || 0) - Number(item.offerPrice || 0))
-          ),
-    orderSource: item.orderSource || "Spot Order",
-  }));
+/**
+ * Detect overpayment on a settled bill (totalPaid > grandTotal) and create a
+ * refund record for the excess amount. Idempotent per booking + reason.
+ * Returns the refund (or null when there is no excess).
+ */
+const ensureExcessRefund = async ({ bill, booking, createdBy }) => {
+  const totalPaid = roundAmount(bill.payment?.totalPaid || 0);
+  const grandTotal = roundAmount(bill.grandTotal || 0);
+  const excess = roundAmount(totalPaid - grandTotal);
+
+  if (excess <= 0) {
+    return null;
+  }
+
+  const existing = await Refund.findOne({
+    bookingId: booking._id,
+    reason: REFUND_REASON.EXCESS_ADVANCE_PAYMENT,
+    isDeleted: false,
+  });
+
+  if (existing) {
+    return existing;
+  }
+
+  const restaurant = await Restaurant.findById(booking.restaurantId);
+
+  if (!restaurant) {
+    return null;
+  }
+
+  const refund = await createRefund({
+    booking,
+    restaurant,
+    amount: excess,
+    reason: REFUND_REASON.EXCESS_ADVANCE_PAYMENT,
+    remarks: `Excess payment after bill settlement (paid ${totalPaid}, bill ${grandTotal}).`,
+    createdBy: createdBy || booking.userId,
+  });
+
+  if (!booking.refundId) {
+    booking.refundStatus = REFUND_STATUS.REFUND_PENDING;
+    booking.refundId = refund._id;
+    await booking.save();
+  }
+
+  try {
+    await createAuditLog({
+      eventType: "REFUND_REQUESTED",
+      eventAction: "refund_created_on_excess_advance",
+      bookingId: booking._id,
+      billId: bill._id,
+      refundId: refund._id,
+      restaurantId: booking.restaurantId,
+      userId: booking.userId,
+      performedBy: createdBy || booking.userId,
+      amount: refund.amount,
+      status: REFUND_STATUS.REFUND_PENDING,
+      metadata: { refundCode: refund.refundCode, totalPaid, grandTotal },
+    });
+  } catch (error) {
+    console.error("Audit log error on excess refund creation:", error.message);
+  }
+
+  return refund;
+};
+
+/**
+ * Resolve bill line items against the Food model so that food name, unit
+ * price and GST rate are always taken from the server, never the client.
+ * GST is derived from each item's food category slab (food.gstRate).
+ */
+const resolveOrderedItems = async ({ items = [] }) => {
+  const foodIds = items.map((item) => item.foodId).filter(Boolean);
+
+  let foods = [];
+  if (foodIds.length > 0) {
+    foods = await Food.find({
+      _id: { $in: foodIds },
+      isDeleted: false,
+    }).select(
+      "_id foodName category gstRate hasVariants variants"
+    );
+  }
+
+  const foodMap = new Map(foods.map((food) => [String(food._id), food]));
+
+  return items.map((item) => {
+    const food = item.foodId ? foodMap.get(String(item.foodId)) : null;
+
+    if (item.foodId && !food) {
+      throw new ApiError(
+        400,
+        "One or more food items are invalid or unavailable."
+      );
+    }
+
+    const variantName = item.variantName?.trim() || "Regular";
+    let unitPrice = Number(item.unitPrice || 0);
+
+    if (food) {
+      const variants = food.variants || [];
+      const variant = variants.find(
+        (v) =>
+          String(v.variantName).toLowerCase() === variantName.toLowerCase()
+      );
+      const selected = variant || variants[0];
+
+      if (selected) {
+        unitPrice =
+          selected.offerPrice > 0 ? selected.offerPrice : selected.price;
+      }
+    }
+
+    const quantity = Number(item.quantity);
+    const offerPrice = Number(item.offerPrice || 0);
+
+    const gstRate = food
+      ? (() => {
+          const rate = Number(food.gstRate);
+          return rate > 0
+            ? rate
+            : getGstRateForCategory(food.category || "Other");
+        })()
+      : getGstRateForCategory("Other");
+
+    return {
+      foodId: item.foodId || null,
+      foodName: food
+        ? food.foodName
+        : String(item.foodName || "Item").trim(),
+      variantName,
+      quantity,
+      unitPrice,
+      offerPrice,
+      totalPrice: roundAmount(
+        quantity * Math.max(0, unitPrice - offerPrice)
+      ),
+      orderSource: item.orderSource || ORDER_SOURCE.SPOT_ORDER,
+      gstRate,
+    };
+  });
+};
 
 const calculateSubTotal = (orderedItems = []) =>
   roundAmount(
@@ -68,10 +204,12 @@ const calculatePaymentSummary = ({
   );
 
   const totalPaid = roundAmount(
-    payment.totalPaid ??
-      payment.advancePaid ??
-      payment.spotPaid ??
-      paymentsTotal
+    payments.length > 0
+      ? paymentsTotal
+      : (payment.totalPaid ??
+        payment.advancePaid ??
+        payment.spotPaid ??
+        paymentsTotal)
   );
 
   const advancePaid = roundAmount(payment.advancePaid || 0);
@@ -123,33 +261,99 @@ const populateBill = (query) =>
     .populate("bookingId")
     .populate("generatedBy", "userCode fullName email phoneNumber role profileImage");
 
+/**
+ * Allocate the taxable base (subTotal - discount) across GST slabs in
+ * proportion to each slab's gross share, then compute tax per slab.
+ */
+const buildTaxBreakup = ({ orderedItems, taxableAmount }) => {
+  const subTotal = calculateSubTotal(orderedItems);
+
+  if (subTotal <= 0 || taxableAmount <= 0) return [];
+
+  const breakdown = new Map();
+
+  for (const item of orderedItems) {
+    const rate = Number(item.gstRate || 0);
+    const gross = Number(item.totalPrice || 0);
+
+    if (rate <= 0 || gross <= 0) continue;
+
+    const entry = breakdown.get(rate) || { rate, baseAmount: 0, taxAmount: 0 };
+    entry.baseAmount += gross;
+    breakdown.set(rate, entry);
+  }
+
+  const result = [];
+
+  for (const entry of breakdown.values()) {
+    const baseAmount = roundAmount(
+      (entry.baseAmount * taxableAmount) / subTotal
+    );
+    const taxAmount = roundAmount((baseAmount * entry.rate) / 100);
+    result.push({ rate: entry.rate, baseAmount, taxAmount });
+  }
+
+  const allocatedBase = roundAmount(
+    result.reduce((sum, entry) => sum + entry.baseAmount, 0)
+  );
+  const residue = roundAmount(taxableAmount - allocatedBase);
+
+  if (residue !== 0 && result.length > 0) {
+    const largest = result.reduce((a, b) =>
+      b.baseAmount > a.baseAmount ? b : a
+    );
+    largest.baseAmount = roundAmount(largest.baseAmount + residue);
+    largest.taxAmount = roundAmount((largest.baseAmount * largest.rate) / 100);
+  }
+
+  return result;
+};
+
 const buildBillTotals = ({
   orderedItems,
   discount,
-  taxAmount = 0,
   serviceCharge = 0,
   deliveryCharge = 0,
   payment = {},
 }) => {
-  const normalizedItems = normalizeOrderedItems(orderedItems);
-  const subTotal = calculateSubTotal(normalizedItems);
+  const subTotal = calculateSubTotal(orderedItems);
   const discountAmount = calculateDiscountAmount(discount, subTotal);
-  const tax = roundAmount(taxAmount);
+  const taxableAmount = roundAmount(
+    Math.max(0, subTotal - discountAmount)
+  );
+
+  const taxBreakup = buildTaxBreakup({
+    orderedItems,
+    taxableAmount,
+  });
+
+  const taxAmount = roundAmount(
+    taxBreakup.reduce((sum, entry) => sum + entry.taxAmount, 0)
+  );
+
   const service = roundAmount(serviceCharge);
   const delivery = roundAmount(deliveryCharge);
   const grandTotal = roundAmount(
-    Math.max(0, subTotal - discountAmount + tax + service + delivery)
+    Math.max(0, taxableAmount + taxAmount + service + delivery)
   );
   const paymentSummary = calculatePaymentSummary({
     payment,
     grandTotal,
   });
 
+  const gstRate =
+    taxableAmount > 0
+      ? roundAmount((taxAmount / taxableAmount) * 100)
+      : 0;
+
   return {
-    orderedItems: normalizedItems,
+    orderedItems,
     subTotal,
     discount: discount || { type: DISCOUNT_TYPE.AMOUNT, value: 0 },
-    taxAmount: tax,
+    taxableAmount,
+    gstRate,
+    taxBreakup,
+    taxAmount,
     serviceCharge: service,
     deliveryCharge: delivery,
     grandTotal,
@@ -161,13 +365,13 @@ export const createBill = async ({
   bookingId,
   orderedItems = [],
   discount = null,
-  taxAmount = 0,
   serviceCharge = 0,
   deliveryCharge = 0,
   notes = "",
   generatedBy,
   generatedAt = new Date(),
   payment = {},
+  allowEmptyItems = false,
 }) => {
   if (!bookingId) {
     throw new ApiError(400, "Booking is required.");
@@ -188,9 +392,34 @@ export const createBill = async ({
     throw new ApiError(409, "A bill already exists for this booking.");
   }
 
-  if (!Array.isArray(orderedItems) || orderedItems.length === 0) {
+  // Booking-state gate: bills can only be raised for bookings that have
+  // reached the restaurant (confirmed) or are dining / done. Pending,
+  // cancelled and no-show bookings cannot be billed.
+  if (
+    ![
+      BOOKING_STATUS.CONFIRMED,
+      BOOKING_STATUS.CHECKED_IN,
+      BOOKING_STATUS.COMPLETED,
+    ].includes(booking.bookingStatus)
+  ) {
+    throw new ApiError(
+      409,
+      "Bills can only be created for confirmed, checked-in or completed bookings."
+    );
+  }
+
+  if (
+    !Array.isArray(orderedItems) ||
+    (orderedItems.length === 0 && !allowEmptyItems)
+  ) {
     throw new ApiError(400, "Ordered items are required to create a bill.");
   }
+
+  const restaurant = await Restaurant.findById(booking.restaurantId).select(
+    "gstin restaurantName"
+  );
+
+  const resolvedItems = await resolveOrderedItems({ items: orderedItems });
 
   const billCode = await generateCode(
     Bill,
@@ -199,9 +428,8 @@ export const createBill = async ({
   );
 
   const totals = buildBillTotals({
-    orderedItems,
+    orderedItems: resolvedItems,
     discount,
-    taxAmount,
     serviceCharge,
     deliveryCharge,
     payment,
@@ -213,12 +441,16 @@ export const createBill = async ({
     orderedItems: totals.orderedItems,
     subTotal: totals.subTotal,
     discount: totals.discount,
+    taxableAmount: totals.taxableAmount,
+    gstRate: totals.gstRate,
+    taxBreakup: totals.taxBreakup,
     taxAmount: totals.taxAmount,
     serviceCharge: totals.serviceCharge,
     deliveryCharge: totals.deliveryCharge,
     grandTotal: totals.grandTotal,
     payment: totals.payment,
     billStatus: BILL_STATUS.GENERATED,
+    restaurantGstin: restaurant?.gstin || "",
     notes: notes.trim(),
     generatedBy,
     generatedAt,
@@ -230,10 +462,114 @@ export const createBill = async ({
   booking.paymentMethod = booking.paymentMethod || "Cash";
   await booking.save();
 
+  try {
+    await ensureExcessRefund({ bill, booking, createdBy: generatedBy });
+  } catch (error) {
+    console.error("Excess refund creation error on bill create:", error.message);
+  }
+
+  try {
+    await createAuditLog({
+      eventType: "BILL_CREATED",
+      eventAction: "bill_created",
+      bookingId: booking._id,
+      billId: bill._id,
+      restaurantId: booking.restaurantId,
+      userId: booking.userId,
+      performedBy: generatedBy,
+      amount: totals.grandTotal,
+      status: BILL_STATUS.GENERATED,
+      metadata: {
+        billCode: bill.billCode,
+        subTotal: totals.subTotal,
+        taxableAmount: totals.taxableAmount,
+        taxAmount: totals.taxAmount,
+        taxBreakup: totals.taxBreakup,
+      },
+    });
+  } catch (error) {
+    console.error("Audit log error on bill creation:", error.message);
+  }
+
   return {
     bill: await populateBill(Bill.findById(bill._id)),
     message: "Bill created successfully.",
   };
+};
+
+/**
+ * Convert a confirmed/checked-in booking into a bill (the payment-first
+ * lifecycle). The bill is seeded with the customer's pre-ordered items and
+ * the captured advance is carried into the bill ledger so the customer is
+ * never charged twice for the same amount.
+ */
+export const convertBookingToBill = async ({
+  bookingId,
+  generatedBy,
+  notes = "",
+}) => {
+  if (!generatedBy) {
+    throw new ApiError(400, "Generated by user is required.");
+  }
+
+  const booking = await getBookingOrThrow(bookingId);
+
+  if (booking.billId) {
+    throw new ApiError(409, "A bill already exists for this booking.");
+  }
+
+  if (
+    ![
+      BOOKING_STATUS.CONFIRMED,
+      BOOKING_STATUS.CHECKED_IN,
+    ].includes(booking.bookingStatus)
+  ) {
+    throw new ApiError(
+      409,
+      "Only confirmed or checked-in bookings can be converted to a bill."
+    );
+  }
+
+  // Seed the bill with the customer's pre-ordered items (server prices are
+  // re-derived by resolveOrderedItems inside createBill).
+  const orderedItems = (booking.preOrderedFoods || []).map((item) => ({
+    foodId: item.foodId,
+    variantName: item.variantName || "Regular",
+    quantity: Number(item.quantity),
+    orderSource: ORDER_SOURCE.PRE_ORDER,
+  }));
+
+  // Carry the advance into the bill ledger only when there are actual items
+  // on the bill — an empty bill must never be auto-marked Paid off the
+  // advance (that would immediately trigger an excess refund).
+  let advancePayments = [];
+
+  if (Number(booking.advanceAmount) > 0 && orderedItems.length > 0) {
+    let transactionId = "";
+
+    if (booking.sourcePaymentId) {
+      const paymentRecord = await Payment.findById(booking.sourcePaymentId).select(
+        "razorpayPaymentId"
+      );
+      transactionId = paymentRecord?.razorpayPaymentId || "";
+    }
+
+    advancePayments.push({
+      paymentMethod: booking.paymentMethod || PAYMENT_METHOD.CASH,
+      amount: Number(booking.advanceAmount),
+      transactionId,
+      notes: "Booking advance (online payment)",
+    });
+  }
+
+  return createBill({
+    bookingId,
+    orderedItems,
+    payment: { payments: advancePayments },
+    notes,
+    generatedBy,
+    allowEmptyItems: true,
+  });
 };
 
 export const updateBill = async ({
@@ -243,7 +579,9 @@ export const updateBill = async ({
   const bill = await getBillOrThrow(billId);
 
   if (updates.orderedItems !== undefined) {
-    bill.orderedItems = normalizeOrderedItems(updates.orderedItems);
+    bill.orderedItems = await resolveOrderedItems({
+      items: updates.orderedItems,
+    });
   }
 
   if (updates.discount !== undefined) {
@@ -251,7 +589,6 @@ export const updateBill = async ({
   }
 
   const numericFields = [
-    "taxAmount",
     "serviceCharge",
     "deliveryCharge",
   ];
@@ -262,13 +599,14 @@ export const updateBill = async ({
     }
   }
 
+  // Client-supplied taxAmount is never trusted; tax is recomputed from the
+  // resolved items' GST rates.
   if (updates.notes !== undefined) {
     bill.notes = String(updates.notes).trim();
   }
 
-  if (updates.billStatus !== undefined) {
-    bill.billStatus = updates.billStatus;
-  }
+  // billStatus is NEVER settable via the bill update endpoint — status
+  // transitions go exclusively through markBillStatus (with reconciliation).
 
   if (updates.generatedAt !== undefined) {
     bill.generatedAt = updates.generatedAt ? new Date(updates.generatedAt) : updates.generatedAt;
@@ -278,25 +616,31 @@ export const updateBill = async ({
     bill.isActive = Boolean(updates.isActive);
   }
 
+  // Only new payment entries from the client are honoured. The payment
+  // summary (totalPaid / advancePaid / spotPaid / balanceDue / paymentStatus)
+  // is always recomputed server-side from the payments ledger.
   const paymentUpdates = updates.payment || {};
+  const newPayments = Array.isArray(paymentUpdates.payments)
+    ? paymentUpdates.payments
+    : [];
   const existingPayment = bill.payment?.payments || [];
 
   const totals = buildBillTotals({
     orderedItems: bill.orderedItems,
     discount: bill.discount,
-    taxAmount: bill.taxAmount,
     serviceCharge: bill.serviceCharge,
     deliveryCharge: bill.deliveryCharge,
     payment: {
-      ...bill.payment?.toObject?.() ?? bill.payment ?? {},
-      ...paymentUpdates,
-      payments: paymentUpdates.payments || existingPayment,
+      payments: [...existingPayment, ...newPayments],
     },
   });
 
   bill.orderedItems = totals.orderedItems;
   bill.subTotal = totals.subTotal;
   bill.discount = totals.discount;
+  bill.taxableAmount = totals.taxableAmount;
+  bill.gstRate = totals.gstRate;
+  bill.taxBreakup = totals.taxBreakup;
   bill.taxAmount = totals.taxAmount;
   bill.serviceCharge = totals.serviceCharge;
   bill.deliveryCharge = totals.deliveryCharge;
@@ -314,6 +658,16 @@ export const updateBill = async ({
     booking.totalAmount = bill.grandTotal;
     booking.paymentStatus = bill.payment.paymentStatus;
     await booking.save();
+
+    try {
+      await ensureExcessRefund({
+        bill,
+        booking,
+        createdBy: bill.generatedBy,
+      });
+    } catch (error) {
+      console.error("Excess refund creation error on bill update:", error.message);
+    }
   }
 
   return {
@@ -332,13 +686,23 @@ export const addBillPayment = async ({
 }) => {
   const bill = await getBillOrThrow(billId);
 
+  if (bill.billStatus === BILL_STATUS.CANCELLED) {
+    throw new ApiError(409, "Payments cannot be added to a cancelled bill.");
+  }
+
   if (!Object.values(PAYMENT_METHOD).includes(paymentMethod)) {
     throw new ApiError(400, "Invalid payment method.");
   }
 
+  const paymentAmount = Number(amount);
+
+  if (Number.isNaN(paymentAmount) || paymentAmount <= 0) {
+    throw new ApiError(400, "Payment amount must be greater than zero.");
+  }
+
   const paymentEntry = {
     paymentMethod,
-    amount: Number(amount),
+    amount: paymentAmount,
     transactionId: transactionId.trim(),
     notes: notes.trim(),
     paidAt,
@@ -358,6 +722,15 @@ export const addBillPayment = async ({
   });
 
   bill.payment = totals.payment;
+  bill.subTotal = totals.subTotal;
+  bill.discount = totals.discount;
+  bill.taxableAmount = totals.taxableAmount;
+  bill.gstRate = totals.gstRate;
+  bill.taxBreakup = totals.taxBreakup;
+  bill.taxAmount = totals.taxAmount;
+  bill.serviceCharge = totals.serviceCharge;
+  bill.deliveryCharge = totals.deliveryCharge;
+  bill.grandTotal = totals.grandTotal;
   bill.billStatus =
     bill.payment.paymentStatus === PAYMENT_STATUS.PAID
       ? BILL_STATUS.PAID
@@ -369,6 +742,16 @@ export const addBillPayment = async ({
   if (booking) {
     booking.paymentStatus = bill.payment.paymentStatus;
     await booking.save();
+
+    try {
+      await ensureExcessRefund({
+        bill,
+        booking,
+        createdBy: bill.generatedBy,
+      });
+    } catch (error) {
+      console.error("Excess refund creation error on bill payment:", error.message);
+    }
   }
 
   return {
@@ -383,11 +766,53 @@ export const markBillStatus = async ({
 }) => {
   const bill = await getBillOrThrow(billId);
 
+  if (!Object.values(BILL_STATUS).includes(billStatus)) {
+    throw new ApiError(400, "Invalid bill status.");
+  }
+
+  // Bill status state machine + payment reconciliation.
+  const currentStatus = bill.billStatus;
+
+  if (currentStatus === billStatus) {
+    // no-op write is tolerated
+  } else if (
+    currentStatus === BILL_STATUS.GENERATED &&
+    billStatus === BILL_STATUS.PAID
+  ) {
+    // A bill may only be marked PAID once the recorded payments actually
+    // cover the grand total — never as an unreconciled status flip.
+    const totalPaid = roundAmount(bill.payment?.totalPaid || 0);
+    const grandTotal = roundAmount(bill.grandTotal || 0);
+
+    if (totalPaid < grandTotal) {
+      throw new ApiError(
+        409,
+        `Bill cannot be marked Paid: recorded payments (${totalPaid}) do not cover the bill total (${grandTotal}). Add a payment first.`
+      );
+    }
+  } else if (
+    currentStatus === BILL_STATUS.GENERATED &&
+    billStatus === BILL_STATUS.CANCELLED
+  ) {
+    // Allowed — voiding a generated bill.
+  } else {
+    throw new ApiError(
+      409,
+      `Bill cannot transition from "${currentStatus}" to "${billStatus}".`
+    );
+  }
+
   bill.billStatus = billStatus;
 
   if (billStatus === BILL_STATUS.PAID) {
     bill.payment = bill.payment || {};
     bill.payment.paymentStatus = PAYMENT_STATUS.PAID;
+    bill.payment.balanceDue = 0;
+  }
+
+  if (billStatus === BILL_STATUS.CANCELLED) {
+    bill.payment = bill.payment || {};
+    bill.payment.paymentStatus = PAYMENT_STATUS.PENDING;
     bill.payment.balanceDue = 0;
   }
 
@@ -397,6 +822,16 @@ export const markBillStatus = async ({
   if (booking) {
     booking.paymentStatus = bill.payment?.paymentStatus || booking.paymentStatus;
     await booking.save();
+
+    try {
+      await ensureExcessRefund({
+        bill,
+        booking,
+        createdBy: bill.generatedBy,
+      });
+    } catch (error) {
+      console.error("Excess refund creation error on bill status:", error.message);
+    }
   }
 
   return {

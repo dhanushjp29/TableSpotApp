@@ -1,11 +1,82 @@
 import RestaurantReview from "../models/RestaurantReview.js";
 import Restaurant from "../models/Restaurant.js";
+import Booking from "../models/Booking.js";
+import Bill from "../models/Bill.js";
 import User from "../models/User.js";
 
 import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
 
-import { CODE_PREFIX } from "../utils/constants.js";
+import { BILL_STATUS, BOOKING_STATUS, CODE_PREFIX } from "../utils/constants.js";
+
+const findEligibleBooking = async (userId, restaurantId, bookingId = null) => {
+    // A customer becomes eligible to review only once the restaurant has
+    // collected payment and finalized (marked PAID) the bill for their own
+    // booking. A merely GENERATED bill is not enough, and another customer's
+    // bill can never unlock a review.
+    const bookingQuery = {
+        userId,
+        restaurantId,
+        bookingStatus: BOOKING_STATUS.COMPLETED,
+        isDeleted: false,
+    };
+
+    if (bookingId) {
+        bookingQuery._id = bookingId;
+    }
+
+    const bookings = await Booking.find(bookingQuery)
+        .sort({ bookingDateTime: -1 })
+        .select("_id bookingCode bookingDateTime")
+        .lean();
+
+    if (bookings.length === 0) {
+        return null;
+    }
+
+    // Only the customer's own bookings that have a PAID bill can unlock a
+    // review. Pick the most recent such booking.
+    const paidBills = await Bill.find({
+        bookingId: { $in: bookings.map((b) => b._id) },
+        billStatus: BILL_STATUS.PAID,
+        isDeleted: false,
+    })
+        .sort({ updatedAt: -1 })
+        .select("bookingId orderedItems")
+        .lean();
+
+    const paidBookingIds = new Set(paidBills.map((b) => String(b.bookingId)));
+
+    const eligibleBooking = bookings.find((b) =>
+        paidBookingIds.has(String(b._id))
+    );
+
+    if (!eligibleBooking) {
+        return null;
+    }
+
+    const bill = paidBills.find(
+        (b) => String(b.bookingId) === String(eligibleBooking._id)
+    );
+
+    return {
+        ...eligibleBooking,
+        billOrderedItems: bill?.orderedItems || [],
+    };
+};
+
+export const assertEligibleBooking = async (userId, restaurantId) => {
+    const booking = await findEligibleBooking(userId, restaurantId);
+
+    if (!booking) {
+        throw new ApiError(
+            403,
+            "You can write a review only after the restaurant creates your bill for this booking."
+        );
+    }
+
+    return booking;
+};
 
 const normalizeStringArray = (values = []) =>
     values.map((v) => String(v).trim()).filter(Boolean);
@@ -81,6 +152,8 @@ export const createReview = async ({
         );
     }
 
+    const eligibleBooking = await assertEligibleBooking(userId, restaurantId);
+
     const reviewCode = await generateCode(
         RestaurantReview,
         "reviewCode",
@@ -91,7 +164,7 @@ export const createReview = async ({
         reviewCode,
         userId,
         restaurantId,
-        bookingId,
+        bookingId: eligibleBooking._id,
         rating,
         title: title.trim(),
         comment: comment.trim(),
@@ -281,5 +354,23 @@ export const getReviews = async ({
             total,
             totalPages: Math.ceil(total / pageSize) || 1,
         },
+    };
+};
+
+export const getEligibility = async ({ userId, restaurantId, bookingId = null }) => {
+    const booking = await findEligibleBooking(userId, restaurantId, bookingId);
+
+    return {
+        canReview: Boolean(booking),
+        booking: booking
+            ? {
+                  _id: booking._id,
+                  bookingCode: booking.bookingCode,
+                  bookingDateTime: booking.bookingDateTime,
+              }
+            : null,
+        // Foods the user actually ordered on their paid bill — these are the
+        // only items they are allowed to write food sub-reviews for.
+        billOrderedItems: booking?.billOrderedItems || [],
     };
 };

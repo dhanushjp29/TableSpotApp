@@ -49,6 +49,13 @@ const orderedItemSchema = new mongoose.Schema(
       enum: ["Pre-Order", "Spot Order"],
       default: "Spot Order",
     },
+
+    gstRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
   },
   { _id: false }
 );
@@ -132,6 +139,48 @@ const billSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
+    },
+
+    gstRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
+    },
+
+    taxableAmount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    taxBreakup: [
+      {
+        rate: {
+          type: Number,
+          default: 0,
+          min: 0,
+          max: 100,
+        },
+
+        baseAmount: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+
+        taxAmount: {
+          type: Number,
+          default: 0,
+          min: 0,
+        },
+      },
+    ],
+
+    restaurantGstin: {
+      type: String,
+      default: "",
+      trim: true,
     },
 
     serviceCharge: {
@@ -241,6 +290,14 @@ const billSchema = new mongoose.Schema(
     timestamps: true,
   }
 );
+
+billSchema.index({ billStatus: 1, bookingId: 1 });
+
+billSchema.index({ restaurantId: 1, billStatus: 1, createdAt: -1 });
+
+billSchema.index({ generatedBy: 1, createdAt: -1 });
+
+billSchema.index({ "payment.paymentStatus": 1, billStatus: 1 });
 
 const Bill = mongoose.model("Bill", billSchema);
 

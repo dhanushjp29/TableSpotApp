@@ -16,6 +16,8 @@ import {
   LogOut,
   Menu,
   X,
+  History,
+  RotateCcw,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth.js";
 import { logoutUser } from "../store/slices/authSlice.js";
@@ -29,6 +31,8 @@ const roleNavConfig = {
   customer: [
     { to: ROUTES.CUSTOMER_DASHBOARD, label: "Dashboard", icon: LayoutDashboard },
     { to: ROUTES.CUSTOMER_BOOKINGS, label: "My Bookings", icon: CalendarDays },
+    { to: ROUTES.CUSTOMER_PAYMENTS, label: "Payments", icon: History },
+    { to: ROUTES.CUSTOMER_REFUNDS, label: "Refunds", icon: RotateCcw },
     { to: ROUTES.CUSTOMER_FAVORITES, label: "Favorites", icon: Heart },
     { to: ROUTES.CUSTOMER_NOTIFICATIONS, label: "Notifications", icon: Bell },
     { to: ROUTES.CUSTOMER_PROFILE, label: "Profile", icon: User },
@@ -40,6 +44,8 @@ const roleNavConfig = {
     { to: ROUTES.OWNER_FOODS, label: "Food Menu", icon: UtensilsCrossed },
     { to: ROUTES.OWNER_RESERVATIONS, label: "Reservations", icon: CalendarDays },
     { to: ROUTES.OWNER_BILLING, label: "Billing", icon: ReceiptText },
+    { to: ROUTES.OWNER_PAYMENTS, label: "Payments", icon: History },
+    { to: ROUTES.OWNER_REFUNDS, label: "Refunds", icon: RotateCcw },
     { to: ROUTES.OWNER_REVIEWS, label: "Reviews", icon: Star },
     { to: ROUTES.OWNER_REPORTS, label: "Reports", icon: BarChart3 },
     { to: ROUTES.OWNER_NOTIFICATIONS, label: "Notifications", icon: Bell },

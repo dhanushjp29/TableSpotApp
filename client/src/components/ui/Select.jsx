@@ -53,6 +53,15 @@ function Select({
   }, [open, triggerRef]);
 
   useEffect(() => {
+    if (value !== undefined) return;
+    const current = inputRef.current?.value;
+    if (current && current !== displayValue) {
+      setDisplayValue(current);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  useEffect(() => {
     if (!open) return;
     const handle = (e) => {
       if (rootRef.current && !rootRef.current.contains(e.target)) {

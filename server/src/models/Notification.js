@@ -54,6 +54,7 @@ const notificationSchema = new mongoose.Schema(
                 "Restaurant",
                 "RestaurantReview",
                 "FoodReview",
+                "Refund",
                 "",
             ],
             default: "",

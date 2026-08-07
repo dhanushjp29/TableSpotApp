@@ -7,6 +7,7 @@ export const create = async (req, res) => {
     const result = await restaurantService.createRestaurant({
         ...req.validatedData,
         ownerId: req.user._id,
+        requirePaymentAccount: req.user.role !== USER_ROLE.ADMIN,
     });
     res.status(201).json(new ApiResponse(201, result.message, result));
 };
@@ -68,4 +69,9 @@ export const getBySlug = async (req, res) => {
 export const getAll = async (req, res) => {
     const result = await restaurantService.getRestaurants(req.query);
     res.status(200).json(new ApiResponse(200, "Restaurants retrieved successfully.", result));
+};
+
+export const getCities = async (req, res) => {
+    const result = await restaurantService.getRestaurantCities();
+    res.status(200).json(new ApiResponse(200, "Cities retrieved successfully.", result));
 };

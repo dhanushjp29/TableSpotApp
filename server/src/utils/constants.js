@@ -14,6 +14,26 @@ export const USER_ROLE_VALUES = [
   USER_ROLE.ADMIN,
 ];
 
+// ===============================
+// Currency
+// ===============================
+
+export const CURRENCY = "INR";
+export const CURRENCY_SYMBOL = "₹";
+
+export const CURRENCY_VALUES = [
+  "INR",
+  "USD",
+  "EUR",
+  "GBP",
+  "AED",
+  "CAD",
+  "AUD",
+  "SGD",
+  "MYR",
+  "JPY",
+];
+
 export const AUTH_REGISTER_ROLE_VALUES = [
   USER_ROLE.CUSTOMER,
   USER_ROLE.OWNER,
@@ -133,6 +153,37 @@ export const TABLE_LOCATION_VALUES = [
   "Beach Side",
   "Other",
 ];
+
+export const TABLE_SHAPE = {
+  ROUND: "Round",
+  SQUARE: "Square",
+  RECTANGLE: "Rectangle",
+  OVAL: "Oval",
+  BOAT: "Boat",
+  SINGLE_ROW: "SingleRow",
+};
+
+export const TABLE_SHAPE_VALUES = [
+  TABLE_SHAPE.ROUND,
+  TABLE_SHAPE.SQUARE,
+  TABLE_SHAPE.RECTANGLE,
+  TABLE_SHAPE.OVAL,
+  TABLE_SHAPE.BOAT,
+  TABLE_SHAPE.SINGLE_ROW,
+];
+
+export const SEAT_SELECTION_MODE = {
+  FULL_TABLE: "FullTable",
+  INDIVIDUAL_SEATS: "IndividualSeats",
+};
+
+export const SEAT_SELECTION_MODE_VALUES = [
+  SEAT_SELECTION_MODE.FULL_TABLE,
+  SEAT_SELECTION_MODE.INDIVIDUAL_SEATS,
+];
+
+export const MAX_SEATS_PER_TABLE = 100;
+export const MAX_SEATS_SINGLE_ROW = 24;
 
 // ===============================
 // Booking
@@ -316,6 +367,197 @@ export const PRICE_RANGE_VALUES = [
 ];
 
 // ===============================
+// Booking Payment Policy
+// ===============================
+
+export const BOOKING_PAYMENT_POLICY = {
+  PAY_ON_SPOT: "PAY_ON_SPOT",
+  PAY_TO_BOOK: "PAY_TO_BOOK",
+};
+
+export const BOOKING_PAYMENT_POLICY_VALUES = [
+  BOOKING_PAYMENT_POLICY.PAY_ON_SPOT,
+  BOOKING_PAYMENT_POLICY.PAY_TO_BOOK,
+];
+
+export const BOOKING_PAYMENT_TYPE = {
+  FIXED_AMOUNT: "FIXED_AMOUNT",
+  PERCENTAGE: "PERCENTAGE",
+  FULL_PREORDER: "FULL_PREORDER",
+};
+
+export const BOOKING_PAYMENT_TYPE_VALUES = [
+  BOOKING_PAYMENT_TYPE.FIXED_AMOUNT,
+  BOOKING_PAYMENT_TYPE.PERCENTAGE,
+  BOOKING_PAYMENT_TYPE.FULL_PREORDER,
+];
+
+export const MAX_BOOKING_ADVANCE_AMOUNT = 200;
+
+// ===============================
+// Razorpay Payment Account (Onboarding)
+// ===============================
+
+export const RAZORPAY_ACCOUNT_STATUS = {
+  NOT_CONNECTED: "Not Connected",
+  VERIFICATION_PENDING: "Verification Pending",
+  CONNECTED: "Connected & Verified",
+};
+
+export const RAZORPAY_ACCOUNT_STATUS_VALUES = [
+  RAZORPAY_ACCOUNT_STATUS.NOT_CONNECTED,
+  RAZORPAY_ACCOUNT_STATUS.VERIFICATION_PENDING,
+  RAZORPAY_ACCOUNT_STATUS.CONNECTED,
+];
+
+// ===============================
+// Payment Purpose
+// ===============================
+
+export const PAYMENT_PURPOSE = {
+  BOOKING_ADVANCE: "BOOKING_ADVANCE",
+  PREORDER_PAYMENT: "PREORDER_PAYMENT",
+  SPOT_FOOD_PAYMENT: "SPOT_FOOD_PAYMENT",
+  BILL_PAYMENT: "BILL_PAYMENT",
+  REFUND: "REFUND",
+  OTHER: "OTHER",
+};
+
+export const PAYMENT_PURPOSE_VALUES = [
+  PAYMENT_PURPOSE.BOOKING_ADVANCE,
+  PAYMENT_PURPOSE.PREORDER_PAYMENT,
+  PAYMENT_PURPOSE.SPOT_FOOD_PAYMENT,
+  PAYMENT_PURPOSE.BILL_PAYMENT,
+  PAYMENT_PURPOSE.REFUND,
+  PAYMENT_PURPOSE.OTHER,
+];
+
+// ===============================
+// Refunds
+// ===============================
+
+export const REFUND_STATUS = {
+  NOT_REQUIRED: "NOT_REQUIRED",
+  REFUND_PENDING: "REFUND_PENDING",
+  REFUND_PROCESSING: "REFUND_PROCESSING",
+  REFUND_AWAITING_CUSTOMER_CONFIRMATION: "REFUND_AWAITING_CUSTOMER_CONFIRMATION",
+  REFUNDED: "REFUNDED",
+  REFUND_OVERDUE: "REFUND_OVERDUE",
+  REFUND_FAILED: "REFUND_FAILED",
+  REFUND_DISPUTED: "REFUND_DISPUTED",
+};
+
+export const REFUND_STATUS_VALUES = [
+  REFUND_STATUS.NOT_REQUIRED,
+  REFUND_STATUS.REFUND_PENDING,
+  REFUND_STATUS.REFUND_PROCESSING,
+  REFUND_STATUS.REFUND_AWAITING_CUSTOMER_CONFIRMATION,
+  REFUND_STATUS.REFUNDED,
+  REFUND_STATUS.REFUND_OVERDUE,
+  REFUND_STATUS.REFUND_FAILED,
+  REFUND_STATUS.REFUND_DISPUTED,
+];
+
+export const REFUND_METHOD = {
+  CASH: "Cash",
+  UPI: "UPI",
+  CARD: "Card",
+  NET_BANKING: "Net Banking",
+  WALLET: "Wallet",
+  RAZORPAY: "RAZORPAY",
+};
+
+export const REFUND_METHOD_VALUES = [
+  REFUND_METHOD.CASH,
+  REFUND_METHOD.UPI,
+  REFUND_METHOD.CARD,
+  REFUND_METHOD.NET_BANKING,
+  REFUND_METHOD.WALLET,
+  REFUND_METHOD.RAZORPAY,
+];
+
+export const REFUND_REASON = {
+  CUSTOMER_CANCELLED: "CUSTOMER_CANCELLED",
+  CUSTOMER_NO_SHOW: "CUSTOMER_NO_SHOW",
+  EXCESS_ADVANCE_PAYMENT: "EXCESS_ADVANCE_PAYMENT",
+  BILL_ADJUSTMENT: "BILL_ADJUSTMENT",
+  OTHER_APPROVED_REASON: "OTHER_APPROVED_REASON",
+};
+
+export const REFUND_REASON_VALUES = [
+  REFUND_REASON.CUSTOMER_CANCELLED,
+  REFUND_REASON.CUSTOMER_NO_SHOW,
+  REFUND_REASON.EXCESS_ADVANCE_PAYMENT,
+  REFUND_REASON.BILL_ADJUSTMENT,
+  REFUND_REASON.OTHER_APPROVED_REASON,
+];
+
+export const REFUND_DEADLINE_DAYS = 3;
+
+// ===============================
+// Cancellation & No-Show
+// ===============================
+
+export const DEFAULT_CANCELLATION_POLICY = {
+  isEnabled: true,
+  hoursBeforeBooking: 6,
+  refundPercentage: 100,
+  noShowRefundPercentage: 0,
+};
+
+export const DEFAULT_CUSTOMER_WAITING_PERIOD_MINUTES = 30;
+
+export const NO_SHOW_REASON = {
+  CUSTOMER_DID_NOT_ARRIVE: "Customer did not arrive within the grace period.",
+};
+
+export const MIN_REMARKS_LENGTH = 5;
+export const MAX_REMARKS_LENGTH = 500;
+
+// ===============================
+// Owner Booking Status
+// ===============================
+
+export const OWNER_BOOKING_STATUS = {
+  ACTIVE: "ACTIVE",
+  BOOKING_RESTRICTED: "BOOKING_RESTRICTED",
+};
+
+export const OWNER_BOOKING_STATUS_VALUES = [
+  OWNER_BOOKING_STATUS.ACTIVE,
+  OWNER_BOOKING_STATUS.BOOKING_RESTRICTED,
+];
+
+// ===============================
+// GST
+// ===============================
+
+export const GST_RATE_BY_CATEGORY = {
+  "Starters": 5,
+  "Main Course": 5,
+  "Biryani": 5,
+  "Pizza": 5,
+  "Burger": 5,
+  "Pasta": 5,
+  "Sandwich": 5,
+  "Chinese": 5,
+  "South Indian": 5,
+  "North Indian": 5,
+  "Desserts": 18,
+  "Beverages": 18,
+  "Juices": 5,
+  "Ice Cream": 18,
+  "Combo": 5,
+  "Kids Menu": 5,
+  "Other": 5,
+};
+
+export const GST_SLAB_VALUES = [5, 12, 18, 28];
+
+export const getGstRateForCategory = (category) =>
+  GST_RATE_BY_CATEGORY[category] ?? 5;
+
+// ===============================
 // Code Prefixes
 // ===============================
 
@@ -329,6 +571,8 @@ export const CODE_PREFIX = {
   REVIEW: "REV",
   NOTIFICATION: "NOT",
   SESSION: "SES",
+  REFUND: "RFD",
+  AUDIT: "AUD",
 };
 
 

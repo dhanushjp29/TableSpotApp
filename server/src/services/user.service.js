@@ -1,8 +1,12 @@
+import Food from "../models/food.js";
 import User from "../models/User.js";
 import Restaurant from "../models/Restaurant.js";
 
 import ApiError from "../utils/ApiError.js";
-import { USER_ROLE } from "../utils/constants.js";
+import {
+  OWNER_BOOKING_STATUS,
+  USER_ROLE,
+} from "../utils/constants.js";
 import buildUserResponse from "../utils/buildUserResponse.js";
 
 const isLastActiveAdmin = async (userId) => {
@@ -189,6 +193,50 @@ export const softDeleteUser = async ({ userId, actorId = null }) => {
     };
 };
 
+export const updateBookingRestriction = async ({
+  userId,
+  bookingStatus,
+  actorId = null,
+}) => {
+  const user = await User.findById(userId);
+
+  if (!user || user.isDeleted) {
+    throw new ApiError(404, "User not found.");
+  }
+
+  if (user.role !== USER_ROLE.OWNER) {
+    throw new ApiError(
+      400,
+      "Booking restriction can only be applied to restaurant owners."
+    );
+  }
+
+  const nextStatus =
+    bookingStatus === OWNER_BOOKING_STATUS.BOOKING_RESTRICTED
+      ? OWNER_BOOKING_STATUS.BOOKING_RESTRICTED
+      : OWNER_BOOKING_STATUS.ACTIVE;
+
+  user.bookingStatus = nextStatus;
+
+  if (nextStatus === OWNER_BOOKING_STATUS.BOOKING_RESTRICTED) {
+    user.bookingRestrictedAt = new Date();
+    user.bookingRestrictedBy = actorId || null;
+  } else {
+    user.bookingRestrictedAt = null;
+    user.bookingRestrictedBy = null;
+  }
+
+  await user.save();
+
+  return {
+    user: buildUserResponse(user),
+    message:
+      nextStatus === OWNER_BOOKING_STATUS.BOOKING_RESTRICTED
+        ? "Owner booking restricted successfully."
+        : "Owner booking unlocked successfully.",
+  };
+};
+
 export const toggleFavoriteRestaurant = async ({ userId, restaurantId }) => {
     if (!restaurantId) {
         throw new ApiError(400, "Restaurant ID is required.");
@@ -245,4 +293,65 @@ export const getFavoriteRestaurants = async ({ userId }) => {
     });
 
     return { restaurants, favoriteRestaurantIds };
+};
+
+export const toggleFavoriteFood = async ({ userId, foodId }) => {
+    if (!foodId) {
+        throw new ApiError(400, "Food ID is required.");
+    }
+
+    const [user, food] = await Promise.all([
+        User.findById(userId),
+        Food.findById(foodId),
+    ]);
+
+    if (!user || user.isDeleted) {
+        throw new ApiError(404, "User not found.");
+    }
+
+    if (!food || food.isDeleted) {
+        throw new ApiError(404, "Food item not found.");
+    }
+
+    const index = user.favoriteFoodIds.findIndex(
+        (id) => String(id) === String(foodId)
+    );
+
+    let isFavorite;
+    if (index >= 0) {
+        user.favoriteFoodIds.splice(index, 1);
+        isFavorite = false;
+    } else {
+        user.favoriteFoodIds.push(food._id);
+        isFavorite = true;
+    }
+
+    await user.save();
+
+    return {
+        isFavorite,
+        favoriteFoodIds: user.favoriteFoodIds,
+        message: isFavorite
+            ? "Food item added to favorites."
+            : "Food item removed from favorites.",
+    };
+};
+
+export const getFavoriteFoods = async ({ userId }) => {
+    const user = await User.findById(userId).select("favoriteFoodIds");
+
+    if (!user || user.isDeleted) {
+        throw new ApiError(404, "User not found.");
+    }
+
+    const favoriteFoodIds = user.favoriteFoodIds || [];
+    const foods = await Food.find({
+        _id: { $in: favoriteFoodIds },
+        isDeleted: false,
+    }).populate(
+        "restaurantId",
+        "restaurantCode restaurantName city state"
+    );
+
+    return { foods, favoriteFoodIds };
 };

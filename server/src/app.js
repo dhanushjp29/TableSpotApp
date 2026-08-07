@@ -9,6 +9,7 @@ import errorHandler from "./middleware/errorHandler.js";
 import ApiError from "./utils/ApiError.js";
 import corsOptions from "./config/cors.js";
 import apiRouter from "./routes/index.js";
+import paymentWebhookRouter from "./routes/payment.webhook.routes.js";
 
 const app = express();
 
@@ -43,6 +44,10 @@ const authLimiter = rateLimit({
 app.use(helmet());
 app.use(cors(corsOptions));
 app.use(morgan("dev"));
+
+// Razorpay webhook MUST be mounted before express.json() so the raw body
+// is available for signature verification.
+app.use("/api/v1/payments/webhook", paymentWebhookRouter);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));

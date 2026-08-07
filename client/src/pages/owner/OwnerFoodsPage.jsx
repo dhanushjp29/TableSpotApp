@@ -1,6 +1,6 @@
 import { Edit2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { useFieldArray, useForm } from "react-hook-form";
+import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
 
@@ -18,14 +18,15 @@ import ErrorState from "../../components/ui/ErrorState.jsx";
 import Input from "../../components/ui/Input.jsx";
 import Modal from "../../components/ui/Modal.jsx";
 import Select from "../../components/ui/Select.jsx";
-import TimePicker from "../../components/ui/TimePicker.jsx";
 import Skeleton, { SkeletonText } from "../../components/ui/Skeleton.jsx";
-import { formatCurrency } from "../../utils/formatCurrency.js";
+import TimePicker from "../../components/ui/TimePicker.jsx";
 import {
   FOOD_CATEGORY_VALUES,
   FOOD_SPICE_LEVEL_VALUES,
   FOOD_TYPE_VALUES,
 } from "../../constants/food.js";
+import { CURRENCY, CURRENCY_OPTIONS, CURRENCY_SYMBOLS } from "../../constants/app.js";
+import { formatCurrency } from "../../utils/formatCurrency.js";
 
 const WEEKDAY_VALUES = [
   "Monday",
@@ -41,7 +42,13 @@ const inputClass = "input-field w-full";
 const checkboxClass =
   "h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary";
 
-function FoodForm({ food = null, restaurants, onSuccess, onCancel }) {
+function FoodForm({
+  food = null,
+  restaurants,
+  defaultRestaurantId = "",
+  onSuccess,
+  onCancel,
+}) {
   const isEdit = Boolean(food);
   const [coverItems, setCoverItems] = useState(
     food?.coverImage ? [{ file: null, preview: food.coverImage }] : []
@@ -72,12 +79,14 @@ function FoodForm({ food = null, restaurants, onSuccess, onCancel }) {
   const {
     register,
     handleSubmit,
-    watch,
     control,
     formState: { errors, isSubmitting },
   } = useForm({
     defaultValues: {
-      restaurantId: food?.restaurantId?._id || restaurants[0]?._id || "",
+      restaurantId:
+        food?.restaurantId?._id ||
+        defaultRestaurantId ||
+        (restaurants.length === 1 ? restaurants[0]?._id || "" : ""),
       foodName: food?.foodName || "",
       category: food?.category || "Starters",
       otherCategory: food?.otherCategory || "",
@@ -100,7 +109,9 @@ function FoodForm({ food = null, restaurants, onSuccess, onCancel }) {
     control,
     name: "variants",
   });
-  const category = watch("category");
+  const category = useWatch({ control, name: "category" });
+
+  const [currency, setCurrency] = useState(food?.currency || CURRENCY);
 
   const resolveImage = async (item) => {
     if (item.file) {
@@ -194,6 +205,7 @@ function FoodForm({ food = null, restaurants, onSuccess, onCancel }) {
           schedules: specialEnabled ? validSchedules : [],
         },
         hasVariants: variants.length > 1,
+        currency,
         variants,
         isAvailable: Boolean(data.isAvailable),
         isRecommended: Boolean(data.isRecommended),
@@ -216,8 +228,25 @@ function FoodForm({ food = null, restaurants, onSuccess, onCancel }) {
     }
   };
 
+  const missingRequired = ["restaurantId", "foodName"].filter(
+    (name) => errors[name]
+  );
+  const requiredLabels = {
+    restaurantId: "Restaurant",
+    foodName: "Food Name",
+  };
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
+      {missingRequired.length > 0 && (
+        <div
+          role="alert"
+          className="rounded-lg border border-error bg-error/5 p-3 text-sm text-error"
+        >
+          Please fill the required field{missingRequired.length > 1 ? "s" : ""}:{" "}
+          <strong>{missingRequired.map((n) => requiredLabels[n]).join(", ")}</strong>
+        </div>
+      )}
       <Select
         label="Restaurant *"
         error={errors.restaurantId?.message}
@@ -290,35 +319,62 @@ function FoodForm({ food = null, restaurants, onSuccess, onCancel }) {
       </div>
 
       <div>
-        <div className="flex items-center justify-between">
+        <div className="flex items-end justify-between gap-2">
           <label className="input-label mb-1">Pricing</label>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="mb-2"
-            onClick={() => append({ variantName: "", price: "", offerPrice: 0 })}
-          >
-            <Plus size={14} />
-            Add Variant
-          </Button>
+          <div className="flex items-end gap-2">
+            <Select
+              label="Currency"
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              className="w-36 mb-2"
+            >
+              {CURRENCY_OPTIONS.map((opt) => (
+                <option key={opt.code} value={opt.code}>
+                  {opt.label}
+                </option>
+              ))}
+            </Select>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="mb-2"
+              onClick={() => append({ variantName: "", price: "", offerPrice: 0 })}
+            >
+              <Plus size={14} />
+              Add Variant
+            </Button>
+          </div>
         </div>
         <div className="space-y-2">
           {fields.map((field, index) => (
             <div key={field.id} className="flex items-center gap-2">
               <input
                 {...register(`variants.${index}.variantName`)}
-                className="input-field flex-1"
+                readOnly={index === 0}
+                title={
+                  index === 0
+                    ? "Base variant name is fixed."
+                    : undefined
+                }
+                className={`input-field flex-1 ${
+                  index === 0 ? "bg-gray-100 text-muted" : ""
+                }`}
                 placeholder="Variant name (e.g. Half / Full)"
               />
-              <input
-                type="number"
-                min={0}
-                step="0.01"
-                {...register(`variants.${index}.price`)}
-                className="input-field w-28"
-                placeholder="Price"
-              />
+              <div className="relative">
+                <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted">
+                  {CURRENCY_SYMBOLS[currency] || currency}
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step="0.01"
+                  {...register(`variants.${index}.price`)}
+                  className="input-field w-32 pl-8"
+                  placeholder="Price"
+                />
+              </div>
               {fields.length > 1 && (
                 <Button
                   type="button"
@@ -332,6 +388,11 @@ function FoodForm({ food = null, restaurants, onSuccess, onCancel }) {
             </div>
           ))}
         </div>
+        {fields.length > 1 && (
+          <p className="mt-1 text-xs text-muted">
+            {CURRENCY_SYMBOLS[currency] || currency} applies to all variants.
+          </p>
+        )}
       </div>
 
       <ImageUploader
@@ -368,11 +429,10 @@ function FoodForm({ food = null, restaurants, onSuccess, onCancel }) {
                       : [...prev, day]
                   )
                 }
-                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${
-                  selected
-                    ? "border-primary bg-primary text-white"
-                    : "border-gray-300 bg-surface text-text hover:border-primary/60"
-                }`}
+                className={`rounded-full border px-3 py-1 text-xs font-medium transition-colors ${selected
+                  ? "border-primary bg-primary text-white"
+                  : "border-gray-300 bg-surface text-text hover:border-primary/60"
+                  }`}
               >
                 {day.slice(0, 3)}
               </button>
@@ -525,6 +585,7 @@ function OwnerFoodsPage() {
   const [editFood, setEditFood] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [selectedRestaurant, setSelectedRestaurant] = useState("");
 
   const fetchData = async () => {
     try {
@@ -574,6 +635,14 @@ function OwnerFoodsPage() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const visibleFoods = selectedRestaurant
+    ? foods.filter(
+        (food) =>
+          String(food.restaurantId?._id || food.restaurantId) ===
+          selectedRestaurant
+      )
+    : foods;
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -643,6 +712,28 @@ function OwnerFoodsPage() {
         </Button>
       </div>
 
+      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="w-full sm:max-w-xs">
+          <Select
+            label="Restaurant"
+            value={selectedRestaurant}
+            onChange={(event) => setSelectedRestaurant(event.target.value)}
+          >
+            <option value="">All restaurants ({foods.length})</option>
+            {restaurants.map((restaurant) => (
+              <option key={restaurant._id} value={restaurant._id}>
+                {restaurant.restaurantName}
+                {restaurant.city ? ` - ${restaurant.city}` : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <p className="text-sm text-muted">
+          Showing {visibleFoods.length} of {foods.length} item
+          {foods.length === 1 ? "" : "s"}
+        </p>
+      </div>
+
       {showCreate && (
         <Modal
           isOpen={showCreate}
@@ -652,6 +743,7 @@ function OwnerFoodsPage() {
         >
           <FoodForm
             restaurants={restaurants}
+            defaultRestaurantId={selectedRestaurant}
             onSuccess={() => {
               setShowCreate(false);
               fetchData();
@@ -690,10 +782,14 @@ function OwnerFoodsPage() {
         confirmText="Delete"
       />
 
-      {foods.length === 0 ? (
+      {visibleFoods.length === 0 ? (
         <EmptyState
-          title="No menu items yet"
-          description="Add food items to your restaurant menu."
+          title={selectedRestaurant ? "No menu items for this restaurant" : "No menu items yet"}
+          description={
+            selectedRestaurant
+              ? "Add food items to this restaurant's menu."
+              : "Add food items to your restaurant menu."
+          }
           action={
             <Button onClick={() => setShowCreate(true)}>
               <Plus size={16} />
@@ -703,7 +799,7 @@ function OwnerFoodsPage() {
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {foods.map((food) => (
+          {visibleFoods.map((food) => (
             <Card key={food._id} className="overflow-hidden">
               <div className="relative h-32 overflow-hidden bg-gray-100">
                 {food.coverImage ? (
@@ -736,7 +832,7 @@ function OwnerFoodsPage() {
                   {food.category} • {food.foodType}
                 </p>
                 <p className="mt-2 text-sm font-semibold text-primary">
-                  {formatCurrency(food.variants?.[0]?.price || 0)}
+                  {formatCurrency(food.variants?.[0]?.price || 0, food.currency)}
                 </p>
                 <div className="mt-3 flex gap-2">
                   <Button

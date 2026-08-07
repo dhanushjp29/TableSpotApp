@@ -1,14 +1,17 @@
 import L from "leaflet";
-import { LocateFixed, MapPin, Star } from "lucide-react";
+import { LocateFixed, MapPin, Navigation, Star } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   MapContainer,
   Marker,
+  Polyline,
   Popup,
   TileLayer,
   useMap,
 } from "react-leaflet";
 import { Link } from "react-router-dom";
+
+import { formatDistance, getDistanceKm } from "../../utils/getDistance.js";
 
 // Fix default marker icon for Leaflet in bundler environments
 delete L.Icon.Default.prototype._getIconUrl;
@@ -112,6 +115,65 @@ function UserLocationMarker({ position }) {
   return <Marker position={position} icon={userLocationIcon} interactive={false} />;
 }
 
+// Route from the user's current location to the selected restaurant
+function RoutePath({ userLocation, restaurant }) {
+  const [roadRoute, setRoadRoute] = useState(null);
+
+  useEffect(() => {
+    if (!userLocation || !restaurant) return undefined;
+    let cancelled = false;
+
+    const destination = {
+      lat: Number(restaurant.location.latitude),
+      lng: Number(restaurant.location.longitude),
+    };
+
+    // Show a straight line immediately, upgrade to a real road path when available
+    fetch(
+      `https://router.project-osrm.org/route/v1/driving/${userLocation.lng},${userLocation.lat};${destination.lng},${destination.lat}?overview=full&geometries=geojson`
+    )
+      .then((res) => res.json())
+      .then((data) => {
+        if (cancelled) return;
+        const coordinates = data?.routes?.[0]?.geometry?.coordinates;
+        if (Array.isArray(coordinates) && coordinates.length > 0) {
+          setRoadRoute(coordinates.map(([lng, lat]) => [lat, lng]));
+        }
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [userLocation, restaurant]);
+
+  if (!userLocation || !restaurant) return null;
+
+  const destination = {
+    lat: Number(restaurant.location.latitude),
+    lng: Number(restaurant.location.longitude),
+  };
+
+  const straightLine = [
+    [userLocation.lat, userLocation.lng],
+    [destination.lat, destination.lng],
+  ];
+
+  return (
+    <Polyline
+      positions={roadRoute || straightLine}
+      pathOptions={{
+        color: "#2563eb",
+        weight: 4,
+        opacity: 0.8,
+        dashArray: "6 8",
+        lineCap: "round",
+        lineJoin: "round",
+      }}
+    />
+  );
+}
+
 // "Locate me" control button
 function LocateControl({ userLocation }) {
   const map = useMap();
@@ -194,7 +256,7 @@ function RestaurantDiscoveryMap({
     return (
       <div
         className={`flex items-center justify-center bg-gray-50 rounded-xl ${className}`}
-        style={{ minHeight: "400px" }}
+        style={{ minHeight: "650px" }}
       >
         <div className="text-center">
           <MapPin size={32} className="mx-auto text-muted" />
@@ -209,13 +271,13 @@ function RestaurantDiscoveryMap({
   return (
     <div
       className={`relative rounded-xl overflow-hidden ${className}`}
-      style={{ minHeight: "400px" }}
+      style={{ minHeight: "650px" }}
     >
       <MapContainer
         center={[13.0827, 80.2707]}
         zoom={12}
         scrollWheelZoom
-        style={{ height: "100%", width: "100%", minHeight: "400px" }}
+        style={{ height: "100%", width: "100%", minHeight: "650px" }}
         ref={mapRef}
         attributionControl={false}
       >
@@ -233,6 +295,14 @@ function RestaurantDiscoveryMap({
 
         <UserLocationMarker position={userLocation} />
         <LocateControl userLocation={userLocation} />
+
+        <RoutePath
+          key={selectedRestaurantId || "none"}
+          userLocation={userLocation}
+          restaurant={validRestaurants.find(
+            (r) => String(r._id) === String(selectedRestaurantId)
+          )}
+        />
 
         {validRestaurants.map((restaurant) => {
           const isSelected =
@@ -302,6 +372,21 @@ function RestaurantDiscoveryMap({
                         {restaurant.city}, {restaurant.state}
                       </span>
                     </p>
+
+                    {userLocation && (
+                      <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-primary">
+                        <Navigation size={12} className="shrink-0" />
+                        {formatDistance(
+                          getDistanceKm(
+                            userLocation.lat,
+                            userLocation.lng,
+                            Number(restaurant.location.latitude),
+                            Number(restaurant.location.longitude)
+                          )
+                        )}{" "}
+                        from your location
+                      </p>
+                    )}
 
                     {restaurant.currentOffers?.[0]?.title && (
                       <p className="mt-2 rounded-lg bg-accent/10 px-2 py-1 text-[11px] font-semibold text-accent line-clamp-1">

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useNavigate, Link } from "react-router-dom";
 import { useSelector } from "react-redux";
 import {
   Calendar,
@@ -8,12 +9,16 @@ import {
   Bell,
   Star,
   Mail,
+  Eye,
+  CalendarPlus,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { bookingApi } from "../../api/booking.api.js";
 import { userApi } from "../../api/user.api.js";
+import { restaurantReviewApi } from "../../api/review.api.js";
 import { subscribeToBookingUpdates } from "../../services/socket/socketService.js";
+import { ROUTES } from "../../routes/routeConstants.js";
 
 import Card from "../../components/ui/Card.jsx";
 import Badge from "../../components/ui/Badge.jsx";
@@ -24,9 +29,11 @@ import ErrorState from "../../components/ui/ErrorState.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import ReviewModal from "../../components/ui/ReviewModal.jsx";
 import RestaurantCard from "../../components/restaurant/RestaurantCard.jsx";
+import FoodCard from "../../components/food/FoodCard.jsx";
 import { formatDate, formatTime } from "../../utils/formatDate.js";
 
 export function CustomerBookingsPage() {
+  const navigate = useNavigate();
   const [bookings, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -35,6 +42,8 @@ export function CustomerBookingsPage() {
     isOpen: false,
     restaurantId: null,
     restaurantName: "",
+    foods: [],
+    bookingId: null,
   });
 
   const fetchBookings = async () => {
@@ -122,10 +131,19 @@ export function CustomerBookingsPage() {
 
   return (
     <div className="mx-auto max-w-4xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-text">My Bookings</h1>
-          <p className="text-sm text-muted">Manage your table reservations and write reviews</p>
+      <div className="flex flex-col gap-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-text">My Bookings</h1>
+            <p className="text-sm text-muted">Manage your table reservations and write reviews</p>
+          </div>
+
+          <Link to={ROUTES.RESTAURANTS}>
+            <Button>
+              <CalendarPlus size={16} />
+              Book a Table
+            </Button>
+          </Link>
         </div>
 
         {/* Filter Pills */}
@@ -220,6 +238,16 @@ export function CustomerBookingsPage() {
                 <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
                   <span className="text-xs font-mono text-muted">{booking.bookingCode || `Ref: ${booking._id}`}</span>
                   <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() =>
+                        navigate(`/customer/bookings/${booking._id}`)
+                      }
+                    >
+                      <Eye size={14} className="mr-1" />
+                      Details
+                    </Button>
                     {booking.bookingStatus !== "Cancelled" && booking.bookingStatus !== "Completed" && (
                       <Button
                         variant="outline"
@@ -235,13 +263,31 @@ export function CustomerBookingsPage() {
                         variant="ghost"
                         size="sm"
                         className="text-amber-600 hover:bg-amber-50"
-                        onClick={() =>
-                          setReviewModalState({
-                            isOpen: true,
-                            restaurantId: restaurant._id,
-                            restaurantName: restaurant.restaurantName,
-                          })
-                        }
+                        onClick={async () => {
+                          try {
+                            const res = await restaurantReviewApi.getEligibility(
+                              restaurant._id,
+                              booking._id
+                            );
+                            if (!res?.data?.canReview) {
+                              toast(
+                                "You can write a review only after the restaurant creates your bill for this booking."
+                              );
+                              return;
+                            }
+                            setReviewModalState({
+                              isOpen: true,
+                              restaurantId: restaurant._id,
+                              restaurantName: restaurant.restaurantName,
+                              foods: res?.data?.billOrderedItems || [],
+                              bookingId: booking._id,
+                            });
+                          } catch (err) {
+                            toast.error(
+                              err?.response?.data?.message || "Unable to start a review right now."
+                            );
+                          }
+                        }}
                       >
                         <Star size={14} className="mr-1 fill-amber-400" />
                         Write Review
@@ -257,10 +303,12 @@ export function CustomerBookingsPage() {
 
       <ReviewModal
         isOpen={reviewModalState.isOpen}
-        onClose={() => setReviewModalState({ isOpen: false, restaurantId: null, restaurantName: "" })}
+        onClose={() => setReviewModalState({ isOpen: false, restaurantId: null, restaurantName: "", foods: [], bookingId: null })}
         targetType="restaurant"
         targetId={reviewModalState.restaurantId}
         targetName={reviewModalState.restaurantName}
+        foods={reviewModalState.foods}
+        bookingId={reviewModalState.bookingId}
         onSuccess={fetchBookings}
       />
     </div>
@@ -268,14 +316,21 @@ export function CustomerBookingsPage() {
 }
 
 export function CustomerFavoritesPage() {
+  const [activeTab, setActiveTab] = useState("restaurants");
   const [restaurants, setRestaurants] = useState([]);
+  const [foods, setFoods] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const fetchFavorites = async () => {
+  const fetchFavorites = async (tab = activeTab) => {
     try {
-      const response = await userApi.getFavoriteRestaurants();
-      setRestaurants(response?.data?.restaurants || response?.restaurants || []);
+      if (tab === "foods") {
+        const response = await userApi.getFavoriteFoods();
+        setFoods(response?.data?.foods || response?.foods || []);
+      } else {
+        const response = await userApi.getFavoriteRestaurants();
+        setRestaurants(response?.data?.restaurants || response?.restaurants || []);
+      }
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to load favorites.");
     } finally {
@@ -285,24 +340,39 @@ export function CustomerFavoritesPage() {
 
   useEffect(() => {
     let isMounted = true;
-    userApi
-      .getFavoriteRestaurants()
+    const target = activeTab === "foods" ? "foods" : "restaurants";
+    const request =
+      target === "foods"
+        ? userApi.getFavoriteFoods()
+        : userApi.getFavoriteRestaurants();
+
+    request
       .then((response) => {
-        if (isMounted) {
-          setRestaurants(response?.data?.restaurants || response?.restaurants || []);
-          setIsLoading(false);
+        if (!isMounted) return;
+        if (target === "foods") {
+          setFoods(response?.data?.foods || response?.foods || []);
+        } else {
+          setRestaurants(
+            response?.data?.restaurants || response?.restaurants || []
+          );
         }
+        setIsLoading(false);
       })
       .catch((err) => {
-        if (isMounted) {
-          setError(err?.response?.data?.message || "Failed to load favorites.");
-          setIsLoading(false);
-        }
+        if (!isMounted) return;
+        setError(err?.response?.data?.message || "Failed to load favorites.");
+        setIsLoading(false);
       });
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [activeTab]);
+
+  const handleTabChange = (tab) => {
+    setActiveTab(tab);
+    setIsLoading(true);
+    setError(null);
+  };
 
   const handleToggleFavorite = async (restaurantId) => {
     try {
@@ -314,14 +384,53 @@ export function CustomerFavoritesPage() {
     }
   };
 
+  const handleToggleFavoriteFood = async (foodId) => {
+    try {
+      await userApi.toggleFavoriteFood(foodId);
+      setFoods((prev) => prev.filter((f) => f._id !== foodId));
+      toast.success("Removed from favorites.");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to update favorites.");
+    }
+  };
+
+  const items = activeTab === "foods" ? foods : restaurants;
+  const emptyMessage =
+    activeTab === "foods"
+      ? "No favorite dishes saved"
+      : "No favorite restaurants saved";
+  const emptyDescription =
+    activeTab === "foods"
+      ? "Click the heart icon on any dish to save it here for quick access."
+      : "Click the heart icon on any restaurant card to save it here for quick booking.";
+
   return (
     <div className="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-text flex items-center gap-2">
           <Heart className="text-rose-500 fill-rose-500" size={24} />
-          My Favorite Restaurants
+          My Favorites
         </h1>
-        <p className="text-sm text-muted">Your saved dining spots for quick booking</p>
+        <p className="text-sm text-muted">Your saved dining spots and dishes</p>
+      </div>
+
+      <div className="flex gap-2">
+        {[
+          { key: "restaurants", label: "Restaurants" },
+          { key: "foods", label: "Food" },
+        ].map((tab) => (
+          <button
+            key={tab.key}
+            onClick={() => handleTabChange(tab.key)}
+            className={`px-4 py-2 text-sm font-semibold rounded-full transition-all ${
+              activeTab === tab.key
+                ? "bg-primary text-white shadow-sm"
+                : "bg-surface text-muted hover:bg-gray-100 border border-gray-200"
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
 
       {isLoading ? (
@@ -332,21 +441,27 @@ export function CustomerFavoritesPage() {
         </div>
       ) : error ? (
         <ErrorState title="Unable to load favorites" description={error} onRetry={fetchFavorites} />
-      ) : restaurants.length === 0 ? (
-        <EmptyState
-          title="No favorite restaurants saved"
-          description="Click the heart icon on any restaurant card to save it here for quick booking."
-        />
+      ) : items.length === 0 ? (
+        <EmptyState title={emptyMessage} description={emptyDescription} />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-          {restaurants.map((restaurant) => (
-            <RestaurantCard
-              key={restaurant._id}
-              restaurant={restaurant}
-              isFavorite
-              onToggleFavorite={handleToggleFavorite}
-            />
-          ))}
+          {activeTab === "foods"
+            ? items.map((food) => (
+                <FoodCard
+                  key={food._id}
+                  food={food}
+                  isFavorite
+                  onToggleFavorite={handleToggleFavoriteFood}
+                />
+              ))
+            : items.map((restaurant) => (
+                <RestaurantCard
+                  key={restaurant._id}
+                  restaurant={restaurant}
+                  isFavorite
+                  onToggleFavorite={handleToggleFavorite}
+                />
+              ))}
         </div>
       )}
     </div>

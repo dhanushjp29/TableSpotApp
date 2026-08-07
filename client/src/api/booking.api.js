@@ -40,4 +40,11 @@ export const bookingApi = {
     const response = await apiClient.post(`/bookings/${bookingId}/complete`);
     return response.data;
   },
+
+  async markNoShow(bookingId, remarks) {
+    const response = await apiClient.post(`/bookings/${bookingId}/no-show`, {
+      remarks,
+    });
+    return response.data;
+  },
 };

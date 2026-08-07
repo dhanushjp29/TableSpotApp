@@ -24,6 +24,9 @@ function PublicLayout() {
             <Link to={ROUTES.RESTAURANTS} className="text-sm font-medium text-text hover:text-primary">
               Restaurants
             </Link>
+            <Link to={ROUTES.FOODS} className="text-sm font-medium text-text hover:text-primary">
+              Food
+            </Link>
             {isAuthenticated ? (
               <div className="flex items-center gap-3">
                 <Link

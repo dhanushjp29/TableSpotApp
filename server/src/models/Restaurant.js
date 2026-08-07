@@ -1,5 +1,15 @@
 import mongoose from "mongoose";
 
+import {
+  BOOKING_PAYMENT_POLICY,
+  BOOKING_PAYMENT_POLICY_VALUES,
+  BOOKING_PAYMENT_TYPE,
+  BOOKING_PAYMENT_TYPE_VALUES,
+  DEFAULT_CANCELLATION_POLICY,
+  DEFAULT_CUSTOMER_WAITING_PERIOD_MINUTES,
+  MAX_BOOKING_ADVANCE_AMOUNT,
+} from "../utils/constants.js";
+
 const offerSchema = new mongoose.Schema(
   {
     title: {
@@ -255,6 +265,81 @@ const restaurantSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
+    },
+
+    razorpayAccountStatus: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    gstin: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    bookingPaymentPolicy: {
+      type: {
+        type: String,
+        enum: BOOKING_PAYMENT_POLICY_VALUES,
+        default: BOOKING_PAYMENT_POLICY.PAY_ON_SPOT,
+      },
+      paymentType: {
+        type: String,
+        enum: BOOKING_PAYMENT_TYPE_VALUES,
+        default: BOOKING_PAYMENT_TYPE.FIXED_AMOUNT,
+      },
+      fixedAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+      percentage: {
+        type: Number,
+        default: 0,
+        min: 0,
+        max: 100,
+      },
+      maximumAmount: {
+        type: Number,
+        default: MAX_BOOKING_ADVANCE_AMOUNT,
+        min: 0,
+      },
+    },
+
+    cancellationPolicy: {
+      type: {
+        isEnabled: {
+          type: Boolean,
+          default: DEFAULT_CANCELLATION_POLICY.isEnabled,
+        },
+        hoursBeforeBooking: {
+          type: Number,
+          default: DEFAULT_CANCELLATION_POLICY.hoursBeforeBooking,
+          min: 1,
+        },
+        refundPercentage: {
+          type: Number,
+          default: DEFAULT_CANCELLATION_POLICY.refundPercentage,
+          min: 0,
+          max: 100,
+        },
+        noShowRefundPercentage: {
+          type: Number,
+          default: DEFAULT_CANCELLATION_POLICY.noShowRefundPercentage,
+          min: 0,
+          max: 100,
+        },
+      },
+      default: () => ({ ...DEFAULT_CANCELLATION_POLICY }),
+    },
+
+    customerWaitingPeriod: {
+      type: Number,
+      default: DEFAULT_CUSTOMER_WAITING_PERIOD_MINUTES,
+      min: 5,
+      max: 180,
     },
 
     isFeatured: {

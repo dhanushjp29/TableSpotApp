@@ -1,0 +1,72 @@
+- generic [ref=f2e2]:
+  - generic [ref=f2e24]:
+    - complementary [ref=f2e25]:
+      - link "TableSpot" [ref=f2e27] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=f2e28]:
+        - link "Dashboard" [ref=f2e29] [cursor=pointer]:
+          - /url: /customer/dashboard
+        - link "My Bookings" [ref=f2e35] [cursor=pointer]:
+          - /url: /customer/bookings
+        - link "Payments" [ref=f2e38] [cursor=pointer]:
+          - /url: /customer/payments
+        - link "Favorites" [ref=f2e43] [cursor=pointer]:
+          - /url: /customer/favorites
+        - link "Notifications 15" [ref=f2e46] [cursor=pointer]:
+          - /url: /customer/notifications
+          - text: Notifications
+          - generic [ref=f2e50]: "15"
+        - link "Profile" [ref=f2e51] [cursor=pointer]:
+          - /url: /customer/profile
+    - generic [ref=f2e55]:
+      - banner [ref=f2e56]:
+        - generic [ref=f2e57]:
+          - link "Notifications" [ref=f2e58] [cursor=pointer]:
+            - /url: /customer/notifications
+            - generic [ref=f2e62]: "15"
+          - generic [ref=f2e63]:
+            - img "PW Customer Updated avatar" [ref=f2e64]
+            - generic [ref=f2e65]:
+              - paragraph [ref=f2e66]: PW Customer Updated
+              - paragraph [ref=f2e67]: customer
+          - button "Logout" [ref=f2e68]
+      - main [ref=f2e72]:
+        - generic [ref=f2e73]:
+          - generic [ref=f2e75]:
+            - heading "Welcome back, Gourmet Guest!" [level=1] [ref=f2e76]
+            - paragraph [ref=f2e77]: Ready for your next dining experience? Book tables at top restaurants and order your favorite dishes in seconds.
+            - generic [ref=f2e78]:
+              - link [ref=f2e79] [cursor=pointer]:
+                - /url: /restaurants
+                - button "Book a Table" [ref=f2e80]
+              - link [ref=f2e83] [cursor=pointer]:
+                - /url: /customer/bookings
+                - button "View All Bookings" [ref=f2e84]
+          - generic [ref=f2e85]:
+            - generic [ref=f2e90]:
+              - paragraph [ref=f2e91]: Total Bookings
+              - paragraph [ref=f2e92]: "0"
+            - generic [ref=f2e98]:
+              - paragraph [ref=f2e99]: Upcoming
+              - paragraph [ref=f2e100]: "0"
+            - generic [ref=f2e107]:
+              - paragraph [ref=f2e108]: Completed
+              - paragraph [ref=f2e109]: "0"
+            - generic [ref=f2e114]:
+              - paragraph [ref=f2e115]: Quick Access
+              - link "Favorites" [ref=f2e116] [cursor=pointer]:
+                - /url: /customer/favorites
+          - generic [ref=f2e119]:
+            - generic [ref=f2e120]:
+              - generic [ref=f2e121]:
+                - heading "Upcoming Reservations" [level=2] [ref=f2e122]
+                - paragraph [ref=f2e123]: Your active table reservations and status
+              - link "View All" [ref=f2e124] [cursor=pointer]:
+                - /url: /customer/bookings
+            - generic [ref=f2e128]:
+              - heading "No upcoming reservations" [level=3] [ref=f2e134]
+              - paragraph [ref=f2e135]: Explore popular restaurants around you and book your spot now.
+              - link [ref=f2e137] [cursor=pointer]:
+                - /url: /restaurants
+                - button "Explore Restaurants" [ref=f2e138]
+  - status [ref=f2e144]: Login successful.

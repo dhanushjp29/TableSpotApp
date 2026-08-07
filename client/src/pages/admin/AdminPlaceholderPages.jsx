@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Link } from "react-router-dom";
 import {
   Users,
   Utensils,
@@ -41,6 +42,7 @@ import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
 import { formatCurrency } from "../../utils/formatCurrency.js";
+import { ROUTES } from "../../routes/routeConstants.js";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
@@ -51,28 +53,51 @@ export function AdminDashboardPage() {
     restaurantsCount: 0,
     bookingsCount: 0,
     pendingVerifications: 0,
+    revenue: 0,
+    totalReviews: 0,
   });
+  const [pendingRestaurants, setPendingRestaurants] = useState([]);
+  const [recentUsers, setRecentUsers] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
-    Promise.all([userApi.getAll(), restaurantApi.getAll(), bookingApi.getAll()])
-      .then(([usersRes, restRes, bookingsRes]) => {
-        if (isMounted) {
-          const users = usersRes?.data?.users || usersRes?.users || [];
-          const rests = restRes?.data?.restaurants || restRes?.restaurants || [];
-          const bookings = bookingsRes?.data?.bookings || bookingsRes?.bookings || [];
-          const pending = rests.filter((r) => r.verificationStatus === "Pending").length;
+    Promise.all([
+      userApi.getAll({ limit: 100 }),
+      restaurantApi.getAll({ limit: 100 }),
+      bookingApi.getAll({ limit: 100 }),
+      billApi.getAll({ limit: 100 }),
+      restaurantReviewApi.getAll({ limit: 100 }),
+    ])
+      .then(
+        ([usersRes, restRes, bookingsRes, billsRes, reviewsRes]) => {
+          if (isMounted) {
+            const users = usersRes?.data?.users || usersRes?.users || [];
+            const rests = restRes?.data?.restaurants || restRes?.restaurants || [];
+            const bookings = bookingsRes?.data?.bookings || bookingsRes?.bookings || [];
+            const bills = billsRes?.data?.bills || billsRes?.bills || [];
+            const reviews = reviewsRes?.data?.reviews || reviewsRes?.reviews || [];
+            const pending = rests.filter((r) => r.verificationStatus === "Pending");
+            const paidRevenue = bills
+              .filter(
+                (b) => b.billStatus === "Paid" || b.payment?.paymentStatus === "Paid"
+              )
+              .reduce((sum, b) => sum + Number(b.grandTotal || 0), 0);
 
-          setStats({
-            usersCount: users.length,
-            restaurantsCount: rests.length,
-            bookingsCount: bookings.length,
-            pendingVerifications: pending,
-          });
-          setIsLoading(false);
+            setStats({
+              usersCount: users.length,
+              restaurantsCount: rests.length,
+              bookingsCount: bookings.length,
+              pendingVerifications: pending.length,
+              revenue: paidRevenue,
+              totalReviews: reviews.length,
+            });
+            setPendingRestaurants(pending.slice(0, 5));
+            setRecentUsers(users.slice(0, 6));
+            setIsLoading(false);
+          }
         }
-      })
+      )
       .catch((err) => {
         if (isMounted) {
           console.error("Error loading admin stats", err);
@@ -83,6 +108,15 @@ export function AdminDashboardPage() {
       isMounted = false;
     };
   }, []);
+
+  const kpis = [
+    { label: "Total Users", value: stats.usersCount, color: "border-l-primary", icon: Users },
+    { label: "Total Restaurants", value: stats.restaurantsCount, color: "border-l-amber-500", icon: Utensils },
+    { label: "Total Reservations", value: stats.bookingsCount, color: "border-l-green-500", icon: Calendar },
+    { label: "Pending Approvals", value: stats.pendingVerifications, color: "border-l-rose-500", icon: AlertTriangle },
+    { label: "Platform Revenue", value: formatCurrency(stats.revenue), color: "border-l-blue-500", icon: BarChart2 },
+    { label: "Total Reviews", value: stats.totalReviews, color: "border-l-violet-500", icon: Star },
+  ];
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-8">
@@ -95,55 +129,123 @@ export function AdminDashboardPage() {
       </div>
 
       {isLoading ? (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          {[1, 2, 3, 4].map((i) => (
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3, 4, 5, 6].map((i) => (
             <Card key={i} className="p-5">
               <SkeletonText lines={2} />
             </Card>
           ))}
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">
-          <Card className="p-5 flex items-center gap-4 border-l-4 border-l-primary">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-              <Users size={24} />
-            </div>
-            <div>
-              <p className="text-xs uppercase font-medium tracking-wider text-muted">Total Users</p>
-              <p className="text-2xl font-bold text-text">{stats.usersCount}</p>
-            </div>
-          </Card>
+        <>
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {kpis.map((kpi) => {
+              const Icon = kpi.icon;
+              return (
+                <Card key={kpi.label} className={`p-5 flex items-center gap-4 border-l-4 ${kpi.color}`}>
+                  <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <Icon size={24} />
+                  </div>
+                  <div>
+                    <p className="text-xs uppercase font-medium tracking-wider text-muted">{kpi.label}</p>
+                    <p className="text-2xl font-bold text-text">{kpi.value}</p>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
 
-          <Card className="p-5 flex items-center gap-4 border-l-4 border-l-amber-500">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-amber-500/10 text-amber-600">
-              <Utensils size={24} />
-            </div>
-            <div>
-              <p className="text-xs uppercase font-medium tracking-wider text-muted">Total Restaurants</p>
-              <p className="text-2xl font-bold text-text">{stats.restaurantsCount}</p>
-            </div>
-          </Card>
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+            {/* Pending Restaurant Verifications */}
+            <Card className="p-6">
+              <h3 className="font-bold text-text flex items-center gap-2">
+                <AlertTriangle size={18} className="text-amber-500" />
+                Pending Restaurant Approvals
+              </h3>
+              {pendingRestaurants.length === 0 ? (
+                <EmptyState
+                  title="All caught up"
+                  description="No restaurants waiting for verification."
+                />
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {pendingRestaurants.map((r) => (
+                    <div
+                      key={r._id}
+                      className="flex items-center justify-between gap-3 rounded-lg border border-gray-100 p-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-text truncate">
+                          {r.restaurantName}
+                        </p>
+                        <p className="text-xs text-muted">
+                          {r.city}, {r.state} • {r.ownerId?.fullName || "Owner"}
+                        </p>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onClick={() => {
+                          restaurantApi
+                            .verify(r._id, { verificationStatus: "Verified" })
+                            .then(() => toast.success(`${r.restaurantName} approved!`))
+                            .catch((err) =>
+                              toast.error(err?.response?.data?.message || "Approval failed.")
+                            )
+                            .finally(() => window.location.reload());
+                        }}
+                      >
+                        <CheckCircle size={14} className="mr-1" /> Approve
+                      </Button>
+                    </div>
+                  ))}
+                  <Link
+                    to={ROUTES.ADMIN_RESTAURANTS}
+                    className="block text-center text-sm font-medium text-primary hover:underline mt-2"
+                  >
+                    Manage all restaurants
+                  </Link>
+                </div>
+              )}
+            </Card>
 
-          <Card className="p-5 flex items-center gap-4 border-l-4 border-l-green-500">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-green-500/10 text-green-600">
-              <Calendar size={24} />
-            </div>
-            <div>
-              <p className="text-xs uppercase font-medium tracking-wider text-muted">Total Reservations</p>
-              <p className="text-2xl font-bold text-text">{stats.bookingsCount}</p>
-            </div>
-          </Card>
-
-          <Card className="p-5 flex items-center gap-4 border-l-4 border-l-rose-500">
-            <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-rose-500/10 text-rose-600">
-              <AlertTriangle size={24} />
-            </div>
-            <div>
-              <p className="text-xs uppercase font-medium tracking-wider text-muted">Pending Approvals</p>
-              <p className="text-2xl font-bold text-text">{stats.pendingVerifications}</p>
-            </div>
-          </Card>
-        </div>
+            {/* Recent Users */}
+            <Card className="p-6">
+              <h3 className="font-bold text-text flex items-center gap-2">
+                <Users size={18} className="text-primary" />
+                Recent Users
+              </h3>
+              {recentUsers.length === 0 ? (
+                <EmptyState title="No users yet" />
+              ) : (
+                <div className="mt-4 divide-y divide-gray-50">
+                  {recentUsers.map((u) => (
+                    <div key={u._id} className="flex items-center justify-between gap-3 py-2.5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-xs uppercase">
+                          {u.fullName?.[0] || "U"}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-semibold text-text truncate">{u.fullName}</p>
+                          <p className="text-xs text-muted truncate">{u.email}</p>
+                        </div>
+                      </div>
+                      <Badge variant={u.role === "admin" ? "danger" : u.role === "owner" ? "info" : "default"} className="capitalize">
+                        {u.role}
+                      </Badge>
+                    </div>
+                  ))}
+                  <Link
+                    to={ROUTES.ADMIN_USERS}
+                    className="block text-center text-sm font-medium text-primary hover:underline pt-3"
+                  >
+                    Manage all users
+                  </Link>
+                </div>
+              )}
+            </Card>
+          </div>
+        </>
       )}
     </div>
   );

@@ -10,6 +10,7 @@ import {
     updateBillSchema,
     addBillPaymentSchema,
     markBillStatusSchema,
+    convertBookingToBillSchema,
 } from "../validators/bill.validator.js";
 
 const router = Router();
@@ -25,6 +26,12 @@ router.post(
 
 router.get("/", asyncHandler(billController.getAll));
 router.get("/:billId", asyncHandler(billController.getById));
+
+router.post(
+    "/:bookingId/convert-to-bill",
+    validateRequest(convertBookingToBillSchema),
+    asyncHandler(billController.convert)
+);
 
 router.patch(
     "/:billId",

@@ -1,28 +1,62 @@
-import { BarChart3, Calendar, DollarSign, Star, TrendingUp, UtensilsCrossed } from "lucide-react";
+import {
+  BarChart3,
+  Calendar,
+  CalendarClock,
+  DollarSign,
+  LayoutGrid,
+  Star,
+  TrendingUp,
+  UtensilsCrossed,
+} from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
+import { useSelector } from "react-redux";
 
 import { bookingApi } from "../../api/booking.api.js";
 import { restaurantApi } from "../../api/restaurant.api.js";
+import { tableApi } from "../../api/table.api.js";
+import { foodApi } from "../../api/food.api.js";
+import { billApi } from "../../api/bill.api.js";
 import { restaurantReviewApi } from "../../api/review.api.js";
 
 import Card from "../../components/ui/Card.jsx";
+import Badge from "../../components/ui/Badge.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
+import EmptyState from "../../components/ui/EmptyState.jsx";
 import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import { ROUTES } from "../../routes/routeConstants.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
+import { formatDate, formatTime } from "../../utils/formatDate.js";
 
-function StatCard({ icon: Icon, label, value, subtext }) {
+const STATUS_VARIANT = {
+  Pending: "warning",
+  Confirmed: "info",
+  "Checked In": "info",
+  Completed: "success",
+  Cancelled: "danger",
+  "No Show": "danger",
+};
+
+function StatCard({ icon: Icon, label, value, subtext, accent = "primary" }) {
+  const accents = {
+    primary: "border-l-primary bg-primary/10 text-primary",
+    amber: "border-l-amber-500 bg-amber-500/10 text-amber-600",
+    green: "border-l-green-500 bg-green-500/10 text-green-600",
+    rose: "border-l-rose-500 bg-rose-500/10 text-rose-600",
+    blue: "border-l-blue-500 bg-blue-500/10 text-blue-600",
+    violet: "border-l-violet-500 bg-violet-500/10 text-violet-600",
+  };
+  const [border, chip] = accents[accent].split(" ");
   return (
-    <Card className="p-5">
+    <Card className={`p-5 border-l-4 ${border}`}>
       <div className="flex items-center justify-between">
         <div>
           <p className="text-sm text-muted">{label}</p>
           <p className="mt-1 text-2xl font-bold text-text">{value}</p>
           {subtext && <p className="mt-1 text-xs text-muted">{subtext}</p>}
         </div>
-        <div className="rounded-full bg-primary/10 p-3">
-          <Icon size={20} className="text-primary" />
+        <div className={`rounded-full ${chip} p-3`}>
+          <Icon size={20} />
         </div>
       </div>
     </Card>
@@ -30,12 +64,20 @@ function StatCard({ icon: Icon, label, value, subtext }) {
 }
 
 function OwnerDashboardPage() {
+  const user = useSelector((state) => state.auth.user);
+  const userId = user?._id || user?.id;
+
   const [stats, setStats] = useState({
     totalRestaurants: 0,
+    totalTables: 0,
+    totalFoods: 0,
     totalBookings: 0,
+    pendingBookings: 0,
     totalReviews: 0,
-    totalRevenue: 0,
+    avgRating: 0,
+    revenue: 0,
   });
+  const [recentBookings, setRecentBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
@@ -44,24 +86,56 @@ function OwnerDashboardPage() {
       setIsLoading(true);
       setError(null);
       try {
-        const [restaurantsRes, bookingsRes, reviewsRes] = await Promise.all([
-          restaurantApi.getAll({ isActive: true }),
-          bookingApi.getAll({ limit: 1 }),
-          restaurantReviewApi.getAll({ limit: 1 }),
+        const [
+          restaurantsRes,
+          tablesRes,
+          foodsRes,
+          bookingsRes,
+          reviewsRes,
+          billsRes,
+        ] = await Promise.all([
+          restaurantApi.getAll({ ownerId: userId, limit: 100 }),
+          tableApi.getAll({ limit: 100 }),
+          foodApi.getAll({ limit: 100 }),
+          bookingApi.getAll({ limit: 100 }),
+          restaurantReviewApi.getAll({ ownerId: userId, limit: 100 }),
+          billApi.getAll({ limit: 100 }),
         ]);
 
         const restaurants = restaurantsRes?.data?.restaurants || [];
-        const bookings = bookingsRes?.bookings || [];
-        const reviews = reviewsRes?.reviews || [];
+        const tables = tablesRes?.data?.tables || [];
+        const foods = foodsRes?.data?.foods || [];
+        const bookings = bookingsRes?.data?.bookings || [];
+        const reviews = reviewsRes?.data?.reviews || [];
+        const bills = billsRes?.data?.bills || [];
 
-        const totalRevenue = bookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0);
+        const paidBills = bills.filter(
+          (b) => b.billStatus === "Paid" || b.payment?.paymentStatus === "Paid"
+        );
+        const revenue = paidBills.reduce(
+          (sum, b) => sum + Number(b.grandTotal || 0),
+          0
+        );
+        const avgRating = reviews.length
+          ? (
+              reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) /
+              reviews.length
+            ).toFixed(1)
+          : "0.0";
 
         setStats({
           totalRestaurants: restaurants.length,
+          totalTables: tables.length,
+          totalFoods: foods.length,
           totalBookings: bookings.length,
+          pendingBookings: bookings.filter(
+            (b) => b.bookingStatus === "Pending"
+          ).length,
           totalReviews: reviews.length,
-          totalRevenue,
+          avgRating,
+          revenue,
         });
+        setRecentBookings(bookings.slice(0, 5));
       } catch (err) {
         setError(err?.response?.data?.message || "Failed to load dashboard data.");
       } finally {
@@ -70,7 +144,7 @@ function OwnerDashboardPage() {
     };
 
     fetchStats();
-  }, []);
+  }, [userId]);
 
   if (isLoading) {
     return (
@@ -78,8 +152,8 @@ function OwnerDashboardPage() {
         <div className="mb-6">
           <SkeletonText lines={2} />
         </div>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {Array.from({ length: 4 }).map((_, i) => (
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 6 }).map((_, i) => (
             <Card key={i} className="p-5">
               <SkeletonText lines={3} />
             </Card>
@@ -102,44 +176,64 @@ function OwnerDashboardPage() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold text-text">Owner Dashboard</h1>
+    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-8">
+      <div>
+        <h1 className="text-2xl font-bold text-text">
+          Welcome back, {user?.fullName || "Owner"}!
+        </h1>
         <p className="mt-1 text-sm text-muted">
-          Manage your restaurants, tables, foods, and bookings.
+          Here's what's happening across your restaurants today.
         </p>
       </div>
 
       {/* Stats Grid */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           icon={UtensilsCrossed}
           label="Restaurants"
           value={stats.totalRestaurants}
-          subtext="Active restaurants"
+          subtext="Your listings"
+          accent="primary"
         />
         <StatCard
           icon={Calendar}
           label="Bookings"
           value={stats.totalBookings}
-          subtext="Total bookings"
+          subtext={`${stats.pendingBookings} pending approval`}
+          accent="amber"
+        />
+        <StatCard
+          icon={LayoutGrid}
+          label="Tables"
+          value={stats.totalTables}
+          subtext="Across all restaurants"
+          accent="blue"
+        />
+        <StatCard
+          icon={BarChart3}
+          label="Menu Items"
+          value={stats.totalFoods}
+          subtext="Active dishes"
+          accent="violet"
         />
         <StatCard
           icon={Star}
           label="Reviews"
-          value={stats.totalReviews}
-          subtext="Customer reviews"
+          value={`${stats.avgRating} ★`}
+          subtext={`${stats.totalReviews} reviews received`}
+          accent="green"
         />
         <StatCard
           icon={DollarSign}
           label="Revenue"
-          value={formatCurrency(stats.totalRevenue)}
-          subtext="Total earnings"
+          value={formatCurrency(stats.revenue)}
+          subtext="From paid bills"
+          accent="rose"
         />
       </div>
 
       {/* Quick Actions */}
-      <div className="mt-8">
+      <div>
         <h2 className="mb-4 text-lg font-semibold text-text">Quick Actions</h2>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           <Link to={ROUTES.OWNER_RESTAURANT}>
@@ -182,6 +276,81 @@ function OwnerDashboardPage() {
             </Card>
           </Link>
         </div>
+      </div>
+
+      {/* Recent Bookings */}
+      <div>
+        <div className="mb-4 flex items-center justify-between">
+          <h2 className="text-lg font-semibold text-text flex items-center gap-2">
+            <CalendarClock size={20} className="text-primary" />
+            Recent Reservations
+          </h2>
+          <Link
+            to={ROUTES.OWNER_RESERVATIONS}
+            className="text-sm font-medium text-primary hover:underline"
+          >
+            View All
+          </Link>
+        </div>
+
+        {recentBookings.length === 0 ? (
+          <Card className="p-8 text-center">
+            <EmptyState
+              title="No bookings yet"
+              description="When customers reserve a table, their bookings will appear here."
+            />
+          </Card>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-surface shadow-sm">
+            <table className="w-full text-left text-sm text-text">
+              <thead className="bg-gray-50 text-xs uppercase font-semibold text-muted border-b border-gray-200">
+                <tr>
+                  <th className="px-5 py-3">Guest</th>
+                  <th className="px-5 py-3">Restaurant</th>
+                  <th className="px-5 py-3">Date & Time</th>
+                  <th className="px-5 py-3">Guests</th>
+                  <th className="px-5 py-3">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100 font-medium">
+                {recentBookings.map((booking) => {
+                  const restaurant =
+                    typeof booking.restaurantId === "object"
+                      ? booking.restaurantId
+                      : null;
+                  const customer =
+                    typeof booking.userId === "object" ? booking.userId : null;
+                  const bDate = booking.bookingDateTime
+                    ? new Date(booking.bookingDateTime)
+                    : null;
+                  return (
+                    <tr key={booking._id} className="hover:bg-gray-50/80 transition-colors">
+                      <td className="px-5 py-3 font-semibold text-text">
+                        {customer?.fullName || "Guest"}
+                      </td>
+                      <td className="px-5 py-3 text-xs text-muted">
+                        {restaurant?.restaurantName || "—"}
+                      </td>
+                      <td className="px-5 py-3 text-xs text-muted">
+                        {bDate
+                          ? `${formatDate(bDate)} at ${formatTime(bDate)}`
+                          : "—"}
+                      </td>
+                      <td className="px-5 py-3">{booking.numberOfGuests}</td>
+                      <td className="px-5 py-3">
+                        <Badge
+                          variant={STATUS_VARIANT[booking.bookingStatus] || "default"}
+                        >
+                          {booking.bookingStatus}
+                        </Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );

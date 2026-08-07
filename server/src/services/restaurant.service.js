@@ -8,9 +8,18 @@ import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
 import generateSlug from "../utils/generateSlug.js";
 import { createNotification } from "./notification.service.js";
+import {
+    deriveTableLabel,
+    generateSeats,
+} from "../utils/seatLayout.js";
 
 import {
+  BOOKING_PAYMENT_POLICY,
+  BOOKING_PAYMENT_TYPE,
   CODE_PREFIX,
+  RAZORPAY_ACCOUNT_STATUS,
+  SEAT_SELECTION_MODE,
+  TABLE_SHAPE,
   TABLE_STATUS,
   USER_ROLE,
 } from "../utils/constants.js";
@@ -19,6 +28,8 @@ const TABLE_DEFAULTS = {
   tableType: "Normal",
   tableLocation: "Indoor",
   status: TABLE_STATUS.AVAILABLE,
+  shape: TABLE_SHAPE.SQUARE,
+  seatSelectionMode: SEAT_SELECTION_MODE.FULL_TABLE,
 };
 
 const normalizeTableInput = (table = {}) => {
@@ -51,11 +62,26 @@ const normalizeTableInput = (table = {}) => {
     );
   }
 
+  const shape = table.shape || TABLE_DEFAULTS.shape;
+  const tableLabel = deriveTableLabel({
+    tableLabel: table.tableLabel,
+    tableName: table.tableName,
+    tableNumber,
+  });
+  const seats =
+    Array.isArray(table.seats) && table.seats.length > 0
+      ? table.seats
+      : generateSeats({ label: tableLabel, count: capacity, shape });
+
   return {
     tableCode: "",
     restaurantId: null,
     tableNumber,
     tableName: String(table.tableName || "").trim(),
+    tableLabel,
+    shape,
+    seatSelectionMode: table.seatSelectionMode || TABLE_DEFAULTS.seatSelectionMode,
+    seats,
     capacity,
     minimumCapacity,
     tableType: table.tableType || TABLE_DEFAULTS.tableType,
@@ -129,15 +155,34 @@ export const createRestaurant = async ({
   isFeatured = false,
   isActive = true,
   tables = [],
+  bookingPaymentPolicy,
+  cancellationPolicy,
+  customerWaitingPeriod,
+  gstin = "",
+  requirePaymentAccount = true,
 }) => {
   if (!ownerId) {
     throw new ApiError(400, "Owner is required.");
   }
 
-  const owner = await User.findById(ownerId).select("_id isActive isDeleted role");
+  const owner = await User.findById(ownerId).select(
+    "_id isActive isDeleted role razorpayAccountId razorpayAccountStatus"
+  );
 
   if (!owner || !owner.isActive || owner.isDeleted) {
     throw new ApiError(404, "Owner not found.");
+  }
+
+  if (owner.role !== USER_ROLE.ADMIN && requirePaymentAccount) {
+    if (
+      !owner.razorpayAccountId ||
+      owner.razorpayAccountStatus !== RAZORPAY_ACCOUNT_STATUS.CONNECTED
+    ) {
+      throw new ApiError(
+        400,
+        "Connect and verify your Razorpay payment account before creating a restaurant."
+      );
+    }
   }
 
   if (!restaurantName) {
@@ -213,6 +258,14 @@ export const createRestaurant = async ({
     currentOffers,
     priceRange,
     averageCostForTwo,
+    gstin: gstin.trim(),
+    razorpayAccountId:
+      owner.role !== USER_ROLE.ADMIN ? owner.razorpayAccountId : "",
+    razorpayAccountStatus:
+      owner.role !== USER_ROLE.ADMIN ? owner.razorpayAccountStatus : "",
+    bookingPaymentPolicy,
+    cancellationPolicy,
+    customerWaitingPeriod,
     verificationStatus,
     isFeatured,
     isActive,
@@ -344,6 +397,75 @@ export const updateRestaurant = async ({
     restaurant.averageCostForTwo = updates.averageCostForTwo;
   }
 
+  if (updates.gstin !== undefined) {
+    restaurant.gstin = String(updates.gstin).trim();
+  }
+
+  if (updates.bookingPaymentPolicy !== undefined) {
+    if (!restaurant.bookingPaymentPolicy) {
+      restaurant.bookingPaymentPolicy = {};
+    }
+
+    const policy = updates.bookingPaymentPolicy;
+
+    if (policy.type !== undefined) {
+      restaurant.bookingPaymentPolicy.type = policy.type;
+    }
+
+    if (policy.type === BOOKING_PAYMENT_POLICY.PAY_ON_SPOT) {
+      restaurant.bookingPaymentPolicy.paymentType = BOOKING_PAYMENT_TYPE.FIXED_AMOUNT;
+      restaurant.bookingPaymentPolicy.fixedAmount = 0;
+      restaurant.bookingPaymentPolicy.percentage = 0;
+    } else {
+      if (policy.paymentType !== undefined) {
+        restaurant.bookingPaymentPolicy.paymentType = policy.paymentType;
+      }
+
+      if (policy.fixedAmount !== undefined) {
+        restaurant.bookingPaymentPolicy.fixedAmount = policy.fixedAmount;
+      }
+
+      if (policy.percentage !== undefined) {
+        restaurant.bookingPaymentPolicy.percentage = policy.percentage;
+      }
+
+      if (policy.maximumAmount !== undefined) {
+        restaurant.bookingPaymentPolicy.maximumAmount = policy.maximumAmount;
+      }
+    }
+  }
+
+  if (updates.cancellationPolicy !== undefined) {
+    if (!restaurant.cancellationPolicy) {
+      restaurant.cancellationPolicy = {};
+    }
+
+    const cancellation = updates.cancellationPolicy;
+
+    if (cancellation.isEnabled !== undefined) {
+      restaurant.cancellationPolicy.isEnabled = cancellation.isEnabled;
+    }
+
+    if (cancellation.hoursBeforeBooking !== undefined) {
+      restaurant.cancellationPolicy.hoursBeforeBooking =
+        cancellation.hoursBeforeBooking;
+    }
+
+    if (cancellation.refundPercentage !== undefined) {
+      restaurant.cancellationPolicy.refundPercentage =
+        cancellation.refundPercentage;
+    }
+
+    if (cancellation.noShowRefundPercentage !== undefined) {
+      restaurant.cancellationPolicy.noShowRefundPercentage =
+        cancellation.noShowRefundPercentage;
+    }
+  }
+
+  if (updates.customerWaitingPeriod !== undefined) {
+    restaurant.customerWaitingPeriod = updates.customerWaitingPeriod;
+  }
+
   if (updates.verificationStatus !== undefined) {
     restaurant.verificationStatus = updates.verificationStatus;
   }
@@ -464,6 +586,16 @@ export const deleteRestaurant = async ({ restaurantId }) => {
   };
 };
 
+export const getRestaurantCities = async () => {
+  const cities = await Restaurant.distinct("city", {
+    isDeleted: false,
+    isActive: true,
+    verificationStatus: "Verified",
+  });
+
+  return { cities };
+};
+
 export const getRestaurantById = async ({
   restaurantId,
 }) => {
@@ -504,6 +636,8 @@ export const getRestaurants = async ({
   ownerId = null,
   verificationStatus = "",
   isActive = true,
+  isFeatured,
+  sortBy = "",
   includeDeleted = false,
 }) => {
   const query = {};
@@ -528,6 +662,10 @@ export const getRestaurants = async ({
     query.isActive = isActive;
   }
 
+  if (isFeatured !== undefined) {
+    query.isFeatured = isFeatured;
+  }
+
   if (search) {
     const searchRegex = new RegExp(search.trim(), "i");
     query.$or = [
@@ -542,9 +680,17 @@ export const getRestaurants = async ({
   const pageSize = Math.min(Math.max(Number(limit) || 10, 1), 100);
   const skip = (pageNumber - 1) * pageSize;
 
+  const sortOptions = {
+    rating: { averageRating: -1, totalReviews: -1 },
+    bookings: { totalBookings: -1 },
+    featured: { isFeatured: -1, averageRating: -1 },
+  };
+
+  const sort = sortOptions[sortBy] || { createdAt: -1 };
+
   const [restaurants, total] = await Promise.all([
     Restaurant.find(query)
-      .sort({ createdAt: -1 })
+      .sort(sort)
       .skip(skip)
       .limit(pageSize)
       .populate("ownerId", "userCode fullName email phoneNumber role profileImage")

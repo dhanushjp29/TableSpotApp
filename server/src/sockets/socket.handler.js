@@ -7,11 +7,18 @@ import { USER_ROLE } from "../utils/constants.js";
 
 let io;
 
+const extractTokenFromCookie = (cookieHeader) => {
+    if (!cookieHeader) return null;
+    const match = cookieHeader.match(/(?:^|;\s*)accessToken=([^;]+)/);
+    return match ? decodeURIComponent(match[1]) : null;
+};
+
 const authenticateSocket = async (socket, next) => {
     try {
         const token =
             socket.handshake.auth?.token ||
-            socket.handshake.headers?.authorization?.replace("Bearer ", "");
+            socket.handshake.headers?.authorization?.replace("Bearer ", "") ||
+            extractTokenFromCookie(socket.handshake.headers?.cookie);
 
         if (!token) {
             return next(new Error("Authentication token is required."));

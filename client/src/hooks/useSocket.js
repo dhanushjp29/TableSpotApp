@@ -19,6 +19,7 @@ export function useSocket() {
     // The socket will connect and the backend will handle auth.
     const socket = io(SOCKET_URL, {
       transports: ["websocket"],
+      withCredentials: true,
     });
 
     socketRef.current = socket;

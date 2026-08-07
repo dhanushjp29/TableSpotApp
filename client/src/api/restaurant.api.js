@@ -6,6 +6,11 @@ export const restaurantApi = {
     return response.data;
   },
 
+  async getCities() {
+    const response = await apiClient.get("/restaurants/cities");
+    return response.data;
+  },
+
   async getById(restaurantId) {
     const response = await apiClient.get(`/restaurants/${restaurantId}`);
     return response.data;

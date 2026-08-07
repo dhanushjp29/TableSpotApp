@@ -16,6 +16,14 @@ export const billApi = {
     return response.data;
   },
 
+  async convertToBill(bookingId, data = {}) {
+    const response = await apiClient.post(
+      `/bills/${bookingId}/convert-to-bill`,
+      data
+    );
+    return response.data;
+  },
+
   async update(billId, data) {
     const response = await apiClient.patch(`/bills/${billId}`, data);
     return response.data;

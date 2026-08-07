@@ -1,5 +1,50 @@
 import mongoose from "mongoose";
 
+import {
+  SEAT_SELECTION_MODE,
+  SEAT_SELECTION_MODE_VALUES,
+  TABLE_SHAPE,
+  TABLE_SHAPE_VALUES,
+} from "../utils/constants.js";
+
+const seatSchema = new mongoose.Schema(
+  {
+    seatIndex: {
+      type: Number,
+      required: true,
+      min: 1,
+    },
+
+    seatLabel: {
+      type: String,
+      required: true,
+      trim: true,
+      maxlength: 10,
+    },
+
+    position: {
+      x: {
+        type: Number,
+        required: true,
+        min: 0,
+        max: 100,
+      },
+      y: {
+        type: Number,
+        required: true,
+        min: 0,
+        max: 100,
+      },
+    },
+
+    isActive: {
+      type: Boolean,
+      default: true,
+    },
+  },
+  { _id: true }
+);
+
 const restaurantTableSchema = new mongoose.Schema(
   {
     tableCode: {
@@ -24,6 +69,30 @@ const restaurantTableSchema = new mongoose.Schema(
       type: String,
       default: "",
       trim: true,
+    },
+
+    tableLabel: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 3,
+    },
+
+    shape: {
+      type: String,
+      enum: TABLE_SHAPE_VALUES,
+      default: TABLE_SHAPE.SQUARE,
+    },
+
+    seatSelectionMode: {
+      type: String,
+      enum: SEAT_SELECTION_MODE_VALUES,
+      default: SEAT_SELECTION_MODE.FULL_TABLE,
+    },
+
+    seats: {
+      type: [seatSchema],
+      default: [],
     },
 
     capacity: {

@@ -58,8 +58,9 @@ export const getByRestaurant = async (req, res) => {
 export const getAll = async (req, res) => {
     const params = { ...req.query };
 
-    // Owners should only ever see food belonging to their own restaurants
-    if (req.user.role === USER_ROLE.OWNER) {
+    // Owners should only ever see food belonging to their own restaurants.
+    // Public (unauthenticated) and admin requests skip this scoping.
+    if (req.user && req.user.role === USER_ROLE.OWNER) {
         params.ownerId = req.user._id;
     }
 

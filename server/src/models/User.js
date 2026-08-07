@@ -1,5 +1,14 @@
 import mongoose from "mongoose";
-import { USER_ROLE_VALUES, USER_ROLE, AUTH_PROVIDER_VALUES, AUTH_PROVIDER } from "../utils/constants.js";
+import {
+  AUTH_PROVIDER,
+  AUTH_PROVIDER_VALUES,
+  OWNER_BOOKING_STATUS,
+  OWNER_BOOKING_STATUS_VALUES,
+  RAZORPAY_ACCOUNT_STATUS,
+  RAZORPAY_ACCOUNT_STATUS_VALUES,
+  USER_ROLE,
+  USER_ROLE_VALUES,
+} from "../utils/constants.js";
 
 const userSchema = new mongoose.Schema(
   {
@@ -53,6 +62,35 @@ const userSchema = new mongoose.Schema(
       default: USER_ROLE.CUSTOMER,
     },
 
+    razorpayAccountId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    razorpayAccountStatus: {
+      type: String,
+      enum: RAZORPAY_ACCOUNT_STATUS_VALUES,
+      default: RAZORPAY_ACCOUNT_STATUS.NOT_CONNECTED,
+    },
+
+    bookingStatus: {
+      type: String,
+      enum: OWNER_BOOKING_STATUS_VALUES,
+      default: OWNER_BOOKING_STATUS.ACTIVE,
+    },
+
+    bookingRestrictedAt: {
+      type: Date,
+      default: null,
+    },
+
+    bookingRestrictedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
     profileImage: {
       type: String,
       default: "",
@@ -67,6 +105,14 @@ const userSchema = new mongoose.Schema(
       {
         type: mongoose.Schema.Types.ObjectId,
         ref: "Restaurant",
+        default: [],
+      },
+    ],
+
+    favoriteFoodIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Food",
         default: [],
       },
     ],

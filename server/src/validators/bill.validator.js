@@ -22,12 +22,15 @@ const orderedItemSchema = z
       })
       .int("Quantity must be a whole number.")
       .min(1),
+    // unitPrice / totalPrice are accepted for display purposes only. The
+    // server derives authoritative prices from the Food model and recomputes
+    // every total, so they are optional and never trusted.
     unitPrice: z
       .number({
-        required_error: "Unit price is required.",
         invalid_type_error: "Unit price must be a number.",
       })
-      .min(0),
+      .min(0)
+      .optional(),
     offerPrice: z
       .number({
         invalid_type_error: "Offer price must be a number.",
@@ -36,10 +39,10 @@ const orderedItemSchema = z
       .optional(),
     totalPrice: z
       .number({
-        required_error: "Total price is required.",
         invalid_type_error: "Total price must be a number.",
       })
-      .min(0),
+      .min(0)
+      .optional(),
     orderSource: z.enum(ORDER_SOURCE_VALUES).optional(),
   })
   .strict();
@@ -105,7 +108,7 @@ const paymentSummarySchema = z
 const billCoreSchema = z
   .object({
     bookingId: mongoIdSchema,
-    orderedItems: z.array(orderedItemSchema).default([]),
+    orderedItems: z.array(orderedItemSchema),
     subTotal: z
       .number({
         invalid_type_error: "Sub total must be a number.",
@@ -139,7 +142,7 @@ const billCoreSchema = z
       .optional(),
     payment: paymentSummarySchema.optional(),
     billStatus: z.enum(BILL_STATUS_VALUES).optional(),
-    notes: z.string().trim().max(500).optional().default(""),
+    notes: z.string().trim().max(500).optional(),
     generatedBy: mongoIdSchema.optional(),
     generatedAt: z.coerce.date().optional().nullable(),
     isActive: z.boolean().optional(),
@@ -147,7 +150,11 @@ const billCoreSchema = z
   .strict();
 
 // Create Bill
-export const createBillSchema = billCoreSchema.strict();
+export const createBillSchema = billCoreSchema
+  .extend({
+    notes: z.string().trim().max(500).optional().default(""),
+  })
+  .strict();
 
 // Update Bill
 export const updateBillSchema =
@@ -180,5 +187,12 @@ export const addBillPaymentSchema = z
 export const billIdSchema = z
   .object({
     billId: mongoIdSchema,
+  })
+  .strict();
+
+// Convert a confirmed/checked-in booking into a bill (payment-first lifecycle)
+export const convertBookingToBillSchema = z
+  .object({
+    notes: z.string().trim().max(500).optional().default(""),
   })
   .strict();

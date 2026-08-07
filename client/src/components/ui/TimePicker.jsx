@@ -100,13 +100,25 @@ function TimePicker({
     return !hasRange || (t >= startMinutes && t <= endMinutes);
   };
 
+  const commitValue = (h24, minute) => {
+    const out = `${String(h24).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+    if (onChange) onChange({ target: { value: out, name } });
+    if (inputRef.current) inputRef.current.value = out;
+  };
+
   const commitMinute = (m) => {
     if (draftHour == null) return;
     const h24 = (draftHour % 12) + (period === "PM" ? 12 : 0);
-    const out = `${String(h24).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
-    if (onChange) onChange({ target: { value: out, name } });
-    if (inputRef.current) inputRef.current.value = out;
+    commitValue(h24, m);
     setOpen(false);
+  };
+
+  const handlePeriodChange = (p) => {
+    setPeriod(p);
+    if (draftHour != null && draftMinute != null) {
+      const h24 = (draftHour % 12) + (p === "PM" ? 12 : 0);
+      commitValue(h24, draftMinute);
+    }
   };
 
   const marks =
@@ -297,7 +309,7 @@ function TimePicker({
                 <button
                   key={p}
                   type="button"
-                  onClick={() => setPeriod(p)}
+                  onClick={() => handlePeriodChange(p)}
                   className={`px-4 py-1.5 text-sm font-medium transition-colors ${
                     period === p
                       ? "bg-primary text-white"

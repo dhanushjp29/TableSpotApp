@@ -17,19 +17,30 @@ const reviewCoreSchema = z
       })
       .min(1, "Rating must be at least 1.")
       .max(5, "Rating cannot exceed 5."),
-    title: z.string().trim().max(100).optional().default(""),
+    title: z.string().trim().max(100).optional(),
     comment: z.string().trim().min(1).max(1000),
-    images: z.array(z.string().trim().min(1)).default([]),
+    images: z.array(z.string().trim().min(1)).optional(),
     status: z.enum(REVIEW_STATUS_VALUES).optional(),
     isActive: z.boolean().optional(),
   })
   .strict();
 
-// Create Food Review
-export const createReviewSchema = reviewCoreSchema.strict();
+// Create Food Review: apply defaults for omitted optional fields.
+export const createReviewSchema = reviewCoreSchema
+  .extend({
+    title: z.string().trim().max(100).optional().default(""),
+    images: z.array(z.string().trim().min(1)).default([]),
+  })
+  .strict();
 
-// Update Food Review
-export const updateReviewSchema = reviewCoreSchema.partial().strict();
+// Update Food Review: defaults must NOT be injected on partial updates
+// (e.g. a bare { ownerReply } payload must stay a bare { ownerReply } payload).
+export const updateReviewSchema = reviewCoreSchema
+  .partial()
+  .extend({
+    ownerReply: z.string().trim().max(1000).optional(),
+  })
+  .strict();
 
 // Review Id
 export const reviewIdSchema = z

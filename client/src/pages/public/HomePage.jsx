@@ -12,9 +12,15 @@ function HomePage() {
           <p className="mx-auto mt-4 max-w-2xl text-lg text-muted">
             Discover, reserve, and review the best restaurants in town with TableSpot.
           </p>
-          <div className="mt-8">
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
             <Link to={ROUTES.RESTAURANTS} className="btn-primary">
               Explore Restaurants
+            </Link>
+            <Link
+              to={ROUTES.FOODS}
+              className="btn-outline"
+            >
+              Explore Food
             </Link>
           </div>
         </div>

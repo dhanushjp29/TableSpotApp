@@ -1,0 +1,83 @@
+- generic [ref=e2]:
+  - generic [ref=e24]:
+    - complementary [ref=e25]:
+      - link "TableSpot" [ref=e27] [cursor=pointer]:
+        - /url: /
+      - navigation [ref=e28]:
+        - link "Dashboard" [ref=e29] [cursor=pointer]:
+          - /url: /owner/dashboard
+        - link "Restaurant" [ref=e35] [cursor=pointer]:
+          - /url: /owner/restaurant
+        - link "Tables" [ref=e40] [cursor=pointer]:
+          - /url: /owner/tables
+        - link "Food Menu" [ref=e46] [cursor=pointer]:
+          - /url: /owner/foods
+        - link "Reservations" [ref=e52] [cursor=pointer]:
+          - /url: /owner/reservations
+        - link "Billing" [ref=e55] [cursor=pointer]:
+          - /url: /owner/billing
+        - link "Payments" [ref=e58] [cursor=pointer]:
+          - /url: /owner/payments
+        - link "Reviews" [ref=e63] [cursor=pointer]:
+          - /url: /owner/reviews
+        - link "Reports" [ref=e66] [cursor=pointer]:
+          - /url: /owner/reports
+        - link "Notifications 14" [ref=e69] [cursor=pointer]:
+          - /url: /owner/notifications
+          - text: Notifications
+          - generic [ref=e73]: "14"
+        - link "Profile" [ref=e74] [cursor=pointer]:
+          - /url: /owner/profile
+    - generic [ref=e78]:
+      - banner [ref=e79]:
+        - generic [ref=e80]:
+          - link "Notifications" [ref=e81] [cursor=pointer]:
+            - /url: /owner/notifications
+            - generic [ref=e85]: "14"
+          - generic [ref=e86]:
+            - generic "PW Owner avatar" [ref=e87]: PO
+            - generic [ref=e89]:
+              - paragraph [ref=e90]: PW Owner
+              - paragraph [ref=e91]: owner
+          - button "Logout" [ref=e92]
+      - main [ref=e96]:
+        - generic [ref=e97]:
+          - generic [ref=e98]:
+            - heading "Owner Dashboard" [level=1] [ref=e99]
+            - paragraph [ref=e100]: Manage your restaurants, tables, foods, and bookings.
+          - generic [ref=e101]:
+            - generic [ref=e104]:
+              - paragraph [ref=e105]: Restaurants
+              - paragraph [ref=e106]: "7"
+              - paragraph [ref=e107]: Active restaurants
+            - generic [ref=e116]:
+              - paragraph [ref=e117]: Bookings
+              - paragraph [ref=e118]: "0"
+              - paragraph [ref=e119]: Total bookings
+            - generic [ref=e125]:
+              - paragraph [ref=e126]: Reviews
+              - paragraph [ref=e127]: "0"
+              - paragraph [ref=e128]: Customer reviews
+            - generic [ref=e134]:
+              - paragraph [ref=e135]: Revenue
+              - paragraph [ref=e136]: ₹0.00
+              - paragraph [ref=e137]: Total earnings
+          - generic [ref=e141]:
+            - heading "Quick Actions" [level=2] [ref=e142]
+            - generic [ref=e143]:
+              - link [ref=e144] [cursor=pointer]:
+                - /url: /owner/restaurant
+                - generic [ref=e153]:
+                  - paragraph [ref=e154]: Manage Restaurant
+                  - paragraph [ref=e155]: Edit details & settings
+              - link [ref=e156] [cursor=pointer]:
+                - /url: /owner/tables
+                - generic [ref=e162]:
+                  - paragraph [ref=e163]: Manage Tables
+                  - paragraph [ref=e164]: Add or update tables
+              - link [ref=e165] [cursor=pointer]:
+                - /url: /owner/foods
+                - generic [ref=e172]:
+                  - paragraph [ref=e173]: Manage Menu
+                  - paragraph [ref=e174]: Add or update food items
+  - status [ref=e180]: Login successful.

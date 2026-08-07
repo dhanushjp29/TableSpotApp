@@ -16,6 +16,10 @@ import {
 const router = Router();
 
 // Public Routes
+router.get(
+    "/restaurant/:restaurantId/availability",
+    asyncHandler(tableController.getAvailability)
+);
 router.get("/restaurant/:restaurantId", asyncHandler(tableController.getByRestaurant));
 router.get("/:tableId", asyncHandler(tableController.getById));
 

@@ -7,14 +7,20 @@ const validateRequest = (schema, source = "body") => {
     const result = schema.safeParse(data);
 
     if (!result.success) {
+      const issues = result.error.issues.map((issue) => ({
+        path: issue.path.join("."),
+        message: issue.message,
+      }));
+      const detail = issues
+        .map((issue) =>
+          issue.path ? `${issue.path}: ${issue.message}` : issue.message
+        )
+        .join("; ");
       return next(
         new ApiError(
           400,
-          "Validation failed.",
-          result.error.issues.map((issue) => ({
-            path: issue.path.join("."),
-            message: issue.message,
-          }))
+          detail ? `Validation failed. ${detail}` : "Validation failed.",
+          issues
         )
       );
     }

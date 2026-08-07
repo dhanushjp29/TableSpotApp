@@ -1,5 +1,5 @@
 import { Edit2, Plus, Trash2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { useSelector } from "react-redux";
@@ -18,12 +18,25 @@ import Input from "../../components/ui/Input.jsx";
 import Modal from "../../components/ui/Modal.jsx";
 import Select from "../../components/ui/Select.jsx";
 import { SkeletonText } from "../../components/ui/Skeleton.jsx";
+import TableShape from "../../components/restaurant/TableShape.jsx";
 import {
   TABLE_LOCATION_VALUES,
+  TABLE_SHAPE,
+  TABLE_SHAPE_LABELS,
   TABLE_STATUS,
   TABLE_STATUS_VALUES,
   TABLE_TYPE_VALUES,
+  SEAT_SELECTION_MODE,
+  SEAT_SELECTION_MODE_LABELS,
+  MAX_SEATS_SINGLE_ROW,
+  MAX_SEATS_PER_TABLE,
 } from "../../constants/table.js";
+import {
+  buildSeatLabel,
+  generateSeats,
+  getMaxSeatsForShape,
+  getPositionsForShape,
+} from "../../utils/seatLayout.js";
 
 const statusBadge = {
   [TABLE_STATUS.AVAILABLE]: { label: "Available", variant: "success" },
@@ -36,19 +49,221 @@ const statusBadge = {
 const checkboxClass =
   "h-4 w-4 rounded border-gray-300 text-primary focus:ring-primary";
 
-function TableForm({ table = null, restaurants, onSuccess, onCancel }) {
+const SHAPE_OPTIONS = [
+  { value: TABLE_SHAPE.ROUND, label: "Round", hint: "Seats around a circle" },
+  { value: TABLE_SHAPE.SQUARE, label: "Square", hint: "Seats on all sides" },
+  { value: TABLE_SHAPE.RECTANGLE, label: "Rectangle", hint: "Seats along the edges" },
+  { value: TABLE_SHAPE.OVAL, label: "Oval", hint: "Smooth curved edges" },
+  { value: TABLE_SHAPE.BOAT, label: "Boat", hint: "Rounded ends, large groups" },
+  { value: TABLE_SHAPE.SINGLE_ROW, label: "Single Row", hint: "Bar-style counter" },
+];
+
+const rebuildSeats = (prev, { label, count, shape, regenerateLabels }) => {
+  const layout = getPositionsForShape(shape, count);
+
+  return layout.map((item, index) => {
+    const existing = prev[index];
+
+    return {
+      _id: existing?._id,
+      seatIndex: index + 1,
+      seatLabel: regenerateLabels
+        ? buildSeatLabel(label, index + 1)
+        : existing?.seatLabel || buildSeatLabel(label, index + 1),
+      position: item.position,
+      isActive: true,
+    };
+  });
+};
+
+function ShapePicker({ value, onChange }) {
+  return (
+    <div className="grid grid-cols-3 gap-2">
+      {SHAPE_OPTIONS.map((option) => {
+        const isSelected = value === option.value;
+        return (
+          <button
+            key={option.value}
+            type="button"
+            onClick={() => onChange(option.value)}
+            className={`flex flex-col items-center gap-1 rounded-lg border-2 p-3 transition-colors ${
+              isSelected
+                ? "border-primary bg-primary/5"
+                : "border-gray-200 hover:border-primary/50 hover:bg-gray-50"
+            }`}
+          >
+            <TableShape
+              shape={option.value}
+              seats={generateSeats({ label: "A", count: 6, shape: option.value })}
+              size={72}
+              showLabels={false}
+              neutral
+            />
+            <span
+              className={`text-xs font-semibold ${
+                isSelected ? "text-primary" : "text-text"
+              }`}
+            >
+              {option.label}
+            </span>
+            <span className="text-center text-[10px] leading-tight text-muted">
+              {option.hint}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function SeatEditor({ seats, tableLabel, shape, onChange }) {
+  const handleCountChange = (raw) => {
+    const maxSeats = getMaxSeatsForShape(shape);
+    const count = Math.min(Math.max(Number(raw) || 1, 1), maxSeats);
+    onChange(rebuildSeats(seats, { label: tableLabel, count, shape, regenerateLabels: false }));
+  };
+
+  const duplicateLabels = useMemo(() => {
+    const seen = new Map();
+    (seats || []).forEach((seat) => {
+      const key = String(seat.seatLabel || "").trim().toUpperCase();
+      if (key) seen.set(key, (seen.get(key) || 0) + 1);
+    });
+    return [...seen.entries()].filter(([, n]) => n > 1).map(([label]) => label);
+  }, [seats]);
+
+  const handleLabelChange = (index, label) => {
+    const next = seats.map((seat, i) =>
+      i === index
+        ? { ...seat, seatLabel: label.toUpperCase().slice(0, 10) }
+        : seat
+    );
+    onChange(next);
+  };
+
+  const handleRemove = (index) => {
+    if (seats.length <= 1) {
+      toast.error("A table needs at least one seat.");
+      return;
+    }
+    const next = seats
+      .filter((_, i) => i !== index)
+      .map((seat, i) => ({ ...seat, seatIndex: i + 1 }));
+    onChange(next);
+  };
+
+  const handleAdd = () => {
+    const count = seats.length + 1;
+    onChange(rebuildSeats(seats, { label: tableLabel, count, shape, regenerateLabels: false }));
+  };
+
+  return (
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="flex flex-col items-center justify-center rounded-lg border border-gray-200 bg-surface p-3">
+        <TableShape
+          shape={shape}
+          seats={seats}
+          size={240}
+          showLabels
+          neutral
+        />
+        <div className="mt-2 flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => handleCountChange(seats.length - 1)}
+            disabled={seats.length <= 1}
+          >
+            −
+          </Button>
+          <span className="min-w-16 text-center text-sm font-semibold text-text">
+            {seats.length} seats
+          </span>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleAdd}
+            disabled={seats.length >= getMaxSeatsForShape(shape)}
+          >
+            +
+          </Button>
+        </div>
+      </div>
+
+      <div>
+        <p className="input-label">Seat Labels</p>
+        <div className="grid max-h-44 grid-cols-3 gap-2 overflow-y-auto rounded-lg border border-gray-200 p-2">
+          {seats.map((seat, index) => (
+            <div key={seat.seatIndex} className="flex items-center gap-1">
+              <input
+                type="text"
+                value={seat.seatLabel}
+                onChange={(e) => handleLabelChange(index, e.target.value)}
+                maxLength={10}
+                className="input-field px-2 py-1.5 text-center text-sm"
+                aria-label={`Seat ${index + 1} label`}
+              />
+              <button
+                type="button"
+                onClick={() => handleRemove(index)}
+                disabled={seats.length <= 1}
+                aria-label={`Remove seat ${seat.seatLabel}`}
+                className="text-muted transition-colors hover:text-error disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+        <p className="mt-2 text-xs text-muted">
+          Seats are auto-numbered from the table label (e.g. A → A1, A2). You can
+          rename individual seats. Seats with upcoming bookings cannot be removed.
+        </p>
+        {duplicateLabels.length > 0 && (
+          <p className="mt-2 text-xs font-medium text-error" role="alert">
+            Duplicate seat labels: {duplicateLabels.join(", ")}. Each seat must
+            have a unique label.
+          </p>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function TableForm({
+  table = null,
+  restaurants,
+  defaultRestaurantId = "",
+  onSuccess,
+  onCancel,
+}) {
   const isEdit = Boolean(table);
+
+  const [serverErrors, setServerErrors] = useState([]);
+
+  const initialShape = table?.shape || TABLE_SHAPE.SQUARE;
+  const initialLabel = table?.tableLabel || "";
 
   const {
     register,
     handleSubmit,
     watch,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm({
     defaultValues: {
-      restaurantId: table?.restaurantId?._id || restaurants[0]?._id || "",
+      restaurantId:
+        table?.restaurantId?._id ||
+        defaultRestaurantId ||
+        (restaurants.length === 1 ? restaurants[0]?._id || "" : ""),
       tableNumber: table?.tableNumber ?? "",
       tableName: table?.tableName || "",
+      tableLabel: initialLabel,
+      shape: initialShape,
+      seatSelectionMode:
+        table?.seatSelectionMode || SEAT_SELECTION_MODE.FULL_TABLE,
       capacity: table?.capacity ?? "",
       minimumCapacity: table?.minimumCapacity ?? 1,
       tableType: table?.tableType || "Normal",
@@ -66,15 +281,78 @@ function TableForm({ table = null, restaurants, onSuccess, onCancel }) {
 
   const tableType = watch("tableType");
   const tableLocation = watch("tableLocation");
+  const seatSelectionMode = watch("seatSelectionMode");
+
+  const [shape, setShape] = useState(initialShape);
+  const [tableLabel, setTableLabel] = useState(initialLabel);
+  const [seats, setSeats] = useState(() =>
+    table?.seats?.length
+      ? table.seats.map((seat) => ({
+          _id: seat._id,
+          seatIndex: seat.seatIndex,
+          seatLabel: seat.seatLabel,
+          position: { ...seat.position },
+          isActive: seat.isActive,
+        }))
+      : generateSeats({
+          label: initialLabel || "T",
+          count: table?.capacity || 6,
+          shape: initialShape,
+        })
+  );
+
+  const shapeMax = useMemo(() => getMaxSeatsForShape(shape), [shape]);
+  const maxSeatsLabel = useMemo(
+    () => (shape === TABLE_SHAPE.SINGLE_ROW ? MAX_SEATS_SINGLE_ROW : MAX_SEATS_PER_TABLE),
+    [shape]
+  );
+
+  const handleShapeChange = (nextShape) => {
+    setShape(nextShape);
+    setSeats((prev) =>
+      rebuildSeats(prev, { label: tableLabel, count: prev.length, shape: nextShape })
+    );
+  };
+
+  const handleLabelChange = (value) => {
+    const clean = value.toUpperCase().replace(/[^a-zA-Z0-9]/g, "").slice(0, 3);
+    setTableLabel(clean);
+    setSeats((prev) =>
+      rebuildSeats(prev, { label: clean, count: prev.length, shape, regenerateLabels: true })
+    );
+  };
 
   const onSubmit = async (data) => {
+    setServerErrors([]);
     try {
+      const trimmedLabel = tableLabel.trim();
+      const seatLabels = seats.map((seat) =>
+        String(seat.seatLabel || "").trim().toUpperCase()
+      );
+      if (new Set(seatLabels).size !== seatLabels.length) {
+        toast.error("Seat labels must be unique within a table.");
+        return;
+      }
+
       const payload = {
         restaurantId: data.restaurantId,
         tableNumber: Number(data.tableNumber),
         tableName: (data.tableName || "").trim(),
-        capacity: Number(data.capacity),
-        minimumCapacity: Number(data.minimumCapacity) || 1,
+        tableLabel: trimmedLabel,
+        shape,
+        seatSelectionMode: data.seatSelectionMode,
+        seats: seats.map((seat) => ({
+          _id: seat._id,
+          seatIndex: seat.seatIndex,
+          seatLabel: seat.seatLabel,
+          position: { x: seat.position.x, y: seat.position.y },
+          isActive: seat.isActive !== false,
+        })),
+        capacity: seats.length,
+        minimumCapacity: Math.min(
+          Number(data.minimumCapacity) || 1,
+          seats.length
+        ),
         tableType: data.tableType,
         otherTableType:
           data.tableType === "Other" ? (data.otherTableType || "").trim() : "",
@@ -100,14 +378,54 @@ function TableForm({ table = null, restaurants, onSuccess, onCancel }) {
       }
       onSuccess();
     } catch (err) {
+      setServerErrors(err?.response?.data?.errors || []);
       toast.error(
         err?.response?.data?.message || err?.message || "Failed to save table."
       );
     }
   };
 
+  const missingRequired = ["restaurantId", "tableNumber"].filter(
+    (name) => errors[name]
+  );
+  const requiredLabels = {
+    restaurantId: "Restaurant",
+    tableNumber: "Table Number",
+  };
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+    <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-5">
+      {missingRequired.length > 0 && (
+        <div
+          role="alert"
+          className="rounded-lg border border-error bg-error/5 p-3 text-sm text-error"
+        >
+          Please fill the required field{missingRequired.length > 1 ? "s" : ""}:{" "}
+          <strong>{missingRequired.map((n) => requiredLabels[n]).join(", ")}</strong>
+        </div>
+      )}
+      {serverErrors.length > 0 && (
+        <div
+          role="alert"
+          className="rounded-lg border border-error bg-error/5 p-3 text-sm text-error"
+        >
+          <p className="font-semibold">
+            The server could not save this table:
+          </p>
+          <ul className="mt-1 list-inside list-disc space-y-0.5">
+            {serverErrors.map((fieldError, index) => (
+              <li key={index}>
+                {fieldError.path ? (
+                  <>
+                    <strong>{fieldError.path}:</strong>{" "}
+                  </>
+                ) : null}
+                {fieldError.message}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <Select
         label="Restaurant *"
         error={errors.restaurantId?.message}
@@ -121,7 +439,7 @@ function TableForm({ table = null, restaurants, onSuccess, onCancel }) {
         ))}
       </Select>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
         <Input
           label="Table Number *"
           type="number"
@@ -135,21 +453,85 @@ function TableForm({ table = null, restaurants, onSuccess, onCancel }) {
           placeholder="e.g. Window 1"
         />
         <Input
-          label="Capacity *"
+          label="Table Label"
+          value={tableLabel}
+          onChange={(e) => handleLabelChange(e.target.value)}
+          maxLength={3}
+          placeholder="e.g. A, B, W1"
+          hint={
+            tableLabel
+              ? `Seats will be labeled ${tableLabel}1, ${tableLabel}2...`
+              : 'Leave empty to use "T" prefix (T1, T2...). Max 3 chars.'
+          }
+        />
+      </div>
+
+      <div>
+        <p className="input-label">Table Shape</p>
+        <ShapePicker value={shape} onChange={handleShapeChange} />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <div>
+          <p className="input-label">Booking Mode</p>
+          <div className="grid grid-cols-2 gap-2">
+            {[SEAT_SELECTION_MODE.FULL_TABLE, SEAT_SELECTION_MODE.INDIVIDUAL_SEATS].map(
+              (mode) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => setValue("seatSelectionMode", mode)}
+                  className={`rounded-lg border-2 p-3 text-left transition-colors ${
+                    seatSelectionMode === mode
+                      ? "border-primary bg-primary/5"
+                      : "border-gray-200 hover:border-primary/50 hover:bg-gray-50"
+                  }`}
+                >
+                  <p className="text-sm font-semibold text-text">
+                    {SEAT_SELECTION_MODE_LABELS[mode]}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    {mode === SEAT_SELECTION_MODE.FULL_TABLE
+                      ? "Customers book the entire table."
+                      : "Customers pick specific seats (e.g. A1, A2)."}
+                  </p>
+                </button>
+              )
+            )}
+          </div>
+        </div>
+        <Input
+          label="Number of Seats"
           type="number"
           min={1}
-          error={errors.capacity?.message}
-          {...register("capacity", { required: "Capacity is required." })}
+          max={shapeMax}
+          value={seats.length}
+          onChange={(e) => {
+            const count = Math.min(
+              Math.max(Number(e.target.value) || 1, 1),
+              shapeMax
+            );
+            setSeats((prev) =>
+              rebuildSeats(prev, { label: tableLabel, count, shape })
+            );
+          }}
+          hint={`Max ${maxSeatsLabel} seats for ${TABLE_SHAPE_LABELS[shape]?.toLowerCase() || shape} tables.`}
         />
-        <Input
-          label="Minimum Capacity"
-          type="number"
-          error={errors.minimumCapacity?.message}
-          {...register("minimumCapacity", {
-            valueAsNumber: true,
-            min: { value: 1, message: "Minimum capacity must be at least 1." },
-          })}
+      </div>
+
+      <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+        <p className="mb-3 text-sm font-semibold text-text">
+          Layout Preview
+        </p>
+        <SeatEditor
+          seats={seats}
+          tableLabel={tableLabel}
+          shape={shape}
+          onChange={setSeats}
         />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <Select label="Table Type" {...register("tableType")}>
           {TABLE_TYPE_VALUES.map((t) => (
             <option key={t} value={t}>
@@ -236,6 +618,7 @@ function OwnerTablesPage() {
   const [editTable, setEditTable] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
+  const [selectedRestaurant, setSelectedRestaurant] = useState("");
 
   const fetchData = async () => {
     try {
@@ -294,6 +677,12 @@ function OwnerTablesPage() {
     });
     return unsubscribe;
   }, []);
+
+  const visibleTables = selectedRestaurant
+    ? tables.filter(
+        (table) => String(table.restaurantId?._id) === selectedRestaurant
+      )
+    : tables;
 
   const handleDelete = async () => {
     if (!deleteTarget) return;
@@ -355,13 +744,35 @@ function OwnerTablesPage() {
         <div>
           <h1 className="text-2xl font-bold text-text">Tables</h1>
           <p className="mt-1 text-sm text-muted">
-            Manage your restaurant tables.
+            Manage your restaurant tables, shapes and seats.
           </p>
         </div>
         <Button onClick={() => setShowCreate(true)}>
           <Plus size={16} />
           Add Table
         </Button>
+      </div>
+
+      <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div className="w-full sm:max-w-xs">
+          <Select
+            label="Restaurant"
+            value={selectedRestaurant}
+            onChange={(event) => setSelectedRestaurant(event.target.value)}
+          >
+            <option value="">All restaurants ({tables.length})</option>
+            {restaurants.map((restaurant) => (
+              <option key={restaurant._id} value={restaurant._id}>
+                {restaurant.restaurantName}
+                {restaurant.city ? ` - ${restaurant.city}` : ""}
+              </option>
+            ))}
+          </Select>
+        </div>
+        <p className="text-sm text-muted">
+          Showing {visibleTables.length} of {tables.length} table
+          {tables.length === 1 ? "" : "s"}
+        </p>
       </div>
 
       {showCreate && (
@@ -373,6 +784,7 @@ function OwnerTablesPage() {
         >
           <TableForm
             restaurants={restaurants}
+            defaultRestaurantId={selectedRestaurant}
             onSuccess={() => {
               setShowCreate(false);
               fetchData();
@@ -411,10 +823,14 @@ function OwnerTablesPage() {
         confirmText="Delete"
       />
 
-      {tables.length === 0 ? (
+      {visibleTables.length === 0 ? (
         <EmptyState
-          title="No tables yet"
-          description="Add tables to your restaurant to start accepting bookings."
+          title={selectedRestaurant ? "No tables for this restaurant" : "No tables yet"}
+          description={
+            selectedRestaurant
+              ? "Add tables to this restaurant to start accepting bookings."
+              : "Add tables to your restaurant to start accepting bookings."
+          }
           action={
             <Button onClick={() => setShowCreate(true)}>
               <Plus size={16} />
@@ -424,9 +840,15 @@ function OwnerTablesPage() {
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {tables.map((table) => {
+          {visibleTables.map((table) => {
             const cfg =
               statusBadge[table.status] || statusBadge[TABLE_STATUS.AVAILABLE];
+            const seats = table.seats?.length ? table.seats : [];
+            const unavailableSeatIds =
+              table.status === TABLE_STATUS.OCCUPIED ||
+              table.status === TABLE_STATUS.RESERVED
+                ? seats.map((seat) => seat._id)
+                : [];
             return (
               <Card key={table._id} className="p-4">
                 <div className="flex items-start justify-between">
@@ -444,9 +866,16 @@ function OwnerTablesPage() {
                       )}
                     </div>
                     <p className="mt-1 text-xs text-muted">
-                      {table.capacity} seats • {table.tableType} •{" "}
+                      {table.capacity} seats •{" "}
+                      {TABLE_SHAPE_LABELS[table.shape] || table.shape || "Square"} •{" "}
+                      {SEAT_SELECTION_MODE_LABELS[table.seatSelectionMode] || "Full Table"} •{" "}
                       {table.tableLocation || "Indoor"}
                     </p>
+                    {table.tableLabel && (
+                      <Badge variant="neutral" className="mt-1 text-[10px]">
+                        Label: {table.tableLabel}
+                      </Badge>
+                    )}
                     {table.restaurantId?.restaurantName && (
                       <p className="mt-1 text-xs text-muted">
                         {table.restaurantId.restaurantCode
@@ -461,6 +890,19 @@ function OwnerTablesPage() {
                     {cfg.label}
                   </Badge>
                 </div>
+
+                {seats.length > 0 && (
+                  <div className="mt-3 flex justify-center rounded-lg border border-gray-100 bg-gray-50/60 py-2">
+                    <TableShape
+                      shape={table.shape || TABLE_SHAPE.SQUARE}
+                      seats={seats}
+                      size={150}
+                      unavailableSeatIds={unavailableSeatIds}
+                      showLabels={false}
+                    />
+                  </div>
+                )}
+
                 <div className="mt-4 flex gap-2">
                   <Button
                     variant="outline"

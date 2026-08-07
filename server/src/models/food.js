@@ -1,5 +1,7 @@
 import mongoose from "mongoose";
 
+import { CURRENCY, CURRENCY_VALUES } from "../utils/constants.js";
+
 const variantSchema = new mongoose.Schema(
   {
     variantName: {
@@ -154,6 +156,19 @@ const foodSchema = new mongoose.Schema(
     hasVariants: {
       type: Boolean,
       default: false,
+    },
+
+    currency: {
+      type: String,
+      enum: CURRENCY_VALUES,
+      default: CURRENCY,
+    },
+
+    gstRate: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
     },
 
     variants: {

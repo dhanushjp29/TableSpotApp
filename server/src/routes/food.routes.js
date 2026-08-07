@@ -15,15 +15,13 @@ import {
 const router = Router();
 
 // Public Routes
+router.get("/", asyncHandler(foodController.getAll));
 router.get("/restaurant/:restaurantId", asyncHandler(foodController.getByRestaurant));
 router.get("/:foodId", asyncHandler(foodController.getById));
 
 // Protected Routes (Owner & Admin)
 router.use(authenticate);
 router.use(authorize(USER_ROLE.OWNER, USER_ROLE.ADMIN));
-
-// List all foods (authenticated)
-router.get("/", asyncHandler(foodController.getAll));
 
 router.post(
     "/",

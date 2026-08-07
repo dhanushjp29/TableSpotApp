@@ -19,6 +19,8 @@ router.get("/:reviewId", asyncHandler(restaurantReviewController.getById));
 // Protected Routes
 router.use(authenticate);
 
+router.get("/eligibility/:restaurantId", asyncHandler(restaurantReviewController.getEligibility));
+
 router.get("/", asyncHandler(restaurantReviewController.getAll));
 
 router.post(

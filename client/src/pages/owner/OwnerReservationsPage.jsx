@@ -8,10 +8,17 @@ import {
   UserCheck,
   Utensils,
   Filter,
+  HandCoins,
+  Banknote,
+  UserX,
+  ReceiptText,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
 import { bookingApi } from "../../api/booking.api.js";
+import { billApi } from "../../api/bill.api.js";
+import { refundApi } from "../../api/refund.api.js";
+import { useAuth } from "../../hooks/useAuth.js";
 import Card from "../../components/ui/Card.jsx";
 import Badge from "../../components/ui/Badge.jsx";
 import Button from "../../components/ui/Button.jsx";
@@ -20,17 +27,32 @@ import EmptyState from "../../components/ui/EmptyState.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
 import { formatDate, formatTime } from "../../utils/formatDate.js";
 
+const REFUND_BADGE = {
+  REFUND_PENDING: { label: "Refund pending", variant: "warning" },
+  REFUND_PROCESSING: { label: "Refund processing", variant: "info" },
+  REFUND_AWAITING_CUSTOMER_CONFIRMATION: {
+    label: "Awaiting customer confirmation",
+    variant: "warning",
+  },
+  REFUNDED: { label: "Refunded", variant: "success" },
+  REFUND_OVERDUE: { label: "Refund overdue", variant: "error" },
+  REFUND_FAILED: { label: "Refund failed", variant: "error" },
+  REFUND_DISPUTED: { label: "Refund disputed", variant: "error" },
+};
+
 export default function OwnerReservationsPage() {
+  const { user } = useAuth();
   const [bookings, setBookings] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [search, setSearch] = useState("");
+  const [processingRefundId, setProcessingRefundId] = useState("");
 
   const fetchReservations = async () => {
     try {
       const res = await bookingApi.getAll();
-      setBookings(res?.bookings || []);
+      setBookings(res?.data?.bookings || res?.bookings || []);
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to load reservations.");
     } finally {
@@ -44,7 +66,7 @@ export default function OwnerReservationsPage() {
       .getAll()
       .then((res) => {
         if (isMounted) {
-          setBookings(res?.bookings || []);
+          setBookings(res?.data?.bookings || res?.bookings || []);
           setIsLoading(false);
         }
       })
@@ -77,6 +99,62 @@ export default function OwnerReservationsPage() {
     }
   };
 
+  const handleProcessRefund = async (booking, refundMethod) => {
+    setProcessingRefundId(booking._id);
+    const isCash = refundMethod === "Cash";
+    const confirmMessage = isCash
+      ? "Mark this refund as issued in cash? The customer will be asked to confirm receipt."
+      : "Process this refund to the customer's payment method (Razorpay)?";
+    if (!window.confirm(confirmMessage)) {
+      setProcessingRefundId("");
+      return;
+    }
+    try {
+      await refundApi.process(booking.refundId, refundMethod);
+      toast.success(isCash ? "Refund marked as issued in cash." : "Refund processed successfully.");
+      fetchReservations();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to process refund.");
+    } finally {
+      setProcessingRefundId("");
+    }
+  };
+
+  const handleConvertToBill = async (booking) => {
+    if (
+      !window.confirm(
+        `Convert ${booking.bookingCode || "this booking"} to a bill?\nPre-ordered items and the online advance will be carried over.`
+      )
+    ) {
+      return;
+    }
+    try {
+      await billApi.convertToBill(booking._id);
+      toast.success("Bill created from booking successfully.");
+      fetchReservations();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to create bill.");
+    }
+  };
+
+  const handleMarkNoShow = async (booking) => {
+    const remarks = window.prompt(
+      `Mark ${booking.bookingCode || "this booking"} as No-Show?\nPlease enter mandatory remarks (at least 5 characters):`
+    );
+    if (remarks === null) return;
+    if (!remarks || remarks.trim().length < 5) {
+      toast.error("Remarks are required (minimum 5 characters).");
+      return;
+    }
+    try {
+      await bookingApi.markNoShow(booking._id, remarks.trim());
+      toast.success("Booking marked as no-show.");
+      fetchReservations();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to mark booking as no-show.");
+    }
+  };
+
   const filteredBookings = bookings.filter((b) => {
     if (statusFilter !== "ALL" && b.bookingStatus !== statusFilter) return false;
     if (search) {
@@ -89,6 +167,22 @@ export default function OwnerReservationsPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+      {user?.bookingStatus === "BOOKING_RESTRICTED" && (
+        <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+          <span className="mt-0.5 shrink-0 font-bold">!</span>
+          <div>
+            <p className="font-semibold">New bookings are restricted</p>
+            <p className="text-red-700">
+              Your restaurant is not accepting new bookings until all unresolved
+              refunds are settled. You can still manage existing bookings.
+              Process refunds under{" "}
+              <span className="font-semibold">Refunds</span> to lift the
+              restriction.
+            </p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text">Reservation Management</h1>
@@ -146,6 +240,12 @@ export default function OwnerReservationsPage() {
             const bDate = b.bookingDateTime ? new Date(b.bookingDateTime) : null;
             const customer = typeof b.userId === "object" ? b.userId : null;
             const table = typeof b.tableId === "object" ? b.tableId : null;
+            const bookingTableDocs =
+              Array.isArray(b.tables) && b.tables.length
+                ? b.tables.map((entry) => entry.tableId).filter(Boolean)
+                : table
+                  ? [table]
+                  : [];
 
             return (
               <Card key={b._id} className="p-5 hover:shadow-md transition-shadow border border-gray-100">
@@ -175,6 +275,13 @@ export default function OwnerReservationsPage() {
                       >
                         {b.bookingStatus}
                       </Badge>
+                      {b.refundId &&
+                        b.refundStatus &&
+                        REFUND_BADGE[b.refundStatus] && (
+                          <Badge variant={REFUND_BADGE[b.refundStatus].variant}>
+                            {REFUND_BADGE[b.refundStatus].label}
+                          </Badge>
+                        )}
                     </div>
 
                     <div className="flex flex-wrap items-center gap-4 text-xs sm:text-sm text-muted">
@@ -188,10 +295,17 @@ export default function OwnerReservationsPage() {
                         <Users size={15} className="text-primary" />
                         <span>{b.numberOfGuests} Guests</span>
                       </div>
-                      {table && (
+                      {bookingTableDocs.length > 0 && (
                         <div className="flex items-center gap-1.5 font-medium text-text">
                           <Utensils size={15} className="text-primary" />
-                          <span>{table.tableCode || `Table #${table.tableNumber || table._id?.slice(-4)}`}{table.tableCode ? ` (Table ${table.tableNumber})` : ""}</span>
+                          <span>
+                            {bookingTableDocs
+                              .map(
+                                (t) =>
+                                  `${t.tableCode || `Table #${t.tableNumber || t._id?.slice(-4)}`}${t.tableCode && t.tableNumber ? ` (Table ${t.tableNumber})` : ""}`
+                              )
+                              .join(", ")}
+                          </span>
                         </div>
                       )}
                     </div>
@@ -236,6 +350,19 @@ export default function OwnerReservationsPage() {
                       </Button>
                     )}
 
+                    {(b.bookingStatus === "Confirmed" ||
+                      b.bookingStatus === "Pending") && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="text-red-600 border-red-200 hover:bg-red-50"
+                        onClick={() => handleMarkNoShow(b)}
+                      >
+                        <UserX size={15} className="mr-1" />
+                        Mark No-Show
+                      </Button>
+                    )}
+
                     {b.bookingStatus === "Checked-In" && (
                       <Button
                         size="sm"
@@ -246,6 +373,49 @@ export default function OwnerReservationsPage() {
                         Mark Complete
                       </Button>
                     )}
+
+                    {(b.bookingStatus === "Confirmed" ||
+                      b.bookingStatus === "Checked-In") && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => handleConvertToBill(b)}
+                      >
+                        <ReceiptText size={15} className="mr-1" />
+                        Convert to Bill
+                      </Button>
+                    )}
+
+                    {b.refundId &&
+                      b.refundStatus === "REFUND_PENDING" && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            isLoading={processingRefundId === b._id}
+                            onClick={() => handleProcessRefund(b, "Cash")}
+                          >
+                            <Banknote size={15} className="mr-1" />
+                            Refund in Cash
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="primary"
+                            onClick={() => handleProcessRefund(b, "RAZORPAY")}
+                          >
+                            <HandCoins size={15} className="mr-1" />
+                            Refund Online
+                          </Button>
+                        </>
+                      )}
+
+                    {b.refundId &&
+                      b.refundStatus === "REFUND_AWAITING_CUSTOMER_CONFIRMATION" && (
+                        <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700">
+                          <Banknote size={14} />
+                          Cash refund — awaiting customer confirmation
+                        </span>
+                      )}
                   </div>
                 </div>
               </Card>

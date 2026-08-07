@@ -100,6 +100,16 @@ foodReviewSchema.index(
     { unique: true }
 );
 
+// One review per user per booking per food item (payment-first lifecycle)
+foodReviewSchema.index(
+    { userId: 1, bookingId: 1, foodId: 1 },
+    { unique: true }
+);
+
+foodReviewSchema.index({ restaurantId: 1, status: 1, createdAt: -1 });
+
+foodReviewSchema.index({ foodId: 1, status: 1 });
+
 const FoodReview = mongoose.model("FoodReview", foodReviewSchema);
 
 export default FoodReview;

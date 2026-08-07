@@ -2,6 +2,7 @@ export const ROUTES = {
   // Public
   HOME: "/",
   RESTAURANTS: "/restaurants",
+  FOODS: "/foods",
   RESTAURANT_DETAILS: "/restaurants/:restaurantId",
   FOOD_DETAILS: "/foods/:foodId",
 
@@ -16,10 +17,13 @@ export const ROUTES = {
   CUSTOMER_HOME: "/customer",
   CUSTOMER_DASHBOARD: "/customer/dashboard",
   CUSTOMER_BOOKINGS: "/customer/bookings",
+  CUSTOMER_BOOKING_DETAILS: "/customer/bookings/:bookingId",
   CUSTOMER_FAVORITES: "/customer/favorites",
   CUSTOMER_PROFILE: "/customer/profile",
   CUSTOMER_CHANGE_PASSWORD: "/customer/change-password",
   CUSTOMER_NOTIFICATIONS: "/customer/notifications",
+  CUSTOMER_PAYMENTS: "/customer/payments",
+  CUSTOMER_REFUNDS: "/customer/refunds",
   BOOKING: "/restaurants/:restaurantId/book",
   BOOKING_CONFIRMATION: "/booking/:bookingId/confirmation",
 
@@ -27,6 +31,7 @@ export const ROUTES = {
   OWNER_HOME: "/owner",
   OWNER_DASHBOARD: "/owner/dashboard",
   OWNER_RESTAURANT: "/owner/restaurant",
+  OWNER_RESTAURANT_DETAILS: "/owner/restaurant/:restaurantId",
   OWNER_TABLES: "/owner/tables",
   OWNER_FOODS: "/owner/foods",
   OWNER_RESERVATIONS: "/owner/reservations",
@@ -35,6 +40,8 @@ export const ROUTES = {
   OWNER_REPORTS: "/owner/reports",
   OWNER_NOTIFICATIONS: "/owner/notifications",
   OWNER_PROFILE: "/owner/profile",
+  OWNER_PAYMENTS: "/owner/payments",
+  OWNER_REFUNDS: "/owner/refunds",
 
   // Admin
   ADMIN_HOME: "/admin",
