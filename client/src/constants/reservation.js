@@ -1,20 +1,10 @@
 export const BOOKING_STATUS = {
   PENDING: "Pending",
   CONFIRMED: "Confirmed",
-  CHECKED_IN: "Checked In",
   COMPLETED: "Completed",
   CANCELLED: "Cancelled",
   NO_SHOW: "No Show",
 };
-
-export const BOOKING_STATUS_VALUES = [
-  BOOKING_STATUS.PENDING,
-  BOOKING_STATUS.CONFIRMED,
-  BOOKING_STATUS.CHECKED_IN,
-  BOOKING_STATUS.COMPLETED,
-  BOOKING_STATUS.CANCELLED,
-  BOOKING_STATUS.NO_SHOW,
-];
 
 export const BOOKING_TYPE = {
   ONLINE: "Online",

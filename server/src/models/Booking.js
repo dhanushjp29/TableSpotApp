@@ -142,7 +142,6 @@ const bookingSchema = new mongoose.Schema(
       enum: [
         "Pending",
         "Confirmed",
-        "Checked In",
         "Completed",
         "Cancelled",
         "No Show",
@@ -211,11 +210,6 @@ const bookingSchema = new mongoose.Schema(
         type: mongoose.Schema.Types.ObjectId,
         ref: "Payment",
         default: null,
-    },
-
-    checkedInAt: {
-      type: Date,
-      default: null,
     },
 
     completedAt: {

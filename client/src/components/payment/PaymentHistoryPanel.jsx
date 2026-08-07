@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -15,7 +16,7 @@ import {
   Wallet,
 } from "lucide-react";
 
-import { paymentApi } from "../../api/payment.api.js";
+import { fetchPaymentHistory } from "../../store/slices/paymentSlice.js";
 import Card from "../ui/Card.jsx";
 import Badge from "../ui/Badge.jsx";
 import Select from "../ui/Select.jsx";
@@ -198,17 +199,11 @@ function FilterSelect({ label, value, options, onChange, allLabel }) {
 }
 
 function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
-  const [transactions, setTransactions] = useState([]);
-  const [summary, setSummary] = useState({
-    totalPaid: 0,
-    totalPaidOnline: 0,
-    totalPaidOffline: 0,
-    totalRefunded: 0,
-    netAmount: 0,
-    counts: { total: 0, success: 0, pending: 0, failed: 0 },
-  });
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const dispatch = useDispatch();
+  const transactions = useSelector((state) => state.payment.transactions);
+  const summary = useSelector((state) => state.payment.summary);
+  const isLoading = useSelector((state) => state.payment.isLoading);
+  const error = useSelector((state) => state.payment.error);
 
   const [search, setSearch] = useState("");
   const [purpose, setPurpose] = useState("");
@@ -216,46 +211,13 @@ function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
   const [status, setStatus] = useState("");
 
   const fetchHistory = async () => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      const response = await paymentApi.getHistory();
-      const payload = response?.data?.data || response?.data || {};
-      setTransactions(payload.transactions || []);
-      setSummary(payload.summary || {});
-    } catch (err) {
-      setError(
-        err?.response?.data?.message || "Failed to load payment history."
-      );
-    } finally {
-      setIsLoading(false);
-    }
+    await dispatch(fetchPaymentHistory()).catch(() => {});
   };
 
   useEffect(() => {
-    let isMounted = true;
-    paymentApi
-      .getHistory()
-      .then((response) => {
-        if (!isMounted) return;
-        const payload = response?.data?.data || response?.data || {};
-        setTransactions(payload.transactions || []);
-        setSummary(payload.summary || {});
-      })
-      .catch((err) => {
-        if (isMounted) {
-          setError(
-            err?.response?.data?.message || "Failed to load payment history."
-          );
-        }
-      })
-      .finally(() => {
-        if (isMounted) setIsLoading(false);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    fetchHistory();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch]);
 
   const filteredTransactions = useMemo(() => {
     const term = search.trim().toLowerCase();

@@ -2,12 +2,16 @@ import { CheckCircle2, ExternalLink, MapPin, Plus, RefreshCw, Search, ShieldAler
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 import { useNavigate } from "react-router-dom";
 
-import { restaurantApi } from "../../api/restaurant.api.js";
 import { paymentApi } from "../../api/payment.api.js";
 import { uploadApi } from "../../api/upload.api.js";
+import {
+  createRestaurant,
+  fetchRestaurants,
+  updateRestaurant,
+} from "../../store/slices/restaurantSlice.js";
 
 import ImageUploader from "../../components/form/ImageUploader.jsx";
 import LocationFields from "../../components/form/LocationFields.jsx";
@@ -146,6 +150,7 @@ function TagPicker({ label, options, selected, onSelect, onAdd, placeholder }) {
 
 export function CreateRestaurantForm({ restaurant = null, onSuccess, onCancel }) {
   const isEdit = Boolean(restaurant);
+  const dispatch = useDispatch();
   const [location, setLocation] = useState(
     restaurant?.location
       ? { lat: restaurant.location.latitude, lng: restaurant.location.longitude }
@@ -451,10 +456,10 @@ export function CreateRestaurantForm({ restaurant = null, onSuccess, onCancel })
       };
 
       if (isEdit) {
-        await restaurantApi.update(restaurant._id, payload);
+        await dispatch(updateRestaurant(restaurant._id, payload));
         toast.success("Restaurant updated successfully!");
       } else {
-        await restaurantApi.create(payload);
+        await dispatch(createRestaurant(payload));
         toast.success("Restaurant created successfully!");
         reset();
         setLocationValue({ country: "", state: "", city: "" });
@@ -1066,25 +1071,20 @@ export function CreateRestaurantForm({ restaurant = null, onSuccess, onCancel })
 function OwnerRestaurantPage() {
   const user = useSelector((state) => state.auth.user);
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const [showCreate, setShowCreate] = useState(false);
-  const [restaurants, setRestaurants] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
+  const isLoading = useSelector((state) => state.restaurant.isLoading);
+  const error = useSelector((state) => state.restaurant.error);
   const [searchTerm, setSearchTerm] = useState("");
 
   const fetchRestaurantsData = async () => {
-    setIsLoading(true);
-    setError(null);
     try {
-      const response = await restaurantApi.getAll({
-        ownerId: user?.id,
-        isActive: true,
-      });
-      setRestaurants(response?.data?.restaurants || []);
-    } catch (err) {
-      setError(err?.response?.data?.message || "Failed to load restaurants.");
-    } finally {
-      setIsLoading(false);
+      await dispatch(
+        fetchRestaurants({ ownerId: user?.id, isActive: true })
+      );
+    } catch {
+      // Error is captured in the restaurant slice.
     }
   };
 
@@ -1098,33 +1098,8 @@ function OwnerRestaurantPage() {
     : restaurants;
 
   useEffect(() => {
-    let isMounted = true;
-
-    const loadRestaurants = async () => {
-      try {
-        const response = await restaurantApi.getAll({
-          ownerId: user?.id,
-          isActive: true,
-        });
-        if (isMounted) {
-          setRestaurants(response?.data?.restaurants || []);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err?.response?.data?.message || "Failed to load restaurants.");
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadRestaurants();
-
-    return () => {
-      isMounted = false;
-    };
+    fetchRestaurantsData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   if (isLoading) {

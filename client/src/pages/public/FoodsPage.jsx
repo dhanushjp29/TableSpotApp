@@ -1,10 +1,14 @@
 import { ArrowLeft, List, Map as MapIcon, Search, SlidersHorizontal } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 
-import { foodApi } from "../../api/food.api.js";
-import { userApi } from "../../api/user.api.js";
+import { fetchFoods } from "../../store/slices/foodSlice.js";
+import {
+  fetchFavoriteFoods,
+  toggleFavoriteFood,
+} from "../../store/slices/userSlice.js";
 import { useDebounce } from "../../hooks/useDebounce.js";
 import { useAuth } from "../../hooks/useAuth.js";
 
@@ -30,13 +34,14 @@ const SORT_OPTIONS = [
 
 function FoodsPage() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const { isAuthenticated } = useAuth();
-  const [foods, setFoods] = useState([]);
-  const [meta, setMeta] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const foods = useSelector((state) => state.food.foods);
+  const meta = useSelector((state) => state.food.meta);
+  const isLoading = useSelector((state) => state.food.isLoading);
+  const error = useSelector((state) => state.food.error);
+  const favoriteFoods = useSelector((state) => state.user.favoriteFoods);
   const [page, setPage] = useState(1);
-  const [favoriteIds, setFavoriteIds] = useState(() => new Set());
   const [selectedRestaurantId, setSelectedRestaurantId] = useState(null);
   const [mobileView, setMobileView] = useState("list");
 
@@ -46,10 +51,19 @@ function FoodsPage() {
   const [foodType, setFoodType] = useState("");
   const [sortBy, setSortBy] = useState("");
 
+  const favoriteIds = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(favoriteFoods) ? favoriteFoods : []).map((item) =>
+          String(typeof item === "string" ? item : item._id)
+        )
+      ),
+    [favoriteFoods]
+  );
+
   const debouncedSearch = useDebounce(search, 400);
 
   useEffect(() => {
-    let isMounted = true;
     const params = {
       page,
       limit: 12,
@@ -60,43 +74,13 @@ function FoodsPage() {
       isAvailable: true,
     };
 
-    foodApi
-      .getAll(params)
-      .then((response) => {
-        if (isMounted) {
-          setFoods(response.data?.foods || []);
-          setMeta(response.data?.meta || null);
-          setIsLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (isMounted) {
-          setError(
-            err?.response?.data?.message || "Failed to load food items."
-          );
-          setIsLoading(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [page, debouncedSearch, category, foodType, sortBy]);
+    dispatch(fetchFoods(params)).catch(() => {});
+  }, [dispatch, page, debouncedSearch, category, foodType, sortBy]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    let isMounted = true;
-    userApi
-      .getFavoriteFoods()
-      .then((res) => {
-        const ids = res?.data?.favoriteFoodIds || res?.favoriteFoodIds || [];
-        if (isMounted) setFavoriteIds(new Set(ids.map(String)));
-      })
-      .catch(() => {});
-    return () => {
-      isMounted = false;
-    };
-  }, [isAuthenticated]);
+    dispatch(fetchFavoriteFoods()).catch(() => {});
+  }, [dispatch, isAuthenticated]);
 
   const handleToggleFavorite = async (foodId) => {
     if (!isAuthenticated) {
@@ -105,17 +89,8 @@ function FoodsPage() {
       return;
     }
     try {
-      const res = await userApi.toggleFavoriteFood(foodId);
+      const res = await dispatch(toggleFavoriteFood(foodId));
       const isFavorite = res?.data?.isFavorite;
-      setFavoriteIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(String(foodId))) {
-          next.delete(String(foodId));
-        } else {
-          next.add(String(foodId));
-        }
-        return next;
-      });
       toast.success(
         isFavorite ? "Added to favorites." : "Removed from favorites."
       );

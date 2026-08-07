@@ -1,10 +1,17 @@
 import { ArrowLeft, List, Map as MapIcon, Search } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 
-import { restaurantApi } from "../../api/restaurant.api.js";
-import { userApi } from "../../api/user.api.js";
+import {
+  fetchCities,
+  fetchRestaurants,
+} from "../../store/slices/restaurantSlice.js";
+import {
+  fetchFavoriteRestaurants,
+  toggleFavorite,
+} from "../../store/slices/userSlice.js";
 import { useDebounce } from "../../hooks/useDebounce.js";
 import { useAuth } from "../../hooks/useAuth.js";
 
@@ -27,16 +34,19 @@ const RATING_OPTIONS = [
 
 function RestaurantsPage() {
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const { isAuthenticated } = useAuth();
-  const [restaurants, setRestaurants] = useState([]);
-  const [meta, setMeta] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
+  const meta = useSelector((state) => state.restaurant.meta);
+  const isLoading = useSelector((state) => state.restaurant.isLoading);
+  const error = useSelector((state) => state.restaurant.error);
+  const cities = useSelector((state) => state.restaurant.cities);
+  const favoriteRestaurants = useSelector(
+    (state) => state.user.favoriteRestaurants
+  );
   const [page, setPage] = useState(1);
   const [selectedRestaurantId, setSelectedRestaurantId] = useState(null);
   const [mobileView, setMobileView] = useState("list");
-  const [favoriteIds, setFavoriteIds] = useState(() => new Set());
-  const [cities, setCities] = useState([]);
 
   // Filters
   const [search, setSearch] = useState("");
@@ -45,10 +55,19 @@ function RestaurantsPage() {
   const [minRating, setMinRating] = useState("");
   const [priceRange, setPriceRange] = useState("");
 
+  const favoriteIds = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(favoriteRestaurants) ? favoriteRestaurants : []).map(
+          (item) => String(typeof item === "string" ? item : item._id)
+        )
+      ),
+    [favoriteRestaurants]
+  );
+
   const debouncedSearch = useDebounce(search, 400);
 
   useEffect(() => {
-    let isMounted = true;
     const params = {
       page,
       limit: 12,
@@ -58,56 +77,17 @@ function RestaurantsPage() {
       isActive: true,
     };
 
-    restaurantApi
-      .getAll(params)
-      .then((response) => {
-        if (isMounted) {
-          setRestaurants(response.data?.restaurants || []);
-          setMeta(response.data?.meta || null);
-          setIsLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (isMounted) {
-          setError(err?.response?.data?.message || "Failed to load restaurants.");
-          setIsLoading(false);
-        }
-      });
-
-    return () => {
-      isMounted = false;
-    };
-  }, [page, debouncedSearch, city]);
+    dispatch(fetchRestaurants(params)).catch(() => {});
+  }, [dispatch, page, debouncedSearch, city]);
 
   useEffect(() => {
-    let isMounted = true;
-    restaurantApi
-      .getCities()
-      .then((response) => {
-        if (isMounted) {
-          setCities(response.data?.cities || []);
-        }
-      })
-      .catch(() => {});
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    dispatch(fetchCities()).catch(() => {});
+  }, [dispatch]);
 
   useEffect(() => {
     if (!isAuthenticated) return;
-    let isMounted = true;
-    userApi
-      .getFavoriteRestaurants()
-      .then((res) => {
-        const ids = res?.data?.favoriteRestaurantIds || res?.favoriteRestaurantIds || [];
-        if (isMounted) setFavoriteIds(new Set(ids.map(String)));
-      })
-      .catch(() => {});
-    return () => {
-      isMounted = false;
-    };
-  }, [isAuthenticated]);
+    dispatch(fetchFavoriteRestaurants()).catch(() => {});
+  }, [dispatch, isAuthenticated]);
 
   const handleToggleFavorite = async (restaurantId) => {
     if (!isAuthenticated) {
@@ -116,17 +96,8 @@ function RestaurantsPage() {
       return;
     }
     try {
-      const res = await userApi.toggleFavorite(restaurantId);
+      const res = await dispatch(toggleFavorite(restaurantId));
       const isFavorite = res?.data?.isFavorite;
-      setFavoriteIds((prev) => {
-        const next = new Set(prev);
-        if (next.has(String(restaurantId))) {
-          next.delete(String(restaurantId));
-        } else {
-          next.add(String(restaurantId));
-        }
-        return next;
-      });
       toast.success(
         isFavorite ? "Added to favorites." : "Removed from favorites."
       );

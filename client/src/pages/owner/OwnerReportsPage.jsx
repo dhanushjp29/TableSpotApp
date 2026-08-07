@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import {
   BarChart2,
   TrendingUp,
@@ -19,8 +20,8 @@ import {
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
 
-import { bookingApi } from "../../api/booking.api.js";
-import { billApi } from "../../api/bill.api.js";
+import { fetchBills } from "../../store/slices/billSlice.js";
+import { fetchBookings } from "../../store/slices/reservationSlice.js";
 import Card from "../../components/ui/Card.jsx";
 import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 
@@ -36,33 +37,27 @@ ChartJS.register(
 );
 
 export default function OwnerReportsPage() {
-  const [bookings, setBookings] = useState([]);
-  const [bills, setBills] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
+  const dispatch = useDispatch();
+  const bookings = useSelector((state) => state.reservation.bookings);
+  const bookingLoading = useSelector((state) => state.reservation.isLoading);
+  const bills = useSelector((state) => state.bill.bills);
+  const billLoading = useSelector((state) => state.bill.isLoading);
+  const isLoading = bookingLoading || billLoading;
 
   useEffect(() => {
-    let isMounted = true;
-    Promise.all([bookingApi.getAll(), billApi.getAll()])
-      .then(([bRes, billRes]) => {
-        if (isMounted) {
-          setBookings(bRes?.data?.bookings || bRes?.bookings || []);
-          setBills(billRes?.data?.bills || billRes?.bills || []);
-          setIsLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (isMounted) {
-          console.error("Failed to load report data", err);
-          setIsLoading(false);
-        }
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    Promise.all([dispatch(fetchBookings()), dispatch(fetchBills())]).catch(
+      () => {}
+    );
+  }, [dispatch]);
 
-  const totalRevenue = bills.reduce((acc, b) => acc + (b.grandTotal || b.subtotal || 0), 0);
-  const completedBookingsCount = bookings.filter((b) => b.bookingStatus === "Completed").length;
+  const totalRevenue = useMemo(
+    () => bills.reduce((acc, b) => acc + (b.grandTotal || b.subTotal || 0), 0),
+    [bills]
+  );
+  const completedBookingsCount = useMemo(
+    () => bookings.filter((b) => b.bookingStatus === "Completed").length,
+    [bookings]
+  );
   const avgGuests =
     bookings.length > 0
       ? (bookings.reduce((acc, b) => acc + (b.numberOfGuests || 0), 0) / bookings.length).toFixed(1)

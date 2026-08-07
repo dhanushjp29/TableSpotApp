@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import {
   Users,
   Utensils,
@@ -28,11 +29,18 @@ import {
 } from "chart.js";
 import { Pie, Bar } from "react-chartjs-2";
 
-import { userApi } from "../../api/user.api.js";
-import { restaurantApi } from "../../api/restaurant.api.js";
-import { bookingApi } from "../../api/booking.api.js";
-import { billApi } from "../../api/bill.api.js";
-import { restaurantReviewApi } from "../../api/review.api.js";
+import {
+  deleteUser,
+  fetchUsers,
+  toggleUserActive,
+} from "../../store/slices/userSlice.js";
+import {
+  fetchRestaurants,
+  verifyRestaurant,
+} from "../../store/slices/restaurantSlice.js";
+import { fetchBookings } from "../../store/slices/reservationSlice.js";
+import { fetchBills } from "../../store/slices/billSlice.js";
+import { fetchRestaurantReviews } from "../../store/slices/reviewSlice.js";
 
 import Card from "../../components/ui/Card.jsx";
 import Badge from "../../components/ui/Badge.jsx";
@@ -48,66 +56,68 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend,
 
 /* ===== 1. ADMIN DASHBOARD PAGE ===== */
 export function AdminDashboardPage() {
-  const [stats, setStats] = useState({
-    usersCount: 0,
-    restaurantsCount: 0,
-    bookingsCount: 0,
-    pendingVerifications: 0,
-    revenue: 0,
-    totalReviews: 0,
-  });
-  const [pendingRestaurants, setPendingRestaurants] = useState([]);
-  const [recentUsers, setRecentUsers] = useState([]);
+  const dispatch = useDispatch();
+  const users = useSelector((state) => state.user.users);
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
+  const bookings = useSelector((state) => state.reservation.bookings);
+  const bills = useSelector((state) => state.bill.bills);
+  const restaurantReviews = useSelector(
+    (state) => state.review.restaurantReviews
+  );
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let isMounted = true;
     Promise.all([
-      userApi.getAll({ limit: 100 }),
-      restaurantApi.getAll({ limit: 100 }),
-      bookingApi.getAll({ limit: 100 }),
-      billApi.getAll({ limit: 100 }),
-      restaurantReviewApi.getAll({ limit: 100 }),
-    ])
-      .then(
-        ([usersRes, restRes, bookingsRes, billsRes, reviewsRes]) => {
-          if (isMounted) {
-            const users = usersRes?.data?.users || usersRes?.users || [];
-            const rests = restRes?.data?.restaurants || restRes?.restaurants || [];
-            const bookings = bookingsRes?.data?.bookings || bookingsRes?.bookings || [];
-            const bills = billsRes?.data?.bills || billsRes?.bills || [];
-            const reviews = reviewsRes?.data?.reviews || reviewsRes?.reviews || [];
-            const pending = rests.filter((r) => r.verificationStatus === "Pending");
-            const paidRevenue = bills
-              .filter(
-                (b) => b.billStatus === "Paid" || b.payment?.paymentStatus === "Paid"
-              )
-              .reduce((sum, b) => sum + Number(b.grandTotal || 0), 0);
-
-            setStats({
-              usersCount: users.length,
-              restaurantsCount: rests.length,
-              bookingsCount: bookings.length,
-              pendingVerifications: pending.length,
-              revenue: paidRevenue,
-              totalReviews: reviews.length,
-            });
-            setPendingRestaurants(pending.slice(0, 5));
-            setRecentUsers(users.slice(0, 6));
-            setIsLoading(false);
-          }
-        }
-      )
-      .catch((err) => {
-        if (isMounted) {
-          console.error("Error loading admin stats", err);
-          setIsLoading(false);
-        }
-      });
+      dispatch(fetchUsers({ limit: 100 })).catch(() => null),
+      dispatch(fetchRestaurants({ limit: 100 })).catch(() => null),
+      dispatch(fetchBookings({ limit: 100 })).catch(() => null),
+      dispatch(fetchBills({ limit: 100 })).catch(() => null),
+      dispatch(fetchRestaurantReviews({ limit: 100 })).catch(() => null),
+    ]).then(() => {
+      if (isMounted) setIsLoading(false);
+    });
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [dispatch]);
+
+  const pendingRestaurants = useMemo(
+    () =>
+      restaurants.filter((r) => r.verificationStatus === "Pending").slice(0, 5),
+    [restaurants]
+  );
+  const recentUsers = useMemo(() => users.slice(0, 6), [users]);
+
+  const stats = useMemo(() => {
+    const pending = restaurants.filter(
+      (r) => r.verificationStatus === "Pending"
+    );
+    const paidRevenue = bills
+      .filter(
+        (b) => b.billStatus === "Paid" || b.payment?.paymentStatus === "Paid"
+      )
+      .reduce((sum, b) => sum + Number(b.grandTotal || 0), 0);
+    return {
+      usersCount: users.length,
+      restaurantsCount: restaurants.length,
+      bookingsCount: bookings.length,
+      pendingVerifications: pending.length,
+      revenue: paidRevenue,
+      totalReviews: restaurantReviews.length,
+    };
+  }, [users, restaurants, bookings, bills, restaurantReviews]);
+
+  const handleApprove = async (r) => {
+    try {
+      await dispatch(verifyRestaurant(r._id, { verificationStatus: "Verified" }));
+      toast.success(`${r.restaurantName} approved!`);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Approval failed.");
+    } finally {
+      dispatch(fetchRestaurants({ limit: 100 })).catch(() => {});
+    }
+  };
 
   const kpis = [
     { label: "Total Users", value: stats.usersCount, color: "border-l-primary", icon: Users },
@@ -185,15 +195,7 @@ export function AdminDashboardPage() {
                       <Button
                         size="sm"
                         variant="primary"
-                        onClick={() => {
-                          restaurantApi
-                            .verify(r._id, { verificationStatus: "Verified" })
-                            .then(() => toast.success(`${r.restaurantName} approved!`))
-                            .catch((err) =>
-                              toast.error(err?.response?.data?.message || "Approval failed.")
-                            )
-                            .finally(() => window.location.reload());
-                        }}
+                        onClick={() => handleApprove(r)}
                       >
                         <CheckCircle size={14} className="mr-1" /> Approve
                       </Button>
@@ -253,7 +255,8 @@ export function AdminDashboardPage() {
 
 /* ===== 2. ADMIN USERS PAGE ===== */
 export function AdminUsersPage() {
-  const [users, setUsers] = useState([]);
+  const dispatch = useDispatch();
+  const users = useSelector((state) => state.user.users);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
@@ -261,10 +264,10 @@ export function AdminUsersPage() {
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const fetchUsers = async () => {
+  const reloadUsers = async () => {
     try {
-      const res = await userApi.getAll();
-      setUsers(res?.data?.users || res?.users || []);
+      await dispatch(fetchUsers());
+      setError(null);
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to load users.");
     } finally {
@@ -274,11 +277,10 @@ export function AdminUsersPage() {
 
   useEffect(() => {
     let isMounted = true;
-    userApi
-      .getAll()
-      .then((res) => {
+    dispatch(fetchUsers())
+      .then(() => {
         if (isMounted) {
-          setUsers(res?.data?.users || res?.users || []);
+          setError(null);
           setIsLoading(false);
         }
       })
@@ -291,13 +293,13 @@ export function AdminUsersPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [dispatch]);
 
   const handleToggleActive = async (userId, currentlyActive) => {
     try {
-      await userApi.toggleActive(userId, { isActive: !currentlyActive });
+      await dispatch(toggleUserActive(userId, { isActive: !currentlyActive }));
       toast.success(currentlyActive ? "User blocked." : "User unblocked.");
-      fetchUsers();
+      reloadUsers();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to update user status.");
     }
@@ -307,10 +309,10 @@ export function AdminUsersPage() {
     if (!deleteTarget) return;
     setIsDeleting(true);
     try {
-      await userApi.remove(deleteTarget._id);
+      await dispatch(deleteUser(deleteTarget._id));
       toast.success("User deleted.");
       setDeleteTarget(null);
-      fetchUsers();
+      reloadUsers();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to delete user.");
     } finally {
@@ -372,7 +374,7 @@ export function AdminUsersPage() {
           ))}
         </div>
       ) : error ? (
-        <ErrorState title="Unable to load users" description={error} onRetry={fetchUsers} />
+        <ErrorState title="Unable to load users" description={error} onRetry={reloadUsers} />
       ) : filteredUsers.length === 0 ? (
         <EmptyState title="No users found" description="No accounts match your criteria." />
       ) : (
@@ -456,15 +458,16 @@ export function AdminUsersPage() {
 
 /* ===== 3. ADMIN RESTAURANTS PAGE ===== */
 export function AdminRestaurantsPage() {
-  const [restaurants, setRestaurants] = useState([]);
+  const dispatch = useDispatch();
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState("");
 
-  const fetchRestaurants = async () => {
+  const reloadRestaurants = async () => {
     try {
-      const res = await restaurantApi.getAll();
-      setRestaurants(res?.data?.restaurants || res?.restaurants || []);
+      await dispatch(fetchRestaurants());
+      setError(null);
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to load restaurants.");
     } finally {
@@ -474,11 +477,10 @@ export function AdminRestaurantsPage() {
 
   useEffect(() => {
     let isMounted = true;
-    restaurantApi
-      .getAll()
-      .then((res) => {
+    dispatch(fetchRestaurants())
+      .then(() => {
         if (isMounted) {
-          setRestaurants(res?.data?.restaurants || res?.restaurants || []);
+          setError(null);
           setIsLoading(false);
         }
       })
@@ -491,17 +493,17 @@ export function AdminRestaurantsPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [dispatch]);
 
   const handleVerifyRestaurant = async (restaurantId, status) => {
     try {
-      await restaurantApi.verify(restaurantId, { verificationStatus: status });
+      await dispatch(verifyRestaurant(restaurantId, { verificationStatus: status }));
       toast.success(`Restaurant ${status}!`);
-      fetchRestaurants();
     } catch (err) {
       console.error(err);
       toast.error(`Failed to update restaurant verification.`);
-      fetchRestaurants();
+    } finally {
+      reloadRestaurants();
     }
   };
 
@@ -538,7 +540,7 @@ export function AdminRestaurantsPage() {
           ))}
         </div>
       ) : error ? (
-        <ErrorState title="Unable to load restaurants" description={error} onRetry={fetchRestaurants} />
+        <ErrorState title="Unable to load restaurants" description={error} onRetry={reloadRestaurants} />
       ) : filteredRestaurants.length === 0 ? (
         <EmptyState title="No restaurants found" description="No restaurant listings match your query." />
       ) : (
@@ -627,7 +629,6 @@ export function AdminReviewsPage() {
 const STATUS_COLORS = {
   Pending: "#f59e0b",
   Confirmed: "#3b82f6",
-  "Checked In": "#8b5cf6",
   Completed: "#22c55e",
   Cancelled: "#ef4444",
   "No Show": "#64748b",
@@ -653,54 +654,40 @@ const countBy = (items, getKey) =>
   }, {});
 
 export function AdminReportsPage() {
-  const [stats, setStats] = useState({
-    users: [],
-    restaurants: [],
-    bookings: [],
-    bills: [],
-    reviews: [],
-    isLoading: true,
-    error: null,
-  });
+  const dispatch = useDispatch();
+  const users = useSelector((state) => state.user.users);
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
+  const bookings = useSelector((state) => state.reservation.bookings);
+  const bills = useSelector((state) => state.bill.bills);
+  const reviews = useSelector((state) => state.review.restaurantReviews);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     let isMounted = true;
     Promise.all([
-      userApi.getAll({ limit: 100 }),
-      restaurantApi.getAll({ limit: 100 }),
-      bookingApi.getAll({ limit: 100 }),
-      billApi.getAll({ limit: 100 }),
-      restaurantReviewApi.getAll({ limit: 100 }),
+      dispatch(fetchUsers({ limit: 100 })).catch(() => null),
+      dispatch(fetchRestaurants({ limit: 100 })).catch(() => null),
+      dispatch(fetchBookings({ limit: 100 })).catch(() => null),
+      dispatch(fetchBills({ limit: 100 })).catch(() => null),
+      dispatch(fetchRestaurantReviews({ limit: 100 })).catch(() => null),
     ])
-      .then(([usersRes, restRes, bookingsRes, billsRes, reviewsRes]) => {
+      .then(() => {
         if (isMounted) {
-          setStats({
-            users: usersRes?.data?.users || usersRes?.users || [],
-            restaurants: restRes?.data?.restaurants || restRes?.restaurants || [],
-            bookings: bookingsRes?.data?.bookings || bookingsRes?.bookings || [],
-            bills: billsRes?.data?.bills || billsRes?.bills || [],
-            reviews: reviewsRes?.data?.reviews || reviewsRes?.reviews || [],
-            isLoading: false,
-            error: null,
-          });
+          setError(null);
+          setIsLoading(false);
         }
       })
-      .catch((err) => {
+      .catch(() => {
         if (isMounted) {
-          console.error("Error loading admin reports", err);
-          setStats((prev) => ({
-            ...prev,
-            isLoading: false,
-            error: err?.response?.data?.message || "Failed to load reports.",
-          }));
+          setError("Failed to load reports.");
+          setIsLoading(false);
         }
       });
     return () => {
       isMounted = false;
     };
-  }, []);
-
-  const { users, restaurants, bookings, bills, reviews, isLoading, error } = stats;
+  }, [dispatch]);
 
   const roleCounts = countBy(users, (u) => u.role || "customer");
   const roleData = {

@@ -2,11 +2,16 @@ import { Edit2, Plus, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useFieldArray, useForm, useWatch } from "react-hook-form";
 import toast from "react-hot-toast";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 
-import { foodApi } from "../../api/food.api.js";
-import { restaurantApi } from "../../api/restaurant.api.js";
 import { uploadApi } from "../../api/upload.api.js";
+import {
+  createFood,
+  deleteFood,
+  fetchFoods,
+  updateFood,
+} from "../../store/slices/foodSlice.js";
+import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
 
 import ImageUploader from "../../components/form/ImageUploader.jsx";
 import Badge from "../../components/ui/Badge.jsx";
@@ -50,6 +55,7 @@ function FoodForm({
   onCancel,
 }) {
   const isEdit = Boolean(food);
+  const dispatch = useDispatch();
   const [coverItems, setCoverItems] = useState(
     food?.coverImage ? [{ file: null, preview: food.coverImage }] : []
   );
@@ -214,10 +220,10 @@ function FoodForm({
       };
 
       if (isEdit) {
-        await foodApi.update(food._id, payload);
+        await dispatch(updateFood(food._id, payload));
         toast.success("Food item updated successfully!");
       } else {
-        await foodApi.create(payload);
+        await dispatch(createFood(payload));
         toast.success("Food item created successfully!");
       }
       onSuccess();
@@ -577,62 +583,31 @@ function FoodForm({
 
 function OwnerFoodsPage() {
   const user = useSelector((state) => state.auth.user);
-  const [foods, setFoods] = useState([]);
-  const [restaurants, setRestaurants] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const dispatch = useDispatch();
+  const foods = useSelector((state) => state.food.foods);
+  const foodLoading = useSelector((state) => state.food.isLoading);
+  const foodError = useSelector((state) => state.food.error);
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
+  const restaurantLoading = useSelector((state) => state.restaurant.isLoading);
+  const restaurantError = useSelector((state) => state.restaurant.error);
   const [showCreate, setShowCreate] = useState(false);
   const [editFood, setEditFood] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [deleting, setDeleting] = useState(false);
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
 
+  const isLoading = foodLoading || restaurantLoading;
+  const error = foodError || restaurantError;
+
   const fetchData = async () => {
-    try {
-      const [foodsResponse, restaurantsResponse] = await Promise.all([
-        foodApi.getAll(),
-        restaurantApi.getAll({ ownerId: user?.id, isActive: true }),
-      ]);
-      setFoods(foodsResponse?.data?.foods || []);
-      setRestaurants(restaurantsResponse?.data?.restaurants || []);
-      setError(null);
-    } catch (err) {
-      setError(err?.response?.data?.message || "Failed to load food items.");
-    } finally {
-      setIsLoading(false);
-    }
+    await Promise.all([
+      dispatch(fetchFoods()),
+      dispatch(fetchRestaurants({ ownerId: user?.id, isActive: true })),
+    ]).catch(() => {});
   };
 
   useEffect(() => {
-    let isMounted = true;
-
-    const loadFoods = async () => {
-      try {
-        const [foodsResponse, restaurantsResponse] = await Promise.all([
-          foodApi.getAll(),
-          restaurantApi.getAll({ ownerId: user?.id, isActive: true }),
-        ]);
-        if (isMounted) {
-          setFoods(foodsResponse?.data?.foods || []);
-          setRestaurants(restaurantsResponse?.data?.restaurants || []);
-          setError(null);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err?.response?.data?.message || "Failed to load food items.");
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    loadFoods();
-
-    return () => {
-      isMounted = false;
-    };
+    fetchData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -648,7 +623,7 @@ function OwnerFoodsPage() {
     if (!deleteTarget) return;
     setDeleting(true);
     try {
-      await foodApi.remove(deleteTarget._id);
+      await dispatch(deleteFood(deleteTarget._id));
       toast.success("Food item deleted successfully!");
       setDeleteTarget(null);
       fetchData();

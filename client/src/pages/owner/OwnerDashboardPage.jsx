@@ -8,16 +8,16 @@ import {
   TrendingUp,
   UtensilsCrossed,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
 import { Link } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector } from "react-redux";
 
-import { bookingApi } from "../../api/booking.api.js";
-import { restaurantApi } from "../../api/restaurant.api.js";
-import { tableApi } from "../../api/table.api.js";
-import { foodApi } from "../../api/food.api.js";
-import { billApi } from "../../api/bill.api.js";
-import { restaurantReviewApi } from "../../api/review.api.js";
+import { fetchBills } from "../../store/slices/billSlice.js";
+import { fetchBookings } from "../../store/slices/reservationSlice.js";
+import { fetchFoods } from "../../store/slices/foodSlice.js";
+import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
+import { fetchRestaurantReviews } from "../../store/slices/reviewSlice.js";
+import { fetchTables } from "../../store/slices/tableSlice.js";
 
 import Card from "../../components/ui/Card.jsx";
 import Badge from "../../components/ui/Badge.jsx";
@@ -31,7 +31,6 @@ import { formatDate, formatTime } from "../../utils/formatDate.js";
 const STATUS_VARIANT = {
   Pending: "warning",
   Confirmed: "info",
-  "Checked In": "info",
   Completed: "success",
   Cancelled: "danger",
   "No Show": "danger",
@@ -66,85 +65,84 @@ function StatCard({ icon: Icon, label, value, subtext, accent = "primary" }) {
 function OwnerDashboardPage() {
   const user = useSelector((state) => state.auth.user);
   const userId = user?._id || user?.id;
+  const dispatch = useDispatch();
 
-  const [stats, setStats] = useState({
-    totalRestaurants: 0,
-    totalTables: 0,
-    totalFoods: 0,
-    totalBookings: 0,
-    pendingBookings: 0,
-    totalReviews: 0,
-    avgRating: 0,
-    revenue: 0,
-  });
-  const [recentBookings, setRecentBookings] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
+  const restaurantLoading = useSelector((state) => state.restaurant.isLoading);
+  const restaurantError = useSelector((state) => state.restaurant.error);
+  const tables = useSelector((state) => state.table.tables);
+  const tableLoading = useSelector((state) => state.table.isLoading);
+  const tableError = useSelector((state) => state.table.error);
+  const foods = useSelector((state) => state.food.foods);
+  const foodLoading = useSelector((state) => state.food.isLoading);
+  const foodError = useSelector((state) => state.food.error);
+  const bookings = useSelector((state) => state.reservation.bookings);
+  const bookingLoading = useSelector((state) => state.reservation.isLoading);
+  const bookingError = useSelector((state) => state.reservation.error);
+  const reviews = useSelector((state) => state.review.restaurantReviews);
+  const reviewLoading = useSelector((state) => state.review.isLoading);
+  const reviewError = useSelector((state) => state.review.error);
+  const bills = useSelector((state) => state.bill.bills);
+  const billLoading = useSelector((state) => state.bill.isLoading);
+  const billError = useSelector((state) => state.bill.error);
+
+  const isLoading =
+    restaurantLoading ||
+    tableLoading ||
+    foodLoading ||
+    bookingLoading ||
+    reviewLoading ||
+    billLoading;
+  const error =
+    restaurantError ||
+    tableError ||
+    foodError ||
+    bookingError ||
+    reviewError ||
+    billError;
 
   useEffect(() => {
-    const fetchStats = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const [
-          restaurantsRes,
-          tablesRes,
-          foodsRes,
-          bookingsRes,
-          reviewsRes,
-          billsRes,
-        ] = await Promise.all([
-          restaurantApi.getAll({ ownerId: userId, limit: 100 }),
-          tableApi.getAll({ limit: 100 }),
-          foodApi.getAll({ limit: 100 }),
-          bookingApi.getAll({ limit: 100 }),
-          restaurantReviewApi.getAll({ ownerId: userId, limit: 100 }),
-          billApi.getAll({ limit: 100 }),
-        ]);
+    Promise.all([
+      dispatch(fetchRestaurants({ ownerId: userId, limit: 100 })),
+      dispatch(fetchTables({ limit: 100 })),
+      dispatch(fetchFoods({ limit: 100 })),
+      dispatch(fetchBookings({ limit: 100 })),
+      dispatch(fetchRestaurantReviews({ ownerId: userId, limit: 100 })),
+      dispatch(fetchBills({ limit: 100 })),
+    ]).catch(() => {});
+  }, [userId, dispatch]);
 
-        const restaurants = restaurantsRes?.data?.restaurants || [];
-        const tables = tablesRes?.data?.tables || [];
-        const foods = foodsRes?.data?.foods || [];
-        const bookings = bookingsRes?.data?.bookings || [];
-        const reviews = reviewsRes?.data?.reviews || [];
-        const bills = billsRes?.data?.bills || [];
+  const { stats, recentBookings } = useMemo(() => {
+    const paidBills = bills.filter(
+      (b) => b.billStatus === "Paid" || b.payment?.paymentStatus === "Paid"
+    );
+    const revenue = paidBills.reduce(
+      (sum, b) => sum + Number(b.grandTotal || 0),
+      0
+    );
+    const avgRating = reviews.length
+      ? (
+          reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) /
+          reviews.length
+        ).toFixed(1)
+      : "0.0";
 
-        const paidBills = bills.filter(
-          (b) => b.billStatus === "Paid" || b.payment?.paymentStatus === "Paid"
-        );
-        const revenue = paidBills.reduce(
-          (sum, b) => sum + Number(b.grandTotal || 0),
-          0
-        );
-        const avgRating = reviews.length
-          ? (
-              reviews.reduce((sum, r) => sum + Number(r.rating || 0), 0) /
-              reviews.length
-            ).toFixed(1)
-          : "0.0";
-
-        setStats({
-          totalRestaurants: restaurants.length,
-          totalTables: tables.length,
-          totalFoods: foods.length,
-          totalBookings: bookings.length,
-          pendingBookings: bookings.filter(
-            (b) => b.bookingStatus === "Pending"
-          ).length,
-          totalReviews: reviews.length,
-          avgRating,
-          revenue,
-        });
-        setRecentBookings(bookings.slice(0, 5));
-      } catch (err) {
-        setError(err?.response?.data?.message || "Failed to load dashboard data.");
-      } finally {
-        setIsLoading(false);
-      }
+    return {
+      stats: {
+        totalRestaurants: restaurants.length,
+        totalTables: tables.length,
+        totalFoods: foods.length,
+        totalBookings: bookings.length,
+        pendingBookings: bookings.filter(
+          (b) => b.bookingStatus === "Pending"
+        ).length,
+        totalReviews: reviews.length,
+        avgRating,
+        revenue,
+      },
+      recentBookings: bookings.slice(0, 5),
     };
-
-    fetchStats();
-  }, [userId]);
+  }, [restaurants, tables, foods, bookings, reviews, bills]);
 
   if (isLoading) {
     return (

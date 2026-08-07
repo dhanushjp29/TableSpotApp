@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import {
   MapPin,
   Clock,
@@ -14,8 +15,12 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { restaurantApi } from "../../api/restaurant.api.js";
-import { foodApi } from "../../api/food.api.js";
+import { fetchRestaurantById } from "../../store/slices/restaurantSlice.js";
+import { fetchFoodsByRestaurant } from "../../store/slices/foodSlice.js";
+import {
+  deleteRestaurantReview,
+  fetchRestaurantReviewsByRestaurant,
+} from "../../store/slices/reviewSlice.js";
 import { restaurantReviewApi } from "../../api/review.api.js";
 import { useAuth } from "../../hooks/useAuth.js";
 import { ROUTES } from "../../routes/routeConstants.js";
@@ -32,50 +37,37 @@ import { formatCurrency } from "../../utils/formatCurrency.js";
 function RestaurantDetailsPage() {
   const { restaurantId } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const { isAuthenticated, user } = useAuth();
-  const [restaurant, setRestaurant] = useState(null);
-  const [foods, setFoods] = useState([]);
-  const [reviews, setReviews] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const restaurant = useSelector((state) => state.restaurant.currentRestaurant);
+  const foods = useSelector((state) => state.food.foods);
+  const reviews = useSelector((state) => state.review.restaurantReviews);
+  const restaurantLoading = useSelector((state) => state.restaurant.isLoading);
+  const foodsLoading = useSelector((state) => state.food.isLoading);
+  const reviewsLoading = useSelector((state) => state.review.isLoading);
+  const restaurantError = useSelector((state) => state.restaurant.error);
+  const foodsError = useSelector((state) => state.food.error);
+  const reviewsError = useSelector((state) => state.review.error);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [editingReview, setEditingReview] = useState(null);
   const [reviewFoods, setReviewFoods] = useState([]);
   const [reviewBookingId, setReviewBookingId] = useState(null);
 
+  const isLoading = restaurantLoading || foodsLoading || reviewsLoading;
+  const error = restaurantError || foodsError || reviewsError;
+
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const [restaurantRes, foodsRes, reviewsRes] = await Promise.all([
-          restaurantApi.getById(restaurantId),
-          foodApi.getByRestaurant(restaurantId),
-          restaurantReviewApi.getByRestaurant(restaurantId, { limit: 5 }),
-        ]);
-
-        setRestaurant(
-          restaurantRes.data?.restaurant || restaurantRes.data
-        );
-        setFoods(foodsRes.data?.foods || []);
-        setReviews(reviewsRes.data?.reviews || []);
-      } catch (err) {
-        setError(
-          err?.response?.data?.message || "Failed to load restaurant details."
-        );
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [restaurantId]);
+    dispatch(fetchRestaurantById(restaurantId)).catch(() => {});
+    dispatch(fetchFoodsByRestaurant(restaurantId)).catch(() => {});
+    dispatch(fetchRestaurantReviewsByRestaurant(restaurantId, { limit: 5 })).catch(
+      () => {}
+    );
+  }, [dispatch, restaurantId]);
 
   const refreshReviews = () => {
-    restaurantReviewApi
-      .getByRestaurant(restaurantId, { limit: 5 })
-      .then((res) => setReviews(res.data?.reviews || []))
-      .catch(() => {});
+    dispatch(fetchRestaurantReviewsByRestaurant(restaurantId, { limit: 5 })).catch(
+      () => {}
+    );
   };
 
   const handleBack = () => {
@@ -120,7 +112,7 @@ function RestaurantDetailsPage() {
   const handleDeleteReview = async (review) => {
     if (!window.confirm("Delete this review?")) return;
     try {
-      await restaurantReviewApi.remove(review._id);
+      await dispatch(deleteRestaurantReview(review._id));
       toast.success("Review deleted.");
       refreshReviews();
     } catch (err) {

@@ -3,9 +3,9 @@ import { useDispatch } from "react-redux";
 import { Camera, Mail } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { userApi } from "../../api/user.api.js";
 import { uploadApi } from "../../api/upload.api.js";
 import { fetchCurrentUser } from "../../store/slices/authSlice.js";
+import { updateProfile } from "../../store/slices/userSlice.js";
 import { useAuth } from "../../hooks/useAuth.js";
 import { USER_ROLE } from "../../constants/roles.js";
 import { formatDate } from "../../utils/formatDate.js";
@@ -73,7 +73,7 @@ function ProfilePage() {
           .map((item) => item.trim())
           .filter(Boolean);
       }
-      await userApi.updateProfile(updates);
+      await dispatch(updateProfile(updates));
       await dispatch(fetchCurrentUser());
       toast.success("Profile updated successfully.");
     } catch (err) {

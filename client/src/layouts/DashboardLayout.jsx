@@ -22,8 +22,8 @@ import {
 import { useAuth } from "../hooks/useAuth.js";
 import { logoutUser } from "../store/slices/authSlice.js";
 import { toggleSidebar } from "../store/slices/uiSlice.js";
+import { fetchUnreadCount } from "../store/slices/notificationSlice.js";
 import { ROUTES } from "../routes/routeConstants.js";
-import { notificationApi } from "../api/notification.api.js";
 import Avatar from "../components/ui/Avatar.jsx";
 import ConfirmDialog from "../components/ui/ConfirmDialog.jsx";
 
@@ -73,34 +73,26 @@ function DashboardLayout() {
   const navigate = useNavigate();
   const { user, role } = useAuth();
   const sidebarOpen = useSelector((state) => state.ui.sidebarOpen);
-  const [unreadCount, setUnreadCount] = useState(0);
+  const unreadCount = useSelector((state) => state.notification.unreadCount);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const navItems = roleNavConfig[role] || [];
 
   useEffect(() => {
-    let cancelled = false;
-
-    const fetchUnreadCount = async () => {
-      try {
-        const { data } = await notificationApi.getUnreadCount();
-        if (!cancelled) setUnreadCount(data?.count || 0);
-      } catch {
-        if (!cancelled) setUnreadCount(0);
-      }
+    const poll = () => {
+      dispatch(fetchUnreadCount()).catch(() => {});
     };
 
-    fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 20000);
-    const handleUpdated = () => fetchUnreadCount();
+    poll();
+    const interval = setInterval(poll, 20000);
+    const handleUpdated = () => poll();
     window.addEventListener("notifications-updated", handleUpdated);
     return () => {
-      cancelled = true;
       clearInterval(interval);
       window.removeEventListener("notifications-updated", handleUpdated);
     };
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     if (!role) {

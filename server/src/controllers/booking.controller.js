@@ -56,23 +56,6 @@ export const update = async (req, res) => {
     res.status(200).json(new ApiResponse(200, result.message, result));
 };
 
-export const updateStatus = async (req, res) => {
-    const { bookingId } = req.params;
-    const { booking } = await bookingService.getBookingById({ bookingId });
-    await verifyBookingAccess(req, booking);
-
-    // Only owners and admins can change booking status
-    if (req.user.role === USER_ROLE.CUSTOMER) {
-        throw new ApiError(403, "Only restaurant owners can update booking status.");
-    }
-
-    const result = await bookingService.updateBookingStatus({
-        bookingId,
-        ...req.validatedData,
-    });
-    res.status(200).json(new ApiResponse(200, result.message, result));
-};
-
 export const cancel = async (req, res) => {
     const { bookingId } = req.params;
     const { booking } = await bookingService.getBookingById({ bookingId });
@@ -97,42 +80,6 @@ export const createWalkIn = async (req, res) => {
         ownerId: req.user._id,
     });
     res.status(201).json(new ApiResponse(201, result.message, result));
-};
-
-export const checkIn = async (req, res) => {
-    const { bookingId } = req.params;
-    const { booking } = await bookingService.getBookingById({ bookingId });
-    await verifyBookingAccess(req, booking);
-
-    // Only owners and admins can check in a booking
-    if (req.user.role === USER_ROLE.CUSTOMER) {
-        throw new ApiError(403, "Only restaurant owners can check in a booking.");
-    }
-
-    const result = await bookingService.checkInBooking({
-        bookingId,
-        performedBy: req.user._id,
-        performedByRole: req.user.role,
-    });
-    res.status(200).json(new ApiResponse(200, result.message, result));
-};
-
-export const complete = async (req, res) => {
-    const { bookingId } = req.params;
-    const { booking } = await bookingService.getBookingById({ bookingId });
-    await verifyBookingAccess(req, booking);
-
-    // Only owners and admins can complete a booking
-    if (req.user.role === USER_ROLE.CUSTOMER) {
-        throw new ApiError(403, "Only restaurant owners can complete a booking.");
-    }
-
-    const result = await bookingService.completeBooking({
-        bookingId,
-        performedBy: req.user._id,
-        performedByRole: req.user.role,
-    });
-    res.status(200).json(new ApiResponse(200, result.message, result));
 };
 
 export const markNoShow = async (req, res) => {

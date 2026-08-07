@@ -1,10 +1,17 @@
 import { useEffect, useState } from "react";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector, useStore } from "react-redux";
 import { Star, MessageSquare, ThumbsUp, CornerDownRight } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { restaurantReviewApi, foodReviewApi } from "../../api/review.api.js";
-import { restaurantApi } from "../../api/restaurant.api.js";
+import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
+import {
+  fetchFoodReviewsByRestaurant,
+  fetchRestaurantReviewsByRestaurant,
+  setFoodReviews,
+  setRestaurantReviews,
+  updateFoodReview,
+  updateRestaurantReview,
+} from "../../store/slices/reviewSlice.js";
 import Card from "../../components/ui/Card.jsx";
 import Badge from "../../components/ui/Badge.jsx";
 import Rating from "../../components/ui/Rating.jsx";
@@ -16,31 +23,41 @@ import { formatDate } from "../../utils/formatDate.js";
 
 export default function OwnerReviewsPage() {
   const user = useSelector((state) => state.auth.user);
-  const [restaurantReviews, setRestaurantReviews] = useState([]);
-  const [foodReviews, setFoodReviews] = useState([]);
-  const [restaurant, setRestaurant] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const dispatch = useDispatch();
+  const store = useStore();
+  const restaurantReviews = useSelector((state) => state.review.restaurantReviews);
+  const foodReviews = useSelector((state) => state.review.foodReviews);
+  const reviewLoading = useSelector((state) => state.review.isLoading);
+  const reviewError = useSelector((state) => state.review.error);
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
+  const restaurantLoading = useSelector((state) => state.restaurant.isLoading);
+  const restaurantError = useSelector((state) => state.restaurant.error);
   const [activeTab, setActiveTab] = useState("restaurant"); // 'restaurant' or 'food'
   const [starFilter, setStarFilter] = useState(0);
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyDraft, setReplyDraft] = useState({});
   const [isReplying, setIsReplying] = useState(false);
 
-  const loadReviews = async () => {
-    const restRes = await restaurantApi.getAll({
-      ownerId: user?.id,
-      isActive: true,
-    });
-    const restaurants = restRes.data?.restaurants || [];
+  const restaurant = restaurants[0] || null;
+  const isLoading = reviewLoading || restaurantLoading;
+  const error = reviewError || restaurantError;
 
+  const loadReviews = async () => {
     let allRestaurantReviews = [];
     let allFoodReviews = [];
 
-    for (const r of restaurants) {
+    const restRes = await dispatch(
+      fetchRestaurants({ ownerId: user?.id, isActive: true })
+    );
+    const ownedRestaurants =
+      restRes?.data?.restaurants ||
+      store.getState().restaurant.restaurants ||
+      [];
+
+    for (const r of ownedRestaurants) {
       const [rRevRes, fRevRes] = await Promise.all([
-        restaurantReviewApi.getByRestaurant(r._id),
-        foodReviewApi.getByRestaurant(r._id),
+        dispatch(fetchRestaurantReviewsByRestaurant(r._id, { limit: 100 })),
+        dispatch(fetchFoodReviewsByRestaurant(r._id, { limit: 100 })),
       ]);
       allRestaurantReviews = allRestaurantReviews.concat(
         rRevRes?.data?.reviews || []
@@ -48,20 +65,15 @@ export default function OwnerReviewsPage() {
       allFoodReviews = allFoodReviews.concat(fRevRes?.data?.reviews || []);
     }
 
-    return { restaurants, allRestaurantReviews, allFoodReviews };
+    dispatch(setRestaurantReviews({ reviews: allRestaurantReviews, meta: null }));
+    dispatch(setFoodReviews({ reviews: allFoodReviews, meta: null }));
   };
 
   const fetchReviews = async () => {
     try {
-      const { restaurants, allRestaurantReviews, allFoodReviews } =
-        await loadReviews();
-      setRestaurant(restaurants[0] || null);
-      setRestaurantReviews(allRestaurantReviews);
-      setFoodReviews(allFoodReviews);
-    } catch (err) {
-      setError(err?.response?.data?.message || "Failed to load customer reviews.");
-    } finally {
-      setIsLoading(false);
+      await loadReviews();
+    } catch {
+      // Error is captured in the review slice; surface via `error` selector.
     }
   };
 
@@ -70,38 +82,12 @@ export default function OwnerReviewsPage() {
 
     const load = async () => {
       try {
-        const restRes = await restaurantApi.getAll({
-          ownerId: user?.id,
-          isActive: true,
-        });
-        const restaurants = restRes.data?.restaurants || [];
-
-        let allRestaurantReviews = [];
-        let allFoodReviews = [];
-
-        for (const r of restaurants) {
-          const [rRevRes, fRevRes] = await Promise.all([
-            restaurantReviewApi.getByRestaurant(r._id),
-            foodReviewApi.getByRestaurant(r._id),
-          ]);
-          allRestaurantReviews = allRestaurantReviews.concat(
-            rRevRes?.data?.reviews || []
-          );
-          allFoodReviews = allFoodReviews.concat(fRevRes?.data?.reviews || []);
-        }
-
-        if (isMounted) {
-          setRestaurant(restaurants[0] || null);
-          setRestaurantReviews(allRestaurantReviews);
-          setFoodReviews(allFoodReviews);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(err?.response?.data?.message || "Failed to load customer reviews.");
-        }
+        await loadReviews();
+      } catch {
+        // Error is captured in the review slice; surface via `error` selector.
       } finally {
         if (isMounted) {
-          setIsLoading(false);
+          // no-op: loading state lives in the slices
         }
       }
     };
@@ -133,9 +119,9 @@ export default function OwnerReviewsPage() {
     setIsReplying(true);
     try {
       if (activeTab === "restaurant") {
-        await restaurantReviewApi.update(review._id, { ownerReply: text });
+        await dispatch(updateRestaurantReview(review._id, { ownerReply: text }));
       } else {
-        await foodReviewApi.update(review._id, { ownerReply: text });
+        await dispatch(updateFoodReview(review._id, { ownerReply: text }));
       }
       toast.success("Reply posted to the customer.");
       setReplyingTo(null);

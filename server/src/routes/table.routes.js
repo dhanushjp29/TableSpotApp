@@ -11,6 +11,7 @@ import {
     createTableSchema,
     updateTableSchema,
     updateTableStatusSchema,
+    updateSeatsStatusSchema,
 } from "../validators/table.validator.js";
 
 const router = Router();
@@ -45,6 +46,12 @@ router.patch(
     "/:tableId/status",
     validateRequest(updateTableStatusSchema),
     asyncHandler(tableController.updateStatus)
+);
+
+router.patch(
+    "/:tableId/seats/status",
+    validateRequest(updateSeatsStatusSchema),
+    asyncHandler(tableController.updateSeatsStatus)
 );
 
 router.delete(

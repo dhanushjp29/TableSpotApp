@@ -1,15 +1,18 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import toast from "react-hot-toast";
 import { Calendar, Clock, Users, UtensilsCrossed, CreditCard } from "lucide-react";
 
-import { restaurantApi } from "../../api/restaurant.api.js";
-import { foodApi } from "../../api/food.api.js";
 import { tableApi } from "../../api/table.api.js";
 import { bookingApi } from "../../api/booking.api.js";
+import {
+  fetchRestaurantById,
+} from "../../store/slices/restaurantSlice.js";
+import { fetchFoodsByRestaurant } from "../../store/slices/foodSlice.js";
 
 import { useAuth } from "../../hooks/useAuth.js";
 import { useBookingAdvancePayment } from "../../hooks/useBookingAdvancePayment.js";
@@ -42,18 +45,31 @@ const bookingSchema = z.object({
 function BookingPage() {
   const { restaurantId } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const { user } = useAuth();
   const { payAdvance } = useBookingAdvancePayment();
-  const [restaurant, setRestaurant] = useState(null);
+  const restaurant = useSelector((state) => state.restaurant.currentRestaurant);
+  const restaurantLoading = useSelector((state) => state.restaurant.isLoading);
+  const restaurantError = useSelector((state) => state.restaurant.error);
+  const allFoods = useSelector((state) => state.food.foods);
+  const foodsLoading = useSelector((state) => state.food.isLoading);
+  const foodsError = useSelector((state) => state.food.error);
   const [availability, setAvailability] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
   const [isAvailabilityLoading, setIsAvailabilityLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [error, setError] = useState(null);
   const [seatSelections, setSeatSelections] = useState({});
   const [fullTableSelections, setFullTableSelections] = useState({});
-  const [foods, setFoods] = useState([]);
   const [preOrder, setPreOrder] = useState({});
+
+  const foods = useMemo(
+    () =>
+      allFoods.filter(
+        (food) => food.isAvailable !== false && food.isActive !== false
+      ),
+    [allFoods]
+  );
+  const isLoading = restaurantLoading || foodsLoading;
+  const error = restaurantError || foodsError;
 
   const { register, handleSubmit, setValue, control, formState: { errors } } = useForm({
     resolver: zodResolver(bookingSchema),
@@ -71,28 +87,9 @@ function BookingPage() {
   const bookingTime = useWatch({ control, name: "bookingTime", defaultValue: "19:00" });
 
   useEffect(() => {
-    const fetchRestaurant = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const [restaurantRes, foodsRes] = await Promise.all([
-          restaurantApi.getById(restaurantId),
-          foodApi.getByRestaurant(restaurantId),
-        ]);
-        setRestaurant(restaurantRes.data?.restaurant || null);
-        setFoods(
-          (foodsRes.data?.foods || []).filter(
-            (food) => food.isAvailable !== false && food.isActive !== false
-          )
-        );
-      } catch (err) {
-        setError(err?.response?.data?.message || "Failed to load restaurant data.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchRestaurant();
-  }, [restaurantId]);
+    dispatch(fetchRestaurantById(restaurantId)).catch(() => {});
+    dispatch(fetchFoodsByRestaurant(restaurantId)).catch(() => {});
+  }, [dispatch, restaurantId]);
 
   useEffect(() => {
     if (!restaurantId || !bookingDate || !bookingTime) {

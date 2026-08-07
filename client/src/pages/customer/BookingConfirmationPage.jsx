@@ -1,9 +1,10 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 import { useParams, Link } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import { CheckCircle, Calendar, Clock, Users, MapPin, Armchair, Share2, UtensilsCrossed, CreditCard } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { bookingApi } from "../../api/booking.api.js";
+import { fetchBookingById } from "../../store/slices/reservationSlice.js";
 import { useBookingAdvancePayment } from "../../hooks/useBookingAdvancePayment.js";
 
 import Button from "../../components/ui/Button.jsx";
@@ -22,28 +23,20 @@ const PAYMENT_STATUS_VARIANT = {
 
 function BookingConfirmationPage() {
   const { bookingId } = useParams();
-  const [booking, setBooking] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const dispatch = useDispatch();
+  const booking = useSelector((state) => state.reservation.currentBooking);
+  const isLoading = useSelector((state) => state.reservation.isLoading);
+  const error = useSelector((state) => state.reservation.error);
   const { isPaying, payAdvance } = useBookingAdvancePayment();
 
   const fetchBooking = async () => {
-    try {
-      const response = await bookingApi.getById(bookingId);
-      setBooking(response.data?.booking || response.data);
-      setError(null);
-    } catch (err) {
-      setError(err?.response?.data?.message || "Failed to load booking details.");
-    } finally {
-      setIsLoading(false);
-    }
+    await dispatch(fetchBookingById(bookingId)).catch(() => {});
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchBooking();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookingId]);
+  }, [dispatch, bookingId]);
 
   const handleShare = () => {
     if (navigator.share) {

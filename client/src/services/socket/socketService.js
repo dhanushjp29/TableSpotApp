@@ -40,7 +40,9 @@ export function disconnectSocket() {
 
 export function subscribeToBookingUpdates(restaurantId, handler) {
   const s = ensureSocketConnected();
-  s.emit("subscribe:bookings", { restaurantId });
+  s.emit("subscribe:bookings", {
+    restaurantId: restaurantId && restaurantId !== "all" ? restaurantId : undefined,
+  });
   s.off("booking:updated", handler);
   s.on("booking:updated", handler);
   return () => {
@@ -50,7 +52,9 @@ export function subscribeToBookingUpdates(restaurantId, handler) {
 
 export function subscribeToTableUpdates(restaurantId, handler) {
   const s = ensureSocketConnected();
-  s.emit("subscribe:tables", { restaurantId });
+  s.emit("subscribe:tables", {
+    restaurantId: restaurantId && restaurantId !== "all" ? restaurantId : undefined,
+  });
   s.off("table:updated", handler);
   s.on("table:updated", handler);
   return () => {

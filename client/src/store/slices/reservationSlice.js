@@ -104,22 +104,6 @@ export const createBooking = (data) => async (dispatch) => {
   }
 };
 
-export const updateBookingStatus = (bookingId, data) => async (dispatch) => {
-  dispatch(setLoading(true));
-  dispatch(setError(null));
-  try {
-    const response = await bookingApi.updateStatus(bookingId, data);
-    return response;
-  } catch (error) {
-    dispatch(
-      setError(error.response?.data?.message || "Failed to update booking status.")
-    );
-    throw error;
-  } finally {
-    dispatch(setLoading(false));
-  }
-};
-
 export const cancelBooking = (bookingId, data = {}) => async (dispatch) => {
   dispatch(setLoading(true));
   dispatch(setError(null));
@@ -129,6 +113,22 @@ export const cancelBooking = (bookingId, data = {}) => async (dispatch) => {
   } catch (error) {
     dispatch(
       setError(error.response?.data?.message || "Failed to cancel booking.")
+    );
+    throw error;
+  } finally {
+    dispatch(setLoading(false));
+  }
+};
+
+export const markNoShow = (bookingId, remarks) => async (dispatch) => {
+  dispatch(setLoading(true));
+  dispatch(setError(null));
+  try {
+    const response = await bookingApi.markNoShow(bookingId, remarks);
+    return response;
+  } catch (error) {
+    dispatch(
+      setError(error.response?.data?.message || "Failed to mark booking as no-show.")
     );
     throw error;
   } finally {

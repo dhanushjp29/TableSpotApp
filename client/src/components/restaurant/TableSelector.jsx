@@ -110,6 +110,8 @@ function TableSelector({
             const activeSeats = (table.seats || []).filter(
               (seat) => seat.isActive !== false
             );
+            const isBlocked =
+              item.blocked === true || item.available === false;
             const freeSet = new Set(
               (item.freeSeatIds || []).map((id) => String(id))
             );
@@ -124,9 +126,11 @@ function TableSelector({
               <div
                 key={table._id}
                 className={`rounded-lg border-2 p-3 transition-all ${
-                  isActive
-                    ? "border-primary bg-primary/5"
-                    : "border-gray-200"
+                  isBlocked
+                    ? "border-gray-200 opacity-60"
+                    : isActive
+                      ? "border-primary bg-primary/5"
+                      : "border-gray-200"
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -136,9 +140,15 @@ function TableSelector({
                       {tableName(table)}
                     </span>
                   </div>
-                  <span className="text-xs font-medium text-success">
-                    {item.freeSeatCount || 0} free
-                  </span>
+                  {isBlocked ? (
+                    <Badge variant="neutral" className="text-xs">
+                      {item.blockReason || "Unavailable"}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs font-medium text-success">
+                      {item.freeSeatCount || 0} free
+                    </span>
+                  )}
                 </div>
 
                 <div className="mt-2 flex justify-center">
@@ -146,14 +156,26 @@ function TableSelector({
                     shape={table.shape}
                     seats={activeSeats}
                     size={170}
-                    selectedSeatIds={selectedForTable}
-                    unavailableSeatIds={occupiedSeatIds}
-                    onSeatClick={(seat) => toggleSeat(table._id, seat, freeSet)}
+                    selectedSeatIds={isBlocked ? [] : selectedForTable}
+                    unavailableSeatIds={
+                      isBlocked
+                        ? activeSeats.map((seat) => seat._id)
+                        : occupiedSeatIds
+                    }
+                    onSeatClick={
+                      isBlocked
+                        ? undefined
+                        : (seat) => toggleSeat(table._id, seat, freeSet)
+                    }
                     showLabels={activeSeats.length <= 24}
                   />
                 </div>
 
-                {isActive ? (
+                {isBlocked ? (
+                  <p className="mt-2 text-center text-xs font-medium text-error">
+                    Unavailable — {item.blockReason || "Not reservable"}
+                  </p>
+                ) : isActive ? (
                   <p className="mt-2 text-center text-xs font-medium text-primary">
                     {selectedForTable.length} of {guestCount} guest(s) seated
                     here
@@ -207,7 +229,11 @@ function TableSelector({
                   variant={available ? "success" : "neutral"}
                   className="text-xs"
                 >
-                  {available ? "Available" : "Booked"}
+                  {available
+                    ? "Available"
+                    : item.blocked
+                      ? item.blockReason || "Unavailable"
+                      : "Booked"}
                 </Badge>
               </div>
               {isSelected && (
@@ -224,7 +250,9 @@ function TableSelector({
               )}
               {!isSelected && !available && (
                 <p className="mt-2 text-center text-xs text-muted">
-                  Not available at the selected time.
+                  {item.blocked
+                    ? `Unavailable — ${item.blockReason || "Not reservable"}`
+                    : "Not available at the selected time."}
                 </p>
               )}
             </div>

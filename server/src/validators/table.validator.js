@@ -176,6 +176,36 @@ export const updateTableSchema = z
 export const updateTableStatusSchema = z
   .object({
     status: z.enum(TABLE_STATUS_VALUES),
+    revertAfterMinutes: z
+      .number({
+        invalid_type_error: "Revert duration must be a number.",
+      })
+      .int("Revert duration must be a whole number of minutes.")
+      .min(1, "Revert duration must be at least 1 minute.")
+      .max(720, "Revert duration cannot exceed 12 hours (720 minutes).")
+      .optional(),
+  })
+  .strict();
+
+// Update Individual Seat Statuses
+export const updateSeatsStatusSchema = z
+  .object({
+    seatIds: z
+      .array(mongoIdSchema, {
+        required_error: "At least one seat is required.",
+        invalid_type_error: "seatIds must be an array of seat ids.",
+      })
+      .min(1, "Select at least one seat.")
+      .max(100, "A table cannot have more than 100 seats."),
+    status: z.enum(TABLE_STATUS_VALUES),
+    revertAfterMinutes: z
+      .number({
+        invalid_type_error: "Revert duration must be a number.",
+      })
+      .int("Revert duration must be a whole number of minutes.")
+      .min(1, "Revert duration must be at least 1 minute.")
+      .max(720, "Revert duration cannot exceed 12 hours (720 minutes).")
+      .optional(),
   })
   .strict();
 

@@ -86,7 +86,6 @@ const bookingCoreSchema = z
     specialRequest: z.string().trim().max(500).optional().default(""),
     preOrderedFoods: z.array(preOrderedFoodSchema).default([]),
     billId: mongoIdSchema.optional().nullable(),
-    checkedInAt: z.coerce.date().optional().nullable(),
     completedAt: z.coerce.date().optional().nullable(),
     cancelledAt: z.coerce.date().optional().nullable(),
     cancellationReason: z.string().trim().max(500).optional().default(""),
@@ -102,8 +101,8 @@ export const createBookingSchema = bookingCoreSchema.strict();
 // Only customer-editable scheduling fields are allowed. Booking status,
 // payment status, amounts, billing linkage and lifecycle timestamps are
 // NEVER settable via this endpoint — they are managed exclusively through
-// the dedicated status / cancel / check-in / complete / no-show endpoints
-// and by the payment & bill services on the server.
+// the dedicated cancel / no-show endpoints and by the payment & bill
+// services on the server.
 const editableBookingFields = {
     tableId: mongoIdSchema.optional(),
     seatIds: z.array(mongoIdSchema).max(100).optional(),
@@ -146,20 +145,12 @@ export const internalBookingUpdateSchema = z
         advanceAmount: z.number().min(0).optional(),
         totalAmount: z.number().min(0).optional(),
         billId: mongoIdSchema.optional().nullable(),
-        checkedInAt: z.coerce.date().optional().nullable(),
         completedAt: z.coerce.date().optional().nullable(),
         cancelledAt: z.coerce.date().optional().nullable(),
         cancellationReason: z.string().trim().max(500).optional(),
         isActive: z.boolean().optional(),
     })
     .strict();
-
-// Update Booking Status
-export const updateBookingStatusSchema = z
-  .object({
-    bookingStatus: z.enum(BOOKING_STATUS_VALUES),
-  })
-  .strict();
 
 // Mark No Show
 export const markNoShowSchema = z

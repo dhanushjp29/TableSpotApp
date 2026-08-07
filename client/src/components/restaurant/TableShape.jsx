@@ -38,6 +38,7 @@ function TableShape({
   size = 220,
   showLabels = true,
   className = "",
+  allowUnavailableClick = false,
 }) {
   const selected = new Set((selectedSeatIds || []).map(String));
   const unavailable = new Set((unavailableSeatIds || []).map(String));
@@ -77,7 +78,8 @@ function TableShape({
 
         const x = seat.position?.x ?? 50;
         const y = seat.position?.y ?? 50;
-        const isClickable = Boolean(onSeatClick) && !isUnavailable;
+        const isClickable =
+          Boolean(onSeatClick) && (allowUnavailableClick || !isUnavailable);
 
         return (
           <g

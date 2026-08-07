@@ -1,55 +1,48 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo } from "react";
+import { useDispatch, useSelector } from "react-redux";
 
-import { restaurantApi } from "../../api/restaurant.api.js";
-import { restaurantReviewApi } from "../../api/review.api.js";
-import { userApi } from "../../api/user.api.js";
+import { fetchUsers } from "../../store/slices/userSlice.js";
+import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
+import { fetchRestaurantReviews } from "../../store/slices/reviewSlice.js";
 
 import Card from "../../components/ui/Card.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
 import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 
 function AdminDashboardPage() {
-  const [stats, setStats] = useState({
-    totalUsers: 0,
-    totalRestaurants: 0,
-    totalReviews: 0,
-    pendingVerifications: 0,
-  });
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const dispatch = useDispatch();
+  const users = useSelector((state) => state.user.users);
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
+  const restaurantReviews = useSelector(
+    (state) => state.review.restaurantReviews
+  );
+  const usersLoading = useSelector((state) => state.user.isLoading);
+  const restaurantsLoading = useSelector((state) => state.restaurant.isLoading);
+  const reviewsLoading = useSelector((state) => state.review.isLoading);
+  const usersError = useSelector((state) => state.user.error);
+  const restaurantsError = useSelector((state) => state.restaurant.error);
+  const reviewsError = useSelector((state) => state.review.error);
+
+  const isLoading = usersLoading || restaurantsLoading || reviewsLoading;
+  const error = usersError || restaurantsError || reviewsError;
+
+  const stats = useMemo(() => {
+    const pendingVerifications = restaurants.filter(
+      (r) => r.verificationStatus === "Pending"
+    ).length;
+    return {
+      totalUsers: users.length,
+      totalRestaurants: restaurants.length,
+      totalReviews: restaurantReviews.length,
+      pendingVerifications,
+    };
+  }, [users, restaurants, restaurantReviews]);
 
   useEffect(() => {
-    const fetchStats = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const [usersRes, restaurantsRes, reviewsRes] = await Promise.all([
-          userApi.getAll(),
-          restaurantApi.getAll(),
-          restaurantReviewApi.getAll({ limit: 1 }),
-        ]);
-
-        const users = usersRes?.users || [];
-        const restaurants = restaurantsRes?.restaurants || [];
-        const reviews = reviewsRes?.reviews || [];
-        const pendingVerifications = restaurants.filter(
-          (r) => r.verificationStatus === "Pending"
-        ).length;
-
-        setStats({
-          totalUsers: users.length,
-          totalRestaurants: restaurants.length,
-          totalReviews: reviews.length,
-          pendingVerifications,
-        });
-      } catch (err) {
-        setError(err?.response?.data?.message || "Failed to load admin dashboard.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-    fetchStats();
-  }, []);
+    dispatch(fetchUsers()).catch(() => {});
+    dispatch(fetchRestaurants()).catch(() => {});
+    dispatch(fetchRestaurantReviews({ limit: 1 })).catch(() => {});
+  }, [dispatch]);
 
   if (isLoading) {
     return (

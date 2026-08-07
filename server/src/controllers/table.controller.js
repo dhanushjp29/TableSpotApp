@@ -76,6 +76,27 @@ export const updateStatus = async (req, res) => {
     const result = await tableService.updateTableStatus({
         tableId,
         status: req.validatedData.status,
+        revertAfterMinutes: req.validatedData.revertAfterMinutes,
+    });
+    res.status(200).json(new ApiResponse(200, result.message, result));
+};
+
+export const updateSeatsStatus = async (req, res) => {
+    const { tableId } = req.params;
+    const { table } = await tableService.getTableById({ tableId });
+    await verifyRestaurantOwnership(req, table.restaurantId._id);
+
+    await assertAvailabilityChangeAllowed(
+        req,
+        table.restaurantId._id,
+        req.validatedData.status === TABLE_STATUS.AVAILABLE
+    );
+
+    const result = await tableService.updateSeatsStatus({
+        tableId,
+        seatIds: req.validatedData.seatIds,
+        status: req.validatedData.status,
+        revertAfterMinutes: req.validatedData.revertAfterMinutes,
     });
     res.status(200).json(new ApiResponse(200, result.message, result));
 };

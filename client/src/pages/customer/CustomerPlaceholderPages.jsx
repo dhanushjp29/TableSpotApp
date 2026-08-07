@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import { useSelector } from "react-redux";
+import { useDispatch, useSelector, useStore } from "react-redux";
 import {
   Calendar,
   MapPin,
@@ -14,8 +14,18 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { bookingApi } from "../../api/booking.api.js";
-import { userApi } from "../../api/user.api.js";
+import {
+  cancelBooking,
+  fetchBookings,
+  setBookings,
+} from "../../store/slices/reservationSlice.js";
+import {
+  fetchFavoriteFoods,
+  fetchFavoriteRestaurants,
+  toggleFavorite,
+  toggleFavoriteFood,
+  updateProfile,
+} from "../../store/slices/userSlice.js";
 import { restaurantReviewApi } from "../../api/review.api.js";
 import { subscribeToBookingUpdates } from "../../services/socket/socketService.js";
 import { ROUTES } from "../../routes/routeConstants.js";
@@ -34,7 +44,9 @@ import { formatDate, formatTime } from "../../utils/formatDate.js";
 
 export function CustomerBookingsPage() {
   const navigate = useNavigate();
-  const [bookings, setBookings] = useState([]);
+  const dispatch = useDispatch();
+  const store = useStore();
+  const bookings = useSelector((state) => state.reservation.bookings);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filterStatus, setFilterStatus] = useState("ALL");
@@ -46,10 +58,10 @@ export function CustomerBookingsPage() {
     bookingId: null,
   });
 
-  const fetchBookings = async () => {
+  const reloadBookings = async () => {
     try {
-      const response = await bookingApi.getAll();
-      setBookings(response?.data?.bookings || response?.bookings || []);
+      await dispatch(fetchBookings());
+      setError(null);
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to load bookings.");
     } finally {
@@ -59,11 +71,10 @@ export function CustomerBookingsPage() {
 
   useEffect(() => {
     let isMounted = true;
-    bookingApi
-      .getAll()
-      .then((response) => {
+    dispatch(fetchBookings())
+      .then(() => {
         if (isMounted) {
-          setBookings(response?.data?.bookings || response?.bookings || []);
+          setError(null);
           setIsLoading(false);
         }
       })
@@ -76,23 +87,29 @@ export function CustomerBookingsPage() {
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     const unsubscribe = subscribeToBookingUpdates("all", (updatedBooking) => {
-      setBookings((prev) =>
-        prev.map((b) => (b._id === updatedBooking._id ? updatedBooking : b))
+      const current = store.getState().reservation.bookings;
+      dispatch(
+        setBookings({
+          bookings: current.map((b) =>
+            b._id === updatedBooking._id ? updatedBooking : b
+          ),
+          meta: store.getState().reservation.meta,
+        })
       );
     });
     return unsubscribe;
-  }, []);
+  }, [dispatch, store]);
 
   const handleCancelBooking = async (bookingId) => {
     if (!window.confirm("Are you sure you want to cancel this booking?")) return;
     try {
-      await bookingApi.cancel(bookingId);
+      await dispatch(cancelBooking(bookingId));
       toast.success("Booking cancelled.");
-      fetchBookings();
+      reloadBookings();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to cancel booking.");
     }
@@ -123,7 +140,7 @@ export function CustomerBookingsPage() {
         <ErrorState
           title="Unable to load bookings"
           description={error}
-          onRetry={fetchBookings}
+          onRetry={reloadBookings}
         />
       </div>
     );
@@ -309,28 +326,28 @@ export function CustomerBookingsPage() {
         targetName={reviewModalState.restaurantName}
         foods={reviewModalState.foods}
         bookingId={reviewModalState.bookingId}
-        onSuccess={fetchBookings}
+        onSuccess={reloadBookings}
       />
     </div>
   );
 }
 
 export function CustomerFavoritesPage() {
+  const dispatch = useDispatch();
   const [activeTab, setActiveTab] = useState("restaurants");
-  const [restaurants, setRestaurants] = useState([]);
-  const [foods, setFoods] = useState([]);
+  const restaurants = useSelector((state) => state.user.favoriteRestaurants);
+  const foods = useSelector((state) => state.user.favoriteFoods);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
 
   const fetchFavorites = async (tab = activeTab) => {
     try {
       if (tab === "foods") {
-        const response = await userApi.getFavoriteFoods();
-        setFoods(response?.data?.foods || response?.foods || []);
+        await dispatch(fetchFavoriteFoods());
       } else {
-        const response = await userApi.getFavoriteRestaurants();
-        setRestaurants(response?.data?.restaurants || response?.restaurants || []);
+        await dispatch(fetchFavoriteRestaurants());
       }
+      setError(null);
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to load favorites.");
     } finally {
@@ -340,23 +357,17 @@ export function CustomerFavoritesPage() {
 
   useEffect(() => {
     let isMounted = true;
-    const target = activeTab === "foods" ? "foods" : "restaurants";
     const request =
-      target === "foods"
-        ? userApi.getFavoriteFoods()
-        : userApi.getFavoriteRestaurants();
+      activeTab === "foods"
+        ? dispatch(fetchFavoriteFoods())
+        : dispatch(fetchFavoriteRestaurants());
 
     request
-      .then((response) => {
-        if (!isMounted) return;
-        if (target === "foods") {
-          setFoods(response?.data?.foods || response?.foods || []);
-        } else {
-          setRestaurants(
-            response?.data?.restaurants || response?.restaurants || []
-          );
+      .then(() => {
+        if (isMounted) {
+          setError(null);
+          setIsLoading(false);
         }
-        setIsLoading(false);
       })
       .catch((err) => {
         if (!isMounted) return;
@@ -366,7 +377,7 @@ export function CustomerFavoritesPage() {
     return () => {
       isMounted = false;
     };
-  }, [activeTab]);
+  }, [activeTab, dispatch]);
 
   const handleTabChange = (tab) => {
     setActiveTab(tab);
@@ -376,8 +387,7 @@ export function CustomerFavoritesPage() {
 
   const handleToggleFavorite = async (restaurantId) => {
     try {
-      await userApi.toggleFavorite(restaurantId);
-      setRestaurants((prev) => prev.filter((r) => r._id !== restaurantId));
+      await dispatch(toggleFavorite(restaurantId));
       toast.success("Removed from favorites.");
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to update favorites.");
@@ -386,8 +396,7 @@ export function CustomerFavoritesPage() {
 
   const handleToggleFavoriteFood = async (foodId) => {
     try {
-      await userApi.toggleFavoriteFood(foodId);
-      setFoods((prev) => prev.filter((f) => f._id !== foodId));
+      await dispatch(toggleFavoriteFood(foodId));
       toast.success("Removed from favorites.");
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to update favorites.");
@@ -470,6 +479,7 @@ export function CustomerFavoritesPage() {
 
 export function CustomerProfilePage() {
   const { user } = useSelector((state) => state.auth);
+  const dispatch = useDispatch();
 
   const [name, setName] = useState(user?.name || "");
   const [phone, setPhone] = useState(user?.phone || "");
@@ -479,7 +489,7 @@ export function CustomerProfilePage() {
     e.preventDefault();
     setIsSubmitting(true);
     try {
-      await userApi.updateProfile({ name, phone });
+      await dispatch(updateProfile({ name, phone }));
       toast.success("Profile updated successfully!");
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to update profile.");

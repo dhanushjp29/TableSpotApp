@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import {
   HandCoins,
@@ -7,7 +8,12 @@ import {
   MessageSquareWarning,
 } from "lucide-react";
 
-import { refundApi } from "../../api/refund.api.js";
+import {
+  confirmRefundReceipt,
+  disputeRefund,
+  fetchRefunds,
+  processRefund,
+} from "../../store/slices/refundSlice.js";
 import { useAuth } from "../../hooks/useAuth.js";
 import Card from "../ui/Card.jsx";
 import Badge from "../ui/Badge.jsx";
@@ -56,44 +62,21 @@ const matchesTab = (refund, tab) => {
 function RefundsPanel({ role = "owner", title, subtitle }) {
   const tabs = role === "owner" ? OWNER_TABS : CUSTOMER_TABS;
   const { user } = useAuth();
+  const dispatch = useDispatch();
+  const refunds = useSelector((state) => state.refund.refunds);
+  const isLoading = useSelector((state) => state.refund.isLoading);
+  const error = useSelector((state) => state.refund.error);
   const [activeTab, setActiveTab] = useState("ALL");
-  const [refunds, setRefunds] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
   const [actionId, setActionId] = useState("");
 
-  const fetchRefunds = async () => {
-    try {
-      const res = await refundApi.getAll({ page: 1, limit: 100 });
-      setRefunds(res?.data?.refunds || res?.refunds || []);
-      setError(null);
-    } catch (err) {
-      setError(err?.response?.data?.message || "Failed to load refunds.");
-    } finally {
-      setIsLoading(false);
-    }
+  const fetchRefundsData = async () => {
+    await dispatch(fetchRefunds({ page: 1, limit: 100 })).catch(() => {});
   };
 
   useEffect(() => {
-    let isMounted = true;
-    refundApi
-      .getAll({ page: 1, limit: 100 })
-      .then((res) => {
-        if (!isMounted) return;
-        setRefunds(res?.data?.refunds || res?.refunds || []);
-        setError(null);
-      })
-      .catch((err) => {
-        if (!isMounted) return;
-        setError(err?.response?.data?.message || "Failed to load refunds.");
-      })
-      .finally(() => {
-        if (isMounted) setIsLoading(false);
-      });
-    return () => {
-      isMounted = false;
-    };
-  }, []);
+    fetchRefundsData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dispatch]);
 
   const filtered = useMemo(
     () => refunds.filter((r) => matchesTab(r, activeTab)),
@@ -108,9 +91,9 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
     if (!window.confirm(message)) return;
     setActionId(refund._id);
     try {
-      await refundApi.process(refund._id, method);
+      await dispatch(processRefund(refund._id, method));
       toast.success(isCash ? "Refund marked as issued in cash." : "Refund processed successfully.");
-      fetchRefunds();
+      fetchRefundsData();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to process refund.");
     } finally {
@@ -122,9 +105,9 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
     if (!window.confirm("I received the refund in cash. Confirm receipt?")) return;
     setActionId(refund._id);
     try {
-      await refundApi.confirmReceipt(refund._id);
+      await dispatch(confirmRefundReceipt(refund._id));
       toast.success("Refund receipt confirmed. Thank you!");
-      fetchRefunds();
+      fetchRefundsData();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to confirm refund.");
     } finally {
@@ -142,9 +125,9 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
     }
     setActionId(refund._id);
     try {
-      await refundApi.dispute(refund._id, reason.trim());
+      await dispatch(disputeRefund(refund._id, reason.trim()));
       toast.success("Refund disputed. The restaurant has been notified.");
-      fetchRefunds();
+      fetchRefundsData();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to dispute refund.");
     } finally {
@@ -263,7 +246,7 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
           ))}
         </div>
       ) : error ? (
-        <ErrorState title="Unable to load refunds" description={error} onRetry={fetchRefunds} />
+        <ErrorState title="Unable to load refunds" description={error} onRetry={fetchRefundsData} />
       ) : filtered.length === 0 ? (
         <EmptyState
           title="No refunds found"

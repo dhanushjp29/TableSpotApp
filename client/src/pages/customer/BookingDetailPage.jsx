@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import {
   Calendar,
   Clock,
@@ -17,8 +18,17 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { bookingApi } from "../../api/booking.api.js";
-import { refundApi } from "../../api/refund.api.js";
+import {
+  cancelBooking,
+  fetchBookingById,
+  setCurrentBooking,
+} from "../../store/slices/reservationSlice.js";
+import {
+  clearCurrentRefund,
+  confirmRefundReceipt,
+  disputeRefund,
+  fetchRefundById,
+} from "../../store/slices/refundSlice.js";
 import { subscribeToBookingUpdates } from "../../services/socket/socketService.js";
 import { useBookingAdvancePayment } from "../../hooks/useBookingAdvancePayment.js";
 
@@ -34,7 +44,6 @@ import { SEAT_SELECTION_MODE } from "../../constants/table.js";
 const STATUS_VARIANT = {
   Pending: "warning",
   Confirmed: "success",
-  "Checked In": "info",
   Completed: "info",
   Cancelled: "error",
   "No Show": "error",
@@ -79,18 +88,16 @@ function StatusBanner({ status }) {
     );
   }
 
-  if (status === "Confirmed" || status === "Checked In") {
+  if (status === "Confirmed") {
     return (
       <div className="mt-4 flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 p-4">
         <CheckCircle size={18} className="mt-0.5 shrink-0 text-success" />
         <div>
           <p className="text-sm font-semibold text-green-800">
-            Booking {status === "Checked In" ? "checked in" : "confirmed"}
+            Booking confirmed
           </p>
           <p className="mt-0.5 text-xs text-green-700">
-            {status === "Checked In"
-              ? "You have checked in at the restaurant. Enjoy your meal!"
-              : "Your table has been reserved. We look forward to seeing you!"}
+            Your table has been reserved. We look forward to seeing you!
           </p>
         </div>
       </div>
@@ -123,7 +130,7 @@ function StatusBanner({ status }) {
           </p>
           <p className="mt-0.5 text-xs text-red-700">
             {status === "No Show"
-              ? "You did not check in for this reservation."
+              ? "You did not arrive for this reservation."
               : "This reservation is no longer active."}
           </p>
         </div>
@@ -136,58 +143,41 @@ function StatusBanner({ status }) {
 
 function BookingDetailPage() {
   const { bookingId } = useParams();
-  const [booking, setBooking] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const dispatch = useDispatch();
+  const booking = useSelector((state) => state.reservation.currentBooking);
+  const isLoading = useSelector((state) => state.reservation.isLoading);
+  const error = useSelector((state) => state.reservation.error);
+  const refund = useSelector((state) => state.refund.currentRefund);
   const [isCancelling, setIsCancelling] = useState(false);
-  const [refund, setRefund] = useState(null);
   const [isRefundAction, setIsRefundAction] = useState(false);
   const { isPaying, payAdvance } = useBookingAdvancePayment();
 
   const fetchBooking = async () => {
-    try {
-      const response = await bookingApi.getById(bookingId);
-      setBooking(response.data?.booking || response.data);
-    } catch (err) {
-      setError(
-        err?.response?.data?.message || "Failed to load booking details."
-      );
-    } finally {
-      setIsLoading(false);
-    }
+    await dispatch(fetchBookingById(bookingId)).catch(() => {});
   };
 
   useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchBooking();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bookingId]);
+  }, [dispatch, bookingId]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const loadRefund = async () => {
-      if (!booking?.refundId || !booking.refundStatus) return;
-      if (booking.refundStatus === "NOT_REQUIRED") return;
-      try {
-        const { data } = await refundApi.getById(booking.refundId);
-        if (!cancelled) setRefund(data?.refund || null);
-      } catch {
-        if (!cancelled) setRefund(null);
-      }
-    };
-
-    loadRefund();
-    return () => {
-      cancelled = true;
-    };
-  }, [booking]);
+    if (
+      !booking?.refundId ||
+      !booking.refundStatus ||
+      booking.refundStatus === "NOT_REQUIRED"
+    ) {
+      dispatch(clearCurrentRefund());
+      return;
+    }
+    dispatch(fetchRefundById(booking.refundId)).catch(() => {});
+  }, [dispatch, booking?.refundId, booking?.refundStatus]);
 
   const handleConfirmRefund = async () => {
     if (!window.confirm("I received the refund in cash. Confirm receipt?")) return;
     setIsRefundAction(true);
     try {
-      await refundApi.confirmReceipt(booking.refundId);
+      await dispatch(confirmRefundReceipt(booking.refundId));
       toast.success("Refund receipt confirmed. Thank you!");
       fetchBooking();
     } catch (err) {
@@ -209,7 +199,7 @@ function BookingDetailPage() {
     }
     setIsRefundAction(true);
     try {
-      await refundApi.dispute(booking.refundId, trimmed);
+      await dispatch(disputeRefund(booking.refundId, trimmed));
       toast.success("Refund disputed. The restaurant has been notified.");
       fetchBooking();
     } catch (err) {
@@ -222,17 +212,17 @@ function BookingDetailPage() {
   useEffect(() => {
     const unsubscribe = subscribeToBookingUpdates("all", (updatedBooking) => {
       if (String(updatedBooking._id) === String(bookingId)) {
-        setBooking(updatedBooking);
+        dispatch(setCurrentBooking(updatedBooking));
       }
     });
     return unsubscribe;
-  }, [bookingId]);
+  }, [dispatch, bookingId]);
 
   const handleCancel = async () => {
     if (!window.confirm("Are you sure you want to cancel this booking?")) return;
     setIsCancelling(true);
     try {
-      await bookingApi.cancel(bookingId);
+      await dispatch(cancelBooking(bookingId));
       toast.success("Booking cancelled.");
       fetchBooking();
     } catch (err) {

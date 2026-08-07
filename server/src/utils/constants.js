@@ -129,6 +129,22 @@ export const TABLE_STATUS_VALUES = [
   TABLE_STATUS.MAINTENANCE,
 ];
 
+export const SEAT_STATUS = {
+  AVAILABLE: "Available",
+  RESERVED: "Reserved",
+  OCCUPIED: "Occupied",
+  CLEANING: "Cleaning",
+  MAINTENANCE: "Maintenance",
+};
+
+export const SEAT_STATUS_VALUES = [
+  SEAT_STATUS.AVAILABLE,
+  SEAT_STATUS.RESERVED,
+  SEAT_STATUS.OCCUPIED,
+  SEAT_STATUS.CLEANING,
+  SEAT_STATUS.MAINTENANCE,
+];
+
 export const TABLE_TYPE_VALUES = [
   "Normal",
   "VIP",
@@ -192,7 +208,6 @@ export const MAX_SEATS_SINGLE_ROW = 24;
 export const BOOKING_STATUS = {
   PENDING: "Pending",
   CONFIRMED: "Confirmed",
-  CHECKED_IN: "Checked In",
   COMPLETED: "Completed",
   CANCELLED: "Cancelled",
   NO_SHOW: "No Show",
@@ -201,7 +216,6 @@ export const BOOKING_STATUS = {
 export const BOOKING_STATUS_VALUES = [
   BOOKING_STATUS.PENDING,
   BOOKING_STATUS.CONFIRMED,
-  BOOKING_STATUS.CHECKED_IN,
   BOOKING_STATUS.COMPLETED,
   BOOKING_STATUS.CANCELLED,
   BOOKING_STATUS.NO_SHOW,

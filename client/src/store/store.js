@@ -5,6 +5,12 @@ import restaurantReducer from "./slices/restaurantSlice.js";
 import reservationReducer from "./slices/reservationSlice.js";
 import notificationReducer from "./slices/notificationSlice.js";
 import uiReducer from "./slices/uiSlice.js";
+import billReducer from "./slices/billSlice.js";
+import tableReducer from "./slices/tableSlice.js";
+import foodReducer from "./slices/foodSlice.js";
+import reviewReducer from "./slices/reviewSlice.js";
+import refundReducer from "./slices/refundSlice.js";
+import paymentReducer from "./slices/paymentSlice.js";
 
 export const store = configureStore({
   reducer: {
@@ -14,5 +20,11 @@ export const store = configureStore({
     reservation: reservationReducer,
     notification: notificationReducer,
     ui: uiReducer,
+    bill: billReducer,
+    table: tableReducer,
+    food: foodReducer,
+    review: reviewReducer,
+    refund: refundReducer,
+    payment: paymentReducer,
   },
 });

@@ -1,5 +1,5 @@
-import { useEffect, useState } from "react";
-import { useSelector } from "react-redux";
+import { useEffect, useMemo, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import { Link } from "react-router-dom";
 import {
   Calendar,
@@ -17,10 +17,15 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { bookingApi } from "../../api/booking.api.js";
-import { restaurantApi } from "../../api/restaurant.api.js";
-import { foodApi } from "../../api/food.api.js";
-import { userApi } from "../../api/user.api.js";
+import { fetchBookings } from "../../store/slices/reservationSlice.js";
+import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
+import { fetchFoods } from "../../store/slices/foodSlice.js";
+import {
+  fetchFavoriteFoods,
+  fetchFavoriteRestaurants,
+  toggleFavorite,
+  toggleFavoriteFood,
+} from "../../store/slices/userSlice.js";
 import { restaurantReviewApi } from "../../api/review.api.js";
 import { ROUTES } from "../../routes/routeConstants.js";
 import Card from "../../components/ui/Card.jsx";
@@ -35,11 +40,14 @@ import { formatDate, formatTime } from "../../utils/formatDate.js";
 
 export default function CustomerDashboardPage() {
   const { user } = useSelector((state) => state.auth);
-  const [bookings, setBookings] = useState([]);
-  const [restaurants, setRestaurants] = useState([]);
-  const [foods, setFoods] = useState([]);
-  const [favoriteRestaurantIds, setFavoriteRestaurantIds] = useState(() => new Set());
-  const [favoriteFoodIds, setFavoriteFoodIds] = useState(() => new Set());
+  const dispatch = useDispatch();
+  const bookings = useSelector((state) => state.reservation.bookings);
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
+  const foods = useSelector((state) => state.food.foods);
+  const favoriteRestaurants = useSelector(
+    (state) => state.user.favoriteRestaurants
+  );
+  const favoriteFoods = useSelector((state) => state.user.favoriteFoods);
   const [isLoading, setIsLoading] = useState(true);
   const [reviewModalState, setReviewModalState] = useState({
     isOpen: false,
@@ -49,59 +57,54 @@ export default function CustomerDashboardPage() {
     bookingId: null,
   });
 
+  const favoriteRestaurantIds = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(favoriteRestaurants) ? favoriteRestaurants : []).map(
+          (item) => String(typeof item === "string" ? item : item._id)
+        )
+      ),
+    [favoriteRestaurants]
+  );
+  const favoriteFoodIds = useMemo(
+    () =>
+      new Set(
+        (Array.isArray(favoriteFoods) ? favoriteFoods : []).map((item) =>
+          String(typeof item === "string" ? item : item._id)
+        )
+      ),
+    [favoriteFoods]
+  );
+
   useEffect(() => {
     let isMounted = true;
 
     Promise.all([
-      bookingApi.getAll(),
-      restaurantApi.getAll({
-        limit: 4,
-        verificationStatus: "Verified",
-        isActive: true,
-        sortBy: "rating",
-      }),
-      foodApi.getAll({ limit: 4, isAvailable: true, sortBy: "rating" }),
-      userApi.getFavoriteRestaurants().catch(() => null),
-      userApi.getFavoriteFoods().catch(() => null),
-    ])
-      .then(
-        ([bookingsRes, restaurantsRes, foodsRes, favRestRes, favFoodRes]) => {
-          if (!isMounted) return;
-          setBookings(bookingsRes?.data?.bookings || []);
-          setRestaurants(restaurantsRes?.data?.restaurants || []);
-          setFoods(foodsRes?.data?.foods || []);
-          if (favRestRes) {
-            setFavoriteRestaurantIds(
-              new Set(
-                (favRestRes?.data?.favoriteRestaurantIds || []).map(String)
-              )
-            );
-          }
-          if (favFoodRes) {
-            setFavoriteFoodIds(
-              new Set((favFoodRes?.data?.favoriteFoodIds || []).map(String))
-            );
-          }
-          setIsLoading(false);
-        }
-      )
-      .catch((err) => {
-        if (isMounted) {
-          console.error("Failed to load dashboard data", err);
-          setIsLoading(false);
-        }
-      });
+      dispatch(fetchBookings()).catch(() => null),
+      dispatch(
+        fetchRestaurants({
+          limit: 4,
+          verificationStatus: "Verified",
+          isActive: true,
+          sortBy: "rating",
+        })
+      ).catch(() => null),
+      dispatch(fetchFoods({ limit: 4, isAvailable: true, sortBy: "rating" })).catch(
+        () => null
+      ),
+      dispatch(fetchFavoriteRestaurants()).catch(() => null),
+      dispatch(fetchFavoriteFoods()).catch(() => null),
+    ]).then(() => {
+      if (isMounted) setIsLoading(false);
+    });
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [dispatch]);
 
   const refreshBookings = () => {
-    bookingApi
-      .getAll()
-      .then((res) => setBookings(res?.data?.bookings || []))
-      .catch((err) => console.error(err));
+    dispatch(fetchBookings()).catch((err) => console.error(err));
   };
 
   const upcomingBookings = bookings.filter(
@@ -114,14 +117,8 @@ export default function CustomerDashboardPage() {
 
   const handleToggleRestaurantFavorite = async (restaurantId) => {
     try {
-      const res = await userApi.toggleFavorite(restaurantId);
+      const res = await dispatch(toggleFavorite(restaurantId));
       const isFavorite = res?.data?.isFavorite;
-      setFavoriteRestaurantIds((prev) => {
-        const next = new Set(prev);
-        if (isFavorite) next.add(String(restaurantId));
-        else next.delete(String(restaurantId));
-        return next;
-      });
       toast.success(isFavorite ? "Added to favorites." : "Removed from favorites.");
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to update favorites.");
@@ -130,14 +127,8 @@ export default function CustomerDashboardPage() {
 
   const handleToggleFoodFavorite = async (foodId) => {
     try {
-      const res = await userApi.toggleFavoriteFood(foodId);
+      const res = await dispatch(toggleFavoriteFood(foodId));
       const isFavorite = res?.data?.isFavorite;
-      setFavoriteFoodIds((prev) => {
-        const next = new Set(prev);
-        if (isFavorite) next.add(String(foodId));
-        else next.delete(String(foodId));
-        return next;
-      });
       toast.success(isFavorite ? "Added to favorites." : "Removed from favorites.");
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to update favorites.");

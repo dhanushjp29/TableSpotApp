@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import {
   ArrowLeft,
   Clock,
@@ -14,8 +15,16 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { restaurantApi } from "../../api/restaurant.api.js";
-import { restaurantReviewApi, foodReviewApi } from "../../api/review.api.js";
+import {
+  deleteRestaurant,
+  fetchRestaurantById,
+} from "../../store/slices/restaurantSlice.js";
+import {
+  fetchFoodReviewsByRestaurant,
+  fetchRestaurantReviewsByRestaurant,
+  updateFoodReview,
+  updateRestaurantReview,
+} from "../../store/slices/reviewSlice.js";
 
 import Badge from "../../components/ui/Badge.jsx";
 import Button from "../../components/ui/Button.jsx";
@@ -33,12 +42,17 @@ import { CreateRestaurantForm } from "./OwnerRestaurantPage.jsx";
 export default function OwnerRestaurantDetailsPage() {
   const { restaurantId } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
 
-  const [restaurant, setRestaurant] = useState(null);
-  const [restaurantReviews, setRestaurantReviews] = useState([]);
-  const [foodReviews, setFoodReviews] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const restaurant = useSelector((state) => state.restaurant.currentRestaurant);
+  const restaurantLoading = useSelector((state) => state.restaurant.isLoading);
+  const restaurantError = useSelector((state) => state.restaurant.error);
+  const restaurantReviews = useSelector(
+    (state) => state.review.restaurantReviews
+  );
+  const foodReviews = useSelector((state) => state.review.foodReviews);
+  const reviewLoading = useSelector((state) => state.review.isLoading);
+  const reviewError = useSelector((state) => state.review.error);
 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [deleteConfirm, setDeleteConfirm] = useState(false);
@@ -49,63 +63,21 @@ export default function OwnerRestaurantDetailsPage() {
   const [replyDraft, setReplyDraft] = useState({});
   const [isReplying, setIsReplying] = useState(false);
 
+  const isLoading = restaurantLoading || reviewLoading;
+  const error = restaurantError || reviewError;
+
   const fetchData = async () => {
-    try {
-      const [restaurantRes, restRevRes, foodRevRes] = await Promise.all([
-        restaurantApi.getById(restaurantId),
-        restaurantReviewApi.getByRestaurant(restaurantId),
-        foodReviewApi.getByRestaurant(restaurantId),
-      ]);
-      setRestaurant(
-        restaurantRes.data?.restaurant || restaurantRes.data
-      );
-      setRestaurantReviews(restRevRes?.data?.reviews || []);
-      setFoodReviews(foodRevRes?.data?.reviews || []);
-    } catch (err) {
-      setError(
-        err?.response?.data?.message || "Failed to load restaurant details."
-      );
-    } finally {
-      setIsLoading(false);
-    }
+    await Promise.all([
+      dispatch(fetchRestaurantById(restaurantId)),
+      dispatch(fetchRestaurantReviewsByRestaurant(restaurantId, { limit: 100 })),
+      dispatch(fetchFoodReviewsByRestaurant(restaurantId, { limit: 100 })),
+    ]).catch(() => {});
   };
 
   useEffect(() => {
-    let isMounted = true;
-
-    const load = async () => {
-      try {
-        const [restaurantRes, restRevRes, foodRevRes] = await Promise.all([
-          restaurantApi.getById(restaurantId),
-          restaurantReviewApi.getByRestaurant(restaurantId),
-          foodReviewApi.getByRestaurant(restaurantId),
-        ]);
-        if (isMounted) {
-          setRestaurant(
-            restaurantRes.data?.restaurant || restaurantRes.data
-          );
-          setRestaurantReviews(restRevRes?.data?.reviews || []);
-          setFoodReviews(foodRevRes?.data?.reviews || []);
-        }
-      } catch (err) {
-        if (isMounted) {
-          setError(
-            err?.response?.data?.message || "Failed to load restaurant details."
-          );
-        }
-      } finally {
-        if (isMounted) {
-          setIsLoading(false);
-        }
-      }
-    };
-
-    load();
-
-    return () => {
-      isMounted = false;
-    };
-  }, [restaurantId]);
+    fetchData();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [restaurantId, dispatch]);
 
   const handleBack = () => {
     navigate("/owner/restaurant");
@@ -115,7 +87,7 @@ export default function OwnerRestaurantDetailsPage() {
     if (!restaurant) return;
     setDeleting(true);
     try {
-      await restaurantApi.remove(restaurant._id);
+      await dispatch(deleteRestaurant(restaurant._id));
       toast.success("Restaurant deleted successfully!");
       navigate("/owner/restaurant");
     } catch (err) {
@@ -140,9 +112,9 @@ export default function OwnerRestaurantDetailsPage() {
     setIsReplying(true);
     try {
       if (activeTab === "restaurant") {
-        await restaurantReviewApi.update(review._id, { ownerReply: text });
+        await dispatch(updateRestaurantReview(review._id, { ownerReply: text }));
       } else {
-        await foodReviewApi.update(review._id, { ownerReply: text });
+        await dispatch(updateFoodReview(review._id, { ownerReply: text }));
       }
       toast.success("Reply posted to the customer.");
       setReplyingTo(null);
@@ -534,7 +506,7 @@ export default function OwnerRestaurantDetailsPage() {
             restaurant={restaurant}
             onSuccess={() => {
               setEditModalOpen(false);
-              window.location.reload();
+              fetchData();
             }}
             onCancel={() => setEditModalOpen(false)}
           />

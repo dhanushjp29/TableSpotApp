@@ -1,11 +1,9 @@
 import { useEffect, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
 import {
   Calendar,
   Users,
   Search,
-  CheckCircle,
-  XCircle,
-  UserCheck,
   Utensils,
   Filter,
   HandCoins,
@@ -15,17 +13,25 @@ import {
 } from "lucide-react";
 import toast from "react-hot-toast";
 
-import { bookingApi } from "../../api/booking.api.js";
-import { billApi } from "../../api/bill.api.js";
-import { refundApi } from "../../api/refund.api.js";
+import { fetchBookings, markNoShow } from "../../store/slices/reservationSlice.js";
+import {
+  convertBookingToBill,
+} from "../../store/slices/billSlice.js";
+import {
+  fetchRefundById,
+  processRefund,
+} from "../../store/slices/refundSlice.js";
 import { useAuth } from "../../hooks/useAuth.js";
+import { subscribeToBookingUpdates } from "../../services/socket/socketService.js";
 import Card from "../../components/ui/Card.jsx";
 import Badge from "../../components/ui/Badge.jsx";
 import Button from "../../components/ui/Button.jsx";
+import Modal from "../../components/ui/Modal.jsx";
 import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
-import { formatDate, formatTime } from "../../utils/formatDate.js";
+import { formatDate, formatDateTime, formatTime } from "../../utils/formatDate.js";
+import { formatCurrency } from "../../utils/formatCurrency.js";
 
 const REFUND_BADGE = {
   REFUND_PENDING: { label: "Refund pending", variant: "warning" },
@@ -42,120 +48,153 @@ const REFUND_BADGE = {
 
 export default function OwnerReservationsPage() {
   const { user } = useAuth();
-  const [bookings, setBookings] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const dispatch = useDispatch();
+  const bookings = useSelector((state) => state.reservation.bookings);
+  const isLoading = useSelector((state) => state.reservation.isLoading);
+  const loadError = useSelector((state) => state.reservation.error);
+  const refundPreview = useSelector((state) => state.refund.currentRefund);
+  const refundPreviewLoading = useSelector((state) => state.refund.isLoading);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [search, setSearch] = useState("");
-  const [processingRefundId, setProcessingRefundId] = useState("");
+  const [actionDialog, setActionDialog] = useState(null);
+  const [actionNotes, setActionNotes] = useState("");
+  const [actionBusy, setActionBusy] = useState(false);
 
-  const fetchReservations = async () => {
-    try {
-      const res = await bookingApi.getAll();
-      setBookings(res?.data?.bookings || res?.bookings || []);
-    } catch (err) {
-      setError(err?.response?.data?.message || "Failed to load reservations.");
-    } finally {
-      setIsLoading(false);
-    }
+  // No-Show requires mandatory remarks — captured in a Modal, never a
+  // window.prompt.
+  const [noShowBooking, setNoShowBooking] = useState(null);
+  const [noShowRemarks, setNoShowRemarks] = useState("");
+  const [noShowBusy, setNoShowBusy] = useState(false);
+
+  // Rich reservation details (tables, pre-ordered items, advance, refund).
+  const [detailsBooking, setDetailsBooking] = useState(null);
+
+  // Re-armed "now" so the Convert-to-Bill time gate stays pure (no Date.now
+  // during render) while still auto-unlocking when the booking time arrives.
+  const [now, setNow] = useState(0);
+
+  const fetchReservations = () => {
+    dispatch(fetchBookings());
   };
 
   useEffect(() => {
-    let isMounted = true;
-    bookingApi
-      .getAll()
-      .then((res) => {
-        if (isMounted) {
-          setBookings(res?.data?.bookings || res?.bookings || []);
-          setIsLoading(false);
-        }
-      })
-      .catch((err) => {
-        if (isMounted) {
-          setError(err?.response?.data?.message || "Failed to load reservations.");
-          setIsLoading(false);
-        }
-      });
-    return () => {
-      isMounted = false;
-    };
+    dispatch(fetchBookings());
+
+    const unsubscribe = subscribeToBookingUpdates("all", () => {
+      dispatch(fetchBookings());
+    });
+    return unsubscribe;
+  }, [dispatch]);
+
+  useEffect(() => {
+    const update = () => setNow(Date.now());
+    update();
+    const interval = setInterval(update, 30000);
+    return () => clearInterval(interval);
   }, []);
 
-  const handleUpdateStatus = async (bookingId, status) => {
-    try {
-      if (status === "Confirmed") {
-        await bookingApi.updateStatus(bookingId, { bookingStatus: "Confirmed" });
-      } else if (status === "Checked-In") {
-        await bookingApi.checkIn(bookingId);
-      } else if (status === "Completed") {
-        await bookingApi.complete(bookingId);
-      } else if (status === "Cancelled") {
-        await bookingApi.cancel(bookingId);
-      }
-      toast.success(`Reservation marked as ${status}`);
-      fetchReservations();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to update reservation status.");
-    }
-  };
-
-  const handleProcessRefund = async (booking, refundMethod) => {
-    setProcessingRefundId(booking._id);
-    const isCash = refundMethod === "Cash";
-    const confirmMessage = isCash
-      ? "Mark this refund as issued in cash? The customer will be asked to confirm receipt."
-      : "Process this refund to the customer's payment method (Razorpay)?";
-    if (!window.confirm(confirmMessage)) {
-      setProcessingRefundId("");
-      return;
-    }
-    try {
-      await refundApi.process(booking.refundId, refundMethod);
-      toast.success(isCash ? "Refund marked as issued in cash." : "Refund processed successfully.");
-      fetchReservations();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to process refund.");
-    } finally {
-      setProcessingRefundId("");
-    }
-  };
-
-  const handleConvertToBill = async (booking) => {
-    if (
-      !window.confirm(
-        `Convert ${booking.bookingCode || "this booking"} to a bill?\nPre-ordered items and the online advance will be carried over.`
-      )
-    ) {
-      return;
-    }
-    try {
-      await billApi.convertToBill(booking._id);
-      toast.success("Bill created from booking successfully.");
-      fetchReservations();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to create bill.");
-    }
-  };
-
-  const handleMarkNoShow = async (booking) => {
-    const remarks = window.prompt(
-      `Mark ${booking.bookingCode || "this booking"} as No-Show?\nPlease enter mandatory remarks (at least 5 characters):`
-    );
-    if (remarks === null) return;
-    if (!remarks || remarks.trim().length < 5) {
+  const handleMarkNoShow = async (e) => {
+    e.preventDefault();
+    if (!noShowBooking) return;
+    const remarks = noShowRemarks.trim();
+    if (remarks.length < 5) {
       toast.error("Remarks are required (minimum 5 characters).");
       return;
     }
+    setNoShowBusy(true);
     try {
-      await bookingApi.markNoShow(booking._id, remarks.trim());
+      await dispatch(markNoShow(noShowBooking._id, remarks));
       toast.success("Booking marked as no-show.");
+      setNoShowBooking(null);
+      setNoShowRemarks("");
       fetchReservations();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to mark booking as no-show.");
+    } finally {
+      setNoShowBusy(false);
     }
   };
 
-  const filteredBookings = bookings.filter((b) => {
+  const openRefundDialog = async (booking, refundMethod) => {
+    setActionNotes("");
+    setActionDialog({
+      type: "refund",
+      booking,
+      refundMethod,
+    });
+
+    if (!booking?.refundId) return;
+
+    try {
+      await dispatch(fetchRefundById(booking.refundId));
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to load refund details.");
+    }
+  };
+
+  const openConvertDialog = (booking) => {
+    setActionNotes("");
+    setActionDialog({
+      type: "convert",
+      booking,
+    });
+  };
+
+  const closeActionDialog = () => {
+    setActionDialog(null);
+    setActionNotes("");
+    setActionBusy(false);
+  };
+
+  const openNoShowDialog = (booking) => {
+    setNoShowRemarks("");
+    setNoShowBooking(booking);
+  };
+
+  const closeNoShowDialog = () => {
+    setNoShowBooking(null);
+    setNoShowRemarks("");
+  };
+
+  const handleActionConfirm = async () => {
+    if (!actionDialog?.booking) return;
+
+    const { booking, type, refundMethod } = actionDialog;
+    setActionBusy(true);
+
+    try {
+      if (type === "refund") {
+        await dispatch(processRefund(booking.refundId, refundMethod));
+        toast.success(
+          refundMethod === "Cash"
+            ? "Refund marked as issued in cash."
+            : "Refund processed successfully."
+        );
+      } else if (type === "convert") {
+        await dispatch(
+          convertBookingToBill(booking._id, {
+            notes: actionNotes.trim(),
+          })
+        );
+        toast.success("Bill created from booking successfully.");
+      }
+      closeActionDialog();
+      fetchReservations();
+    } catch (err) {
+      toast.error(
+        err?.response?.data?.message ||
+          (type === "refund" ? "Failed to process refund." : "Failed to create bill.")
+      );
+    } finally {
+      setActionBusy(false);
+    }
+  };
+
+  const visibleBookings = bookings.filter(
+    (b) => b.bookingStatus !== "Pending"
+  );
+
+  const filteredBookings = visibleBookings.filter((b) => {
     if (statusFilter !== "ALL" && b.bookingStatus !== statusFilter) return false;
     if (search) {
       const customerName = b.userId?.fullName?.toLowerCase() || "";
@@ -164,6 +203,17 @@ export default function OwnerReservationsPage() {
     }
     return true;
   });
+
+  const reservationStats = {
+    total: visibleBookings.length,
+    confirmed: visibleBookings.filter((b) => b.bookingStatus === "Confirmed").length,
+    completed: visibleBookings.filter((b) => b.bookingStatus === "Completed").length,
+    refunds: visibleBookings.filter((b) => !!b.refundId).length,
+  };
+
+  const canConvert = (b) =>
+    b.bookingStatus === "Confirmed" &&
+    new Date(b.bookingDateTime).getTime() <= now;
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
@@ -186,8 +236,27 @@ export default function OwnerReservationsPage() {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold text-text">Reservation Management</h1>
-          <p className="text-sm text-muted">View, accept, and update incoming customer table bookings</p>
+          <p className="text-sm text-muted">View and manage incoming customer table bookings</p>
         </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <Card className="p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Total reservations</p>
+          <p className="mt-2 text-2xl font-bold text-text">{reservationStats.total}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Confirmed</p>
+          <p className="mt-2 text-2xl font-bold text-text">{reservationStats.confirmed}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Completed</p>
+          <p className="mt-2 text-2xl font-bold text-text">{reservationStats.completed}</p>
+        </Card>
+        <Card className="p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Refund linked</p>
+          <p className="mt-2 text-2xl font-bold text-text">{reservationStats.refunds}</p>
+        </Card>
       </div>
 
       {/* Filters & Search */}
@@ -205,7 +274,7 @@ export default function OwnerReservationsPage() {
 
         <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
           <Filter size={16} className="text-muted shrink-0 ml-1" />
-          {["ALL", "Pending", "Confirmed", "Checked-In", "Completed", "Cancelled"].map((st) => (
+          {["ALL", "Confirmed", "Completed", "Cancelled", "No Show"].map((st) => (
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
@@ -230,8 +299,8 @@ export default function OwnerReservationsPage() {
             </Card>
           ))}
         </div>
-      ) : error ? (
-        <ErrorState title="Unable to load reservations" description={error} onRetry={fetchReservations} />
+      ) : loadError ? (
+        <ErrorState title="Unable to load reservations" description={loadError} onRetry={fetchReservations} />
       ) : filteredBookings.length === 0 ? (
         <EmptyState title="No reservations found" description="No customer bookings match your current criteria." />
       ) : (
@@ -246,6 +315,9 @@ export default function OwnerReservationsPage() {
                 : table
                   ? [table]
                   : [];
+            const orderedCount = Array.isArray(b.preOrderedFoods)
+              ? b.preOrderedFoods.reduce((sum, item) => sum + Number(item.quantity || 0), 0)
+              : 0;
 
             return (
               <Card key={b._id} className="p-5 hover:shadow-md transition-shadow border border-gray-100">
@@ -262,15 +334,13 @@ export default function OwnerReservationsPage() {
                       )}
                       <Badge
                         variant={
-                          b.bookingStatus === "Confirmed"
-                            ? "success"
-                            : b.bookingStatus === "Checked-In"
-                            ? "info"
-                            : b.bookingStatus === "Completed"
+                          b.bookingStatus === "Completed"
                             ? "success"
                             : b.bookingStatus === "Cancelled"
                             ? "danger"
-                            : "warning"
+                            : b.bookingStatus === "No Show"
+                            ? "info"
+                            : "success"
                         }
                       >
                         {b.bookingStatus}
@@ -308,78 +378,65 @@ export default function OwnerReservationsPage() {
                           </span>
                         </div>
                       )}
+                      <div className="flex items-center gap-1.5">
+                        <ReceiptText size={15} className="text-primary" />
+                        <span>{b.bookingType || "Online"} booking</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-muted">
+                          {b.paymentStatus || "Pending"}
+                        </span>
+                        <span>{formatCurrency(b.totalAmount || 0)} total</span>
+                      </div>
                     </div>
 
-                    {customer?.phone && (
-                      <p className="text-xs text-muted">Contact: {customer.phone} | Email: {customer.email}</p>
-                    )}
+                    <div className="flex flex-wrap gap-2 text-xs text-muted">
+                      {customer?.phone && <span>Contact: {customer.phone}</span>}
+                      {customer?.email && <span>Email: {customer.email}</span>}
+                      {typeof b.advanceAmount === "number" && (
+                        <span>Advance: {formatCurrency(b.advanceAmount)}</span>
+                      )}
+                      <span>Pre-order items: {orderedCount}</span>
+                      {b.specialRequest && (
+                        <span className="max-w-2xl truncate">Request: {b.specialRequest}</span>
+                      )}
+                    </div>
                   </div>
 
                   {/* Actions */}
                   <div className="flex flex-wrap items-center gap-2 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100">
-                    {b.bookingStatus === "Pending" && (
-                      <>
-                        <Button
-                          size="sm"
-                          variant="primary"
-                          onClick={() => handleUpdateStatus(b._id, "Confirmed")}
-                        >
-                          <CheckCircle size={15} className="mr-1" />
-                          Confirm
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="text-red-600 border-red-200 hover:bg-red-50"
-                          onClick={() => handleUpdateStatus(b._id, "Cancelled")}
-                        >
-                          <XCircle size={15} className="mr-1" />
-                          Reject
-                        </Button>
-                      </>
-                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setDetailsBooking(b)}
+                    >
+                      Details
+                    </Button>
 
-                    {b.bookingStatus === "Confirmed" && (
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        onClick={() => handleUpdateStatus(b._id, "Checked-In")}
-                      >
-                        <UserCheck size={15} className="mr-1" />
-                        Check In
-                      </Button>
-                    )}
-
-                    {(b.bookingStatus === "Confirmed" ||
-                      b.bookingStatus === "Pending") && (
+                    {b.bookingStatus === "Confirmed" &&
+                      bDate &&
+                      bDate.getTime() <= now && (
                       <Button
                         size="sm"
                         variant="outline"
                         className="text-red-600 border-red-200 hover:bg-red-50"
-                        onClick={() => handleMarkNoShow(b)}
+                        onClick={() => openNoShowDialog(b)}
                       >
                         <UserX size={15} className="mr-1" />
                         Mark No-Show
                       </Button>
                     )}
 
-                    {b.bookingStatus === "Checked-In" && (
-                      <Button
-                        size="sm"
-                        variant="primary"
-                        onClick={() => handleUpdateStatus(b._id, "Completed")}
-                      >
-                        <CheckCircle size={15} className="mr-1" />
-                        Mark Complete
-                      </Button>
-                    )}
-
-                    {(b.bookingStatus === "Confirmed" ||
-                      b.bookingStatus === "Checked-In") && (
+                    {canConvert(b) && (
                       <Button
                         size="sm"
                         variant="secondary"
-                        onClick={() => handleConvertToBill(b)}
+                        isLoading={
+                          actionBusy &&
+                          actionDialog?.type === "convert" &&
+                          actionDialog?.booking?._id === b._id
+                        }
+                        onClick={() => openConvertDialog(b)}
                       >
                         <ReceiptText size={15} className="mr-1" />
                         Convert to Bill
@@ -392,8 +449,12 @@ export default function OwnerReservationsPage() {
                           <Button
                             size="sm"
                             variant="secondary"
-                            isLoading={processingRefundId === b._id}
-                            onClick={() => handleProcessRefund(b, "Cash")}
+                            isLoading={
+                              actionBusy &&
+                              actionDialog?.type === "refund" &&
+                              actionDialog?.booking?._id === b._id
+                            }
+                            onClick={() => openRefundDialog(b, "Cash")}
                           >
                             <Banknote size={15} className="mr-1" />
                             Refund in Cash
@@ -401,7 +462,12 @@ export default function OwnerReservationsPage() {
                           <Button
                             size="sm"
                             variant="primary"
-                            onClick={() => handleProcessRefund(b, "RAZORPAY")}
+                            isLoading={
+                              actionBusy &&
+                              actionDialog?.type === "refund" &&
+                              actionDialog?.booking?._id === b._id
+                            }
+                            onClick={() => openRefundDialog(b, "RAZORPAY")}
                           >
                             <HandCoins size={15} className="mr-1" />
                             Refund Online
@@ -423,6 +489,337 @@ export default function OwnerReservationsPage() {
           })}
         </div>
       )}
+
+      <Modal
+        isOpen={Boolean(actionDialog)}
+        onClose={closeActionDialog}
+        title={
+          actionDialog?.type === "refund"
+            ? `Confirm refund for ${actionDialog?.booking?.bookingCode || "reservation"}`
+            : `Convert ${actionDialog?.booking?.bookingCode || "reservation"} to bill`
+        }
+        size="lg"
+      >
+        {actionDialog?.booking && (
+          <div className="space-y-5">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Card className="p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Reservation</p>
+                <div className="mt-3 space-y-2 text-sm text-text">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Guest</span>
+                    <span className="font-medium">{actionDialog.booking.userId?.fullName || "Guest Customer"}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Date & time</span>
+                    <span className="font-medium">
+                      {actionDialog.booking.bookingDateTime
+                        ? formatDateTime(actionDialog.booking.bookingDateTime)
+                        : "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Guests</span>
+                    <span className="font-medium">{actionDialog.booking.numberOfGuests}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Status</span>
+                    <span className="font-medium">{actionDialog.booking.bookingStatus}</span>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Payment snapshot</p>
+                <div className="mt-3 space-y-2 text-sm text-text">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Booking type</span>
+                    <span className="font-medium">{actionDialog.booking.bookingType || "Online"}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Total amount</span>
+                    <span className="font-medium">{formatCurrency(actionDialog.booking.totalAmount || 0)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Advance amount</span>
+                    <span className="font-medium">{formatCurrency(actionDialog.booking.advanceAmount || 0)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Payment status</span>
+                    <span className="font-medium">{actionDialog.booking.paymentStatus || "Pending"}</span>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            <Card className="p-4">
+              <p className="text-xs font-semibold uppercase tracking-wide text-muted">What will be posted</p>
+              {actionDialog.type === "convert" ? (
+                <div className="mt-3 space-y-3 text-sm text-text">
+                  <p className="text-muted">
+                    The server will create the bill from this booking's current model values. It will carry the
+                    confirmed booking, pre-ordered foods, and any online advance into the bill ledger.
+                  </p>
+                  <div className="rounded-lg bg-gray-50 p-3 text-xs text-muted">
+                    <div className="flex justify-between gap-4">
+                      <span>Pre-ordered items</span>
+                      <span>{Array.isArray(actionDialog.booking.preOrderedFoods) ? actionDialog.booking.preOrderedFoods.length : 0}</span>
+                    </div>
+                    <div className="mt-1 flex justify-between gap-4">
+                      <span>Tables</span>
+                      <span>{Array.isArray(actionDialog.booking.tables) ? actionDialog.booking.tables.length : actionDialog.booking.tableId ? 1 : 0}</span>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-sm font-medium text-text">Bill notes</label>
+                    <textarea
+                      value={actionNotes}
+                      onChange={(e) => setActionNotes(e.target.value)}
+                      placeholder="Optional internal notes for the bill"
+                      rows={4}
+                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="mt-3 space-y-3 text-sm text-text">
+                  <p className="text-muted">
+                    This will update the linked refund record. For a cash refund, the customer will be asked to confirm receipt
+                    inside the app instead of seeing a browser alert.
+                  </p>
+                  <div className="rounded-lg bg-gray-50 p-3 text-xs text-muted">
+                    <div className="flex justify-between gap-4">
+                      <span>Refund method</span>
+                      <span>{actionDialog.refundMethod === "Cash" ? "Cash" : "Online / Razorpay"}</span>
+                    </div>
+                    <div className="mt-1 flex justify-between gap-4">
+                      <span>Refund record</span>
+                      <span>{actionDialog.booking.refundId ? String(actionDialog.booking.refundId).slice(-6) : "N/A"}</span>
+                    </div>
+                  </div>
+                  {refundPreviewLoading ? (
+                    <p className="text-muted">Loading refund details...</p>
+                  ) : refundPreview ? (
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-lg border border-gray-100 p-3">
+                        <p className="text-xs uppercase tracking-wide text-muted">Refund amount</p>
+                        <p className="mt-1 font-semibold text-text">{formatCurrency(refundPreview.amount || 0)}</p>
+                      </div>
+                      <div className="rounded-lg border border-gray-100 p-3">
+                        <p className="text-xs uppercase tracking-wide text-muted">Refund status</p>
+                        <p className="mt-1 font-semibold text-text">{refundPreview.refundStatus || "Pending"}</p>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+            </Card>
+
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={closeActionDialog} disabled={actionBusy}>
+                Cancel
+              </Button>
+              <Button
+                variant={actionDialog.type === "refund" ? "secondary" : "primary"}
+                onClick={handleActionConfirm}
+                isLoading={actionBusy}
+                loadingText="Processing..."
+              >
+                {actionDialog.type === "refund" ? "Post refund update" : "Convert to Bill"}
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* No-Show dialog with mandatory remarks */}
+      <Modal
+        isOpen={Boolean(noShowBooking)}
+        onClose={closeNoShowDialog}
+        title={`Mark ${noShowBooking?.bookingCode || "reservation"} as No-Show`}
+        size="sm"
+      >
+        <form onSubmit={handleMarkNoShow} className="space-y-4 pt-2">
+          <p className="text-sm text-muted">
+            The guest did not arrive for their reservation. A remark is required
+            to record why this booking was marked as a no-show.
+          </p>
+          <div>
+            <label className="mb-1 block text-sm font-medium text-text">Remarks (required)</label>
+            <textarea
+              value={noShowRemarks}
+              onChange={(e) => setNoShowRemarks(e.target.value)}
+              placeholder="e.g. Guest never arrived, no response on call"
+              rows={4}
+              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-2">
+            <Button type="button" variant="outline" onClick={closeNoShowDialog} disabled={noShowBusy}>
+              Cancel
+            </Button>
+            <Button type="submit" variant="danger" isLoading={noShowBusy}>
+              Mark No-Show
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Reservation details modal */}
+      <Modal
+        isOpen={Boolean(detailsBooking)}
+        onClose={() => setDetailsBooking(null)}
+        title={`Reservation ${detailsBooking?.bookingCode || ""}`}
+        size="lg"
+      >
+        {detailsBooking && (
+          <div className="space-y-5 pt-2">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Card className="p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Reservation</p>
+                <div className="mt-3 space-y-2 text-sm text-text">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Guest</span>
+                    <span className="font-medium">
+                      {detailsBooking.userId?.fullName || detailsBooking.userId?.name || "Guest Customer"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Date & time</span>
+                    <span className="font-medium">
+                      {detailsBooking.bookingDateTime ? formatDateTime(detailsBooking.bookingDateTime) : "N/A"}
+                    </span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Guests</span>
+                    <span className="font-medium">{detailsBooking.numberOfGuests}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Type</span>
+                    <span className="font-medium">{detailsBooking.bookingType || "Online"}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Status</span>
+                    <span className="font-medium">{detailsBooking.bookingStatus}</span>
+                  </div>
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Payment</p>
+                <div className="mt-3 space-y-2 text-sm text-text">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Total amount</span>
+                    <span className="font-medium">{formatCurrency(detailsBooking.totalAmount || 0)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Advance amount</span>
+                    <span className="font-medium">{formatCurrency(detailsBooking.advanceAmount || 0)}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Payment status</span>
+                    <span className="font-medium">{detailsBooking.paymentStatus || "Pending"}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Payment method</span>
+                    <span className="font-medium">{detailsBooking.paymentMethod || "Cash"}</span>
+                  </div>
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Bill</span>
+                    <span className="font-medium">
+                      {detailsBooking.billId?.billCode || (detailsBooking.billId ? "Linked" : "None")}
+                    </span>
+                  </div>
+                </div>
+              </Card>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Card className="p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Tables</p>
+                <div className="mt-3 space-y-1 text-sm text-text">
+                  {detailsBooking.tables?.length > 0 ? (
+                    detailsBooking.tables.map((entry, idx) => (
+                      <p key={idx} className="font-medium">
+                        {entry.tableId?.tableCode || `Table ${entry.tableId?.tableNumber || entry.tableId?._id?.slice(-4)}`}
+                        {entry.seatIds?.length ? ` — ${entry.seatIds.length} seat(s)` : ""}
+                      </p>
+                    ))
+                  ) : detailsBooking.tableId ? (
+                    <p className="font-medium">
+                      {detailsBooking.tableId.tableCode || `Table ${detailsBooking.tableId.tableNumber || ""}`}
+                    </p>
+                  ) : (
+                    <p className="text-muted">No table assigned</p>
+                  )}
+                </div>
+              </Card>
+
+              <Card className="p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Refund</p>
+                <div className="mt-3 space-y-2 text-sm text-text">
+                  {detailsBooking.refundId ? (
+                    <>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted">Refund code</span>
+                        <span className="font-medium">{detailsBooking.refundId.refundCode || "N/A"}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted">Amount</span>
+                        <span className="font-medium">{formatCurrency(detailsBooking.refundId.amount || 0)}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted">Status</span>
+                        <span className="font-medium">{detailsBooking.refundId.refundStatus || "N/A"}</span>
+                      </div>
+                      <div className="flex justify-between gap-4">
+                        <span className="text-muted">Method</span>
+                        <span className="font-medium">{detailsBooking.refundId.refundMethod || "N/A"}</span>
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-muted">No refund linked</p>
+                  )}
+                </div>
+              </Card>
+            </div>
+
+            {(detailsBooking.preOrderedFoods?.length > 0) && (
+              <Card className="p-4">
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">Pre-ordered items</p>
+                <div className="mt-3 space-y-1.5 text-sm text-text">
+                  {detailsBooking.preOrderedFoods.map((item, idx) => (
+                    <div key={idx} className="flex justify-between gap-4">
+                      <span className="font-medium">
+                        {item.foodId?.foodName || "Item"} ({item.variantName || "Regular"})
+                      </span>
+                      <span>
+                        x{item.quantity}
+                        {typeof item.price === "number" && item.price > 0 && (
+                          <span className="text-muted"> — {formatCurrency(item.price * item.quantity)}</span>
+                        )}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </Card>
+            )}
+
+            {detailsBooking.specialRequest && (
+              <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+                <p className="font-semibold">Special request</p>
+                <p className="mt-1">{detailsBooking.specialRequest}</p>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3">
+              <Button variant="outline" onClick={() => setDetailsBooking(null)}>
+                Close
+              </Button>
+            </div>
+          </div>
+        )}
+      </Modal>
     </div>
   );
 }

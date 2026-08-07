@@ -3,6 +3,8 @@ import mongoose from "mongoose";
 import {
   SEAT_SELECTION_MODE,
   SEAT_SELECTION_MODE_VALUES,
+  SEAT_STATUS,
+  SEAT_STATUS_VALUES,
   TABLE_SHAPE,
   TABLE_SHAPE_VALUES,
 } from "../utils/constants.js";
@@ -40,6 +42,21 @@ const seatSchema = new mongoose.Schema(
     isActive: {
       type: Boolean,
       default: true,
+    },
+
+    // Owner-managed per-seat availability. Only "Available" seats are
+    // selectable for new bookings in Individual Seats mode.
+    status: {
+      type: String,
+      enum: SEAT_STATUS_VALUES,
+      default: SEAT_STATUS.AVAILABLE,
+    },
+
+    // When set, the seat automatically reverts to "Available" at this
+    // instant (owner-initiated manual seat block timer).
+    statusScheduledUntil: {
+      type: Date,
+      default: null,
     },
   },
   { _id: true }
@@ -173,6 +190,23 @@ const restaurantTableSchema = new mongoose.Schema(
     isReservable: {
       type: Boolean,
       default: true,
+    },
+
+    // When set, the table automatically reverts to "Available" at this
+    // instant. Only used for owner-initiated manual status blocks (timer).
+    statusScheduledUntil: {
+      type: Date,
+      default: null,
+    },
+
+    // Whether the current `status` was set by the owner (manual) or derived
+    // from an active booking window (booking). Only "booking"-sourced statuses
+    // are recomputed by the booking-window scheduler, so owner overrides are
+    // never clobbered.
+    statusSource: {
+      type: String,
+      enum: ["manual", "booking"],
+      default: "manual",
     },
 
     isActive: {

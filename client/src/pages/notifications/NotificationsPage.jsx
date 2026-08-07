@@ -1,9 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Bell, BellRing, CheckCheck, HandCoins, MessageSquareWarning } from "lucide-react";
+import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 
-import { notificationApi } from "../../api/notification.api.js";
-import { refundApi } from "../../api/refund.api.js";
+import {
+  fetchNotifications,
+  fetchNotificationsMore,
+  fetchUnreadCount,
+  markAllAsRead,
+  markAsReadNotification,
+} from "../../store/slices/notificationSlice.js";
+import { confirmRefundReceipt, disputeRefund, fetchRefundById } from "../../store/slices/refundSlice.js";
 import Card from "../../components/ui/Card.jsx";
 import Button from "../../components/ui/Button.jsx";
 import Badge from "../../components/ui/Badge.jsx";
@@ -45,13 +52,18 @@ const notifyLayout = () => {
 };
 
 function NotificationsPage() {
-  const [notifications, setNotifications] = useState([]);
-  const [meta, setMeta] = useState({ page: 1, totalPages: 1, total: 0 });
+  const dispatch = useDispatch();
+  const notifications = useSelector((state) => state.notification.notifications);
+  const meta = useSelector((state) => state.notification.meta) || {
+    page: 1,
+    totalPages: 1,
+    total: 0,
+  };
+  const unreadCount = useSelector((state) => state.notification.unreadCount);
+  const error = useSelector((state) => state.notification.error);
   const [filter, setFilter] = useState("all");
-  const [isLoading, setIsLoading] = useState(true);
+  const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
-  const [error, setError] = useState("");
-  const [unreadCount, setUnreadCount] = useState(0);
   const [refundStatuses, setRefundStatuses] = useState({});
   const [processingRefund, setProcessingRefund] = useState("");
 
@@ -60,38 +72,26 @@ function NotificationsPage() {
 
     const load = async () => {
       try {
-        const { data } = await notificationApi.getAll({
-          page: 1,
-          limit: 15,
-          unreadOnly: filter === "unread",
-        });
-        if (cancelled) return;
-        setNotifications(data.notifications);
-        setMeta(data.meta);
-        setError("");
-      } catch (err) {
-        if (cancelled) return;
-        setError(err?.response?.data?.message || "Failed to load notifications.");
-      } finally {
-        if (!cancelled) setIsLoading(false);
-      }
-    };
-
-    const loadCount = async () => {
-      try {
-        const { data } = await notificationApi.getUnreadCount();
-        if (!cancelled) setUnreadCount(data?.count || 0);
+        await dispatch(
+          fetchNotifications({
+            page: 1,
+            limit: 15,
+            unreadOnly: filter === "unread",
+          })
+        );
       } catch {
-        if (!cancelled) setUnreadCount(0);
+        // error surfaces via state.notification.error
+      } finally {
+        if (!cancelled) setIsInitialLoading(false);
       }
     };
 
     load();
-    loadCount();
+    dispatch(fetchUnreadCount()).catch(() => {});
     return () => {
       cancelled = true;
     };
-  }, [filter]);
+  }, [dispatch, filter]);
 
   useEffect(() => {
     let cancelled = false;
@@ -102,11 +102,11 @@ function NotificationsPage() {
 
     refundNotifications.forEach(async (item) => {
       try {
-        const { data } = await refundApi.getById(item.linkId);
+        const res = await dispatch(fetchRefundById(item.linkId));
         if (!cancelled) {
           setRefundStatuses((prev) => ({
             ...prev,
-            [item._id]: data?.refund?.refundStatus || "",
+            [item._id]: res?.data?.refund?.refundStatus || "",
           }));
         }
       } catch {
@@ -117,42 +117,13 @@ function NotificationsPage() {
     return () => {
       cancelled = true;
     };
-  }, [notifications]);
-
-  const loadNotifications = useCallback(async (page = 1, reset = true) => {
-    try {
-      const { data } = await notificationApi.getAll({
-        page,
-        limit: 15,
-        unreadOnly: filter === "unread",
-      });
-
-      setNotifications((prev) =>
-        reset ? data.notifications : [...prev, ...data.notifications]
-      );
-      setMeta(data.meta);
-      setError("");
-    } catch (err) {
-      setError(err?.response?.data?.message || "Failed to load notifications.");
-    } finally {
-      setIsLoading(false);
-      setIsLoadingMore(false);
-    }
-  }, [filter]);
+  }, [dispatch, notifications]);
 
   const handleMarkRead = async (notification) => {
     if (notification.isRead) return;
 
     try {
-      await notificationApi.markAsRead(notification._id);
-      setNotifications((prev) =>
-        prev.map((item) =>
-          item._id === notification._id
-            ? { ...item, isRead: true, readAt: new Date().toISOString() }
-            : item
-        )
-      );
-      setUnreadCount((count) => Math.max(0, count - 1));
+      await dispatch(markAsReadNotification(notification._id));
       notifyLayout();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to update notification.");
@@ -161,13 +132,7 @@ function NotificationsPage() {
 
   const handleMarkAllRead = async () => {
     try {
-      await notificationApi.markAllAsRead();
-      setNotifications((prev) =>
-        prev.map((item) =>
-          item.isRead ? item : { ...item, isRead: true, readAt: new Date().toISOString() }
-        )
-      );
-      setUnreadCount(0);
+      await dispatch(markAllAsRead());
       notifyLayout();
       toast.success("All notifications marked as read.");
     } catch (err) {
@@ -179,11 +144,11 @@ function NotificationsPage() {
     if (!window.confirm("I received the refund in cash. Confirm receipt?")) return;
     setProcessingRefund(notification._id);
     try {
-      await refundApi.confirmReceipt(notification.linkId);
+      await dispatch(confirmRefundReceipt(notification.linkId));
       setRefundStatuses((prev) => ({ ...prev, [notification._id]: "REFUNDED" }));
       toast.success("Refund receipt confirmed. Thank you!");
       if (!notification.isRead) {
-        await notificationApi.markAsRead(notification._id);
+        await dispatch(markAsReadNotification(notification._id));
         notifyLayout();
       }
     } catch (err) {
@@ -205,7 +170,7 @@ function NotificationsPage() {
     }
     setProcessingRefund(notification._id);
     try {
-      await refundApi.dispute(notification.linkId, trimmed);
+      await dispatch(disputeRefund(notification.linkId, trimmed));
       setRefundStatuses((prev) => ({ ...prev, [notification._id]: "REFUND_DISPUTED" }));
       toast.success("Refund disputed. The restaurant has been notified.");
     } catch (err) {
@@ -217,15 +182,27 @@ function NotificationsPage() {
 
   const handleLoadMore = async () => {
     setIsLoadingMore(true);
-    await loadNotifications(meta.page + 1, false);
+    try {
+      await dispatch(
+        fetchNotificationsMore({
+          page: meta.page + 1,
+          limit: 15,
+          unreadOnly: filter === "unread",
+        })
+      );
+    } catch {
+      // error surfaces via state.notification.error
+    } finally {
+      setIsLoadingMore(false);
+    }
   };
 
   const handleFilterChange = (nextFilter) => {
     setFilter(nextFilter);
-    setIsLoading(true);
+    setIsInitialLoading(true);
   };
 
-  if (isLoading) {
+  if (isInitialLoading) {
     return (
       <div className="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:px-8">
         <div className="space-y-3">

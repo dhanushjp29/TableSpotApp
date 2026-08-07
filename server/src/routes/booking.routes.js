@@ -9,7 +9,6 @@ import {
     createBookingSchema,
     markNoShowSchema,
     updateBookingSchema,
-    updateBookingStatusSchema,
 } from "../validators/booking.validator.js";
 
 const router = Router();
@@ -32,15 +31,7 @@ router.patch(
     asyncHandler(bookingController.update)
 );
 
-router.patch(
-    "/:bookingId/status",
-    validateRequest(updateBookingStatusSchema),
-    asyncHandler(bookingController.updateStatus)
-);
-
 router.post("/:bookingId/cancel", asyncHandler(bookingController.cancel));
-router.post("/:bookingId/check-in", asyncHandler(bookingController.checkIn));
-router.post("/:bookingId/complete", asyncHandler(bookingController.complete));
 router.post(
     "/:bookingId/no-show",
     validateRequest(markNoShowSchema),

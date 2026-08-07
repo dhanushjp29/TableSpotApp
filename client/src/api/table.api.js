@@ -41,6 +41,14 @@ export const tableApi = {
     return response.data;
   },
 
+  async updateSeatsStatus(tableId, data) {
+    const response = await apiClient.patch(
+      `/tables/${tableId}/seats/status`,
+      data
+    );
+    return response.data;
+  },
+
   async remove(tableId) {
     const response = await apiClient.delete(`/tables/${tableId}`);
     return response.data;

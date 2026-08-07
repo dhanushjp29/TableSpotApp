@@ -1,10 +1,15 @@
 import { ArrowLeft, Pencil, Star, Trash2 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
+import { useDispatch, useSelector } from "react-redux";
 import toast from "react-hot-toast";
 
-import { foodApi } from "../../api/food.api.js";
-import { foodReviewApi, restaurantReviewApi } from "../../api/review.api.js";
+import { fetchFoodById } from "../../store/slices/foodSlice.js";
+import {
+  deleteFoodReview,
+  fetchFoodReviewsByFood,
+} from "../../store/slices/reviewSlice.js";
+import { restaurantReviewApi } from "../../api/review.api.js";
 import { useAuth } from "../../hooks/useAuth.js";
 
 import Badge from "../../components/ui/Badge.jsx";
@@ -19,43 +24,29 @@ import { formatCurrency } from "../../utils/formatCurrency.js";
 function FoodDetailsPage() {
   const { foodId } = useParams();
   const navigate = useNavigate();
+  const dispatch = useDispatch();
   const { isAuthenticated, user } = useAuth();
-  const [food, setFood] = useState(null);
-  const [reviews, setReviews] = useState([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState(null);
+  const food = useSelector((state) => state.food.currentFood);
+  const reviews = useSelector((state) => state.review.foodReviews);
+  const foodLoading = useSelector((state) => state.food.isLoading);
+  const reviewsLoading = useSelector((state) => state.review.isLoading);
+  const foodError = useSelector((state) => state.food.error);
+  const reviewsError = useSelector((state) => state.review.error);
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [editingReview, setEditingReview] = useState(null);
 
+  const isLoading = foodLoading || reviewsLoading;
+  const error = foodError || reviewsError;
+
   useEffect(() => {
-    const fetchData = async () => {
-      setIsLoading(true);
-      setError(null);
-      try {
-        const [foodRes, reviewsRes] = await Promise.all([
-          foodApi.getById(foodId),
-          foodReviewApi.getByFood(foodId, { limit: 5 }),
-        ]);
-
-        setFood(foodRes.data?.food || foodRes.data);
-        setReviews(reviewsRes.data?.reviews || []);
-      } catch (err) {
-        setError(err?.response?.data?.message || "Failed to load food details.");
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [foodId]);
+    dispatch(fetchFoodById(foodId)).catch(() => {});
+    dispatch(fetchFoodReviewsByFood(foodId, { limit: 5 })).catch(() => {});
+  }, [dispatch, foodId]);
 
   const restaurantIdForFood = food?.restaurantId?._id || food?.restaurantId || null;
 
   const refreshReviews = () => {
-    foodReviewApi
-      .getByFood(foodId, { limit: 5 })
-      .then((res) => setReviews(res.data?.reviews || []))
-      .catch(() => {});
+    dispatch(fetchFoodReviewsByFood(foodId, { limit: 5 })).catch(() => {});
   };
 
   const handleWriteReview = async () => {
@@ -93,7 +84,7 @@ function FoodDetailsPage() {
   const handleDeleteReview = async (review) => {
     if (!window.confirm("Delete this review?")) return;
     try {
-      await foodReviewApi.remove(review._id);
+      await dispatch(deleteFoodReview(review._id));
       toast.success("Review deleted.");
       refreshReviews();
     } catch (err) {

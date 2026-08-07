@@ -17,6 +17,7 @@ import {
   createRefund,
 } from "./refund.service.js";
 import { createAuditLog } from "./auditLog.service.js";
+import { recomputeBookingTableStatus } from "./bookingWindow.service.js";
 
 import {
   BOOKING_STATUS,
@@ -30,6 +31,7 @@ import {
   REFUND_REASON,
   REFUND_STATUS,
   SEAT_SELECTION_MODE,
+  SEAT_STATUS,
   TABLE_STATUS,
   USER_ROLE,
 } from "../utils/constants.js";
@@ -37,7 +39,6 @@ import {
 const BOOKED_STATUSES = [
   BOOKING_STATUS.PENDING,
   BOOKING_STATUS.CONFIRMED,
-  BOOKING_STATUS.CHECKED_IN,
 ];
 
 const roundAmount = (value) => Math.round(Number(value || 0) * 100) / 100;
@@ -47,18 +48,15 @@ const roundAmount = (value) => Math.round(Number(value || 0) * 100) / 100;
 const BOOKING_TRANSITIONS = {
   [BOOKING_STATUS.PENDING]: [
     BOOKING_STATUS.CONFIRMED,
-    BOOKING_STATUS.CHECKED_IN,
     BOOKING_STATUS.COMPLETED,
     BOOKING_STATUS.CANCELLED,
     BOOKING_STATUS.NO_SHOW,
   ],
   [BOOKING_STATUS.CONFIRMED]: [
-    BOOKING_STATUS.CHECKED_IN,
     BOOKING_STATUS.COMPLETED,
     BOOKING_STATUS.CANCELLED,
     BOOKING_STATUS.NO_SHOW,
   ],
-  [BOOKING_STATUS.CHECKED_IN]: [BOOKING_STATUS.COMPLETED],
   [BOOKING_STATUS.COMPLETED]: [],
   [BOOKING_STATUS.CANCELLED]: [],
   [BOOKING_STATUS.NO_SHOW]: [],
@@ -197,6 +195,34 @@ const resolveTableSelections = async ({
     throw new ApiError(400, "One or more selected tables are not available.");
   }
 
+  // A manual status timer that already elapsed no longer blocks booking;
+  // the scheduler persists the revert, we just stop honoring it here.
+  const now = Date.now();
+  for (const doc of tableDocs) {
+    if (
+      doc.statusScheduledUntil &&
+      doc.status !== TABLE_STATUS.AVAILABLE &&
+      new Date(doc.statusScheduledUntil).getTime() <= now
+    ) {
+      doc.status = TABLE_STATUS.AVAILABLE;
+      doc.isReservable = true;
+      doc.statusScheduledUntil = null;
+    }
+
+    // Same for seat-level manual status timers.
+    (doc.seats || []).forEach((seat) => {
+      if (
+        seat.status &&
+        seat.status !== SEAT_STATUS.AVAILABLE &&
+        seat.statusScheduledUntil &&
+        new Date(seat.statusScheduledUntil).getTime() <= now
+      ) {
+        seat.status = SEAT_STATUS.AVAILABLE;
+        seat.statusScheduledUntil = null;
+      }
+    });
+  }
+
   const tableDocMap = new Map(tableDocs.map((t) => [String(t._id), t]));
 
   for (const doc of tableDocs) {
@@ -248,24 +274,27 @@ const resolveTableSelections = async ({
         seenSeatIds.add(id);
       }
 
-      const activeSeatIds = new Set(
-        (table.seats || [])
-          .filter((seat) => seat.isActive !== false)
-          .map((seat) => String(seat._id))
+      const seatById = new Map(
+        (table.seats || []).map((seat) => [String(seat._id), seat])
       );
 
       for (const id of seatIds) {
-        if (!activeSeatIds.has(id)) {
+        const seat = seatById.get(id);
+
+        if (!seat || seat.isActive === false) {
           throw new ApiError(
             400,
             "One or more selected seats do not belong to this table."
           );
         }
-      }
 
-      const seatById = new Map(
-        (table.seats || []).map((seat) => [String(seat._id), seat])
-      );
+        if (seat.status && seat.status !== SEAT_STATUS.AVAILABLE) {
+          throw new ApiError(
+            409,
+            "One or more selected seats are not available."
+          );
+        }
+      }
 
       resolved.push({
         tableId: table._id,
@@ -408,7 +437,6 @@ const getRestaurantOrThrow = async (restaurantId) => {
 
 const setTableStateForBookingStatus = async ({
   tableId,
-  bookingStatus,
 }) => {
   const table = await getTableOrThrow(tableId);
 
@@ -421,24 +449,64 @@ const setTableStateForBookingStatus = async ({
   // owner toggle and is NEVER auto-flipped by the booking lifecycle — that
   // previously left tables permanently unbookable for all future slots. Real
   // availability is determined by status + time-overlap of active bookings.
-  switch (bookingStatus) {
-    case BOOKING_STATUS.CONFIRMED:
-      table.status = TABLE_STATUS.RESERVED;
-      break;
-    case BOOKING_STATUS.CHECKED_IN:
-      table.status = TABLE_STATUS.OCCUPIED;
-      break;
-    case BOOKING_STATUS.COMPLETED:
-    case BOOKING_STATUS.CANCELLED:
-    case BOOKING_STATUS.NO_SHOW:
-      table.status = TABLE_STATUS.AVAILABLE;
-      break;
-    default:
-      break;
-  }
-
+  //
+  // The table becomes "booking"-sourced so the window recompute (and the
+  // background scheduler) can flip it Reserved during the window and back to
+  // Available once it ends. Confirming a future booking keeps the table
+  // Available until the window actually starts.
+  table.statusSource = "booking";
+  table.statusScheduledUntil = null;
   await table.save();
-  return table;
+
+  return recomputeBookingTableStatus({
+    restaurantId: table.restaurantId,
+    tableId: table._id,
+  });
+};
+
+/**
+ * Increment totalBookings, mark full-table bookings as booking-sourced, then
+ * recompute each affected table's status from its active booking window and
+ * push `table:updated` so owner table pages stay live. Individual-seat
+ * bookings never flip the table-level status, so they are updated but not
+ * recomputed.
+ */
+const markTablesReservedAndNotify = async (tables) => {
+  const wholeTableEntries = [];
+
+  await Promise.all(
+    tables.map((entry) =>
+      RestaurantTable.findByIdAndUpdate(
+        entry.tableId,
+        {
+          $inc: { totalBookings: 1 },
+          ...(entry.seatSelectionMode === SEAT_SELECTION_MODE.INDIVIDUAL_SEATS
+            ? {}
+            : {
+                $set: {
+                  statusSource: "booking",
+                  statusScheduledUntil: null,
+                },
+              }),
+        },
+        { new: true }
+      ).then((doc) => {
+        if (doc?.seatSelectionMode !== SEAT_SELECTION_MODE.INDIVIDUAL_SEATS) {
+          wholeTableEntries.push(doc);
+        }
+        return doc;
+      })
+    )
+  );
+
+  await Promise.all(
+    wholeTableEntries.map((doc) =>
+      recomputeBookingTableStatus({
+        restaurantId: doc.restaurantId,
+        tableId: doc._id,
+      })
+    )
+  );
 };
 
 /**
@@ -702,29 +770,10 @@ export const createBooking = async ({
     throw error;
   }
 
-  await Promise.all([
-    Restaurant.findByIdAndUpdate(restaurant._id, {
-      $inc: { totalBookings: 1 },
-    }),
-    ...resolvedSeats.tables.map((entry) =>
-      RestaurantTable.findByIdAndUpdate(entry.tableId, {
-        $inc: { totalBookings: 1 },
-        $set:
-          entry.seatSelectionMode === SEAT_SELECTION_MODE.INDIVIDUAL_SEATS
-            ? {
-                // Seat occupancy is derived from bookings.
-              }
-            : {
-                status:
-                  effectiveBookingStatus === BOOKING_STATUS.CHECKED_IN
-                    ? TABLE_STATUS.OCCUPIED
-                    : TABLE_STATUS.RESERVED,
-                // isReservable is intentionally NOT touched here — it is a
-                // manual owner toggle, not a lifecycle flag.
-              },
-      })
-    ),
-  ]);
+  await Restaurant.findByIdAndUpdate(restaurant._id, {
+    $inc: { totalBookings: 1 },
+  });
+  await markTablesReservedAndNotify(resolvedSeats.tables);
 
   try {
     const io = getIO();
@@ -733,6 +782,14 @@ export const createBooking = async ({
       tableId: resolvedSeats.primaryTableId,
       bookingDateTime: bookingAt,
     });
+    const populated = await Booking.findById(booking._id)
+      .populate("userId", "userCode fullName email phoneNumber role profileImage")
+      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating")
+      .populate("tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
+      .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor");
+    io.to(`restaurant_${restaurant._id}`)
+      .to(`user_${booking.userId}`)
+      .emit("booking:updated", populated);
   } catch (error) {
     console.error("Socket error on booking creation:", error);
   }
@@ -804,7 +861,6 @@ export const updateBooking = async ({
     "advanceAmount",
     "billId",
     "isActive",
-    "checkedInAt",
     "completedAt",
     "cancelledAt",
     "cancellationReason",
@@ -907,25 +963,42 @@ export const updateBooking = async ({
   );
 
   if (releasedTableIds.length > 0) {
-    await RestaurantTable.updateMany(
-      { _id: { $in: releasedTableIds } },
-      { $set: { status: TABLE_STATUS.AVAILABLE } }
+    await Promise.all(
+      releasedTableIds.map((tableId) =>
+        recomputeBookingTableStatus({
+          restaurantId: booking.restaurantId,
+          tableId,
+        })
+      )
     );
   }
 
-  await Promise.all(
+  const newlyReservedDocs = await Promise.all(
     resolvedSeats.tables
       .filter(
         (entry) =>
           entry.seatSelectionMode !== SEAT_SELECTION_MODE.INDIVIDUAL_SEATS
       )
       .map((entry) =>
-        RestaurantTable.findByIdAndUpdate(entry.tableId, {
-          $set: {
-            status: TABLE_STATUS.RESERVED,
+        RestaurantTable.findByIdAndUpdate(
+          entry.tableId,
+          {
+            $set: {
+              statusSource: "booking",
+              statusScheduledUntil: null,
+            },
           },
-        })
+          { new: true }
+        )
       )
+  );
+  await Promise.all(
+    newlyReservedDocs.map((doc) =>
+      recomputeBookingTableStatus({
+        restaurantId: booking.restaurantId,
+        tableId: doc._id,
+      })
+    )
   );
 
   booking.tableId = resolvedSeats.primaryTableId;
@@ -935,7 +1008,7 @@ export const updateBooking = async ({
   booking.seatLabels = resolvedSeats.seatLabels;
   booking.bookingMode = resolvedSeats.bookingMode;
 
-  const dateFields = ["bookingDateTime", "checkedInAt", "completedAt", "cancelledAt"];
+  const dateFields = ["bookingDateTime", "completedAt", "cancelledAt"];
   for (const field of dateFields) {
     if (updates[field] !== undefined) {
       booking[field] = updates[field] ? new Date(updates[field]) : updates[field];
@@ -1051,10 +1124,6 @@ export const updateBookingStatus = async ({
   }
 
   booking.bookingStatus = bookingStatus;
-
-  if (bookingStatus === BOOKING_STATUS.CHECKED_IN) {
-    booking.checkedInAt = new Date();
-  }
 
   if (bookingStatus === BOOKING_STATUS.COMPLETED) {
     booking.completedAt = new Date();
@@ -1444,20 +1513,10 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
     throw error;
   }
 
-  await Promise.all([
-    Restaurant.findByIdAndUpdate(restaurant._id, {
-      $inc: { totalBookings: 1 },
-    }),
-    ...resolvedSeats.tables.map((entry) =>
-      RestaurantTable.findByIdAndUpdate(entry.tableId, {
-        $inc: { totalBookings: 1 },
-        $set:
-          entry.seatSelectionMode === SEAT_SELECTION_MODE.INDIVIDUAL_SEATS
-            ? {}
-            : { status: TABLE_STATUS.RESERVED },
-      })
-    ),
-  ]);
+  await Restaurant.findByIdAndUpdate(restaurant._id, {
+    $inc: { totalBookings: 1 },
+  });
+  await markTablesReservedAndNotify(resolvedSeats.tables);
 
   try {
     const io = getIO();
@@ -1466,6 +1525,14 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
       tableId: resolvedSeats.primaryTableId,
       bookingDateTime: bookingAt,
     });
+    const populated = await Booking.findById(booking._id)
+      .populate("userId", "userCode fullName email phoneNumber role profileImage")
+      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating")
+      .populate("tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
+      .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor");
+    io.to(`restaurant_${restaurant._id}`)
+      .to(`user_${booking.userId}`)
+      .emit("booking:updated", populated);
   } catch (error) {
     console.error("Socket error on payment-first booking creation:", error);
   }
@@ -1514,32 +1581,6 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
     bookingEnd,
     restaurant,
   };
-};
-
-export const checkInBooking = async ({
-  bookingId,
-  performedBy = null,
-  performedByRole = "",
-}) => {
-  return updateBookingStatus({
-    bookingId,
-    bookingStatus: BOOKING_STATUS.CHECKED_IN,
-    performedBy,
-    performedByRole,
-  });
-};
-
-export const completeBooking = async ({
-  bookingId,
-  performedBy = null,
-  performedByRole = "",
-}) => {
-  return updateBookingStatus({
-    bookingId,
-    bookingStatus: BOOKING_STATUS.COMPLETED,
-    performedBy,
-    performedByRole,
-  });
 };
 
 /**
@@ -1666,6 +1707,7 @@ export const getBookingById = async ({
     .populate("tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
     .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
     .populate("preOrderedFoods.foodId", "foodCode foodName coverImage")
+    .populate("refundId", "refundCode refundStatus refundMethod amount")
     .populate("billId");
 
   if (!booking || booking.isDeleted) {
@@ -1686,6 +1728,8 @@ export const getBookings = async ({
   bookingStatus = null,
   bookingType = null,
   paymentStatus = null,
+  from = null,
+  sort = null,
 }) => {
   const query = { isDeleted: false };
 
@@ -1697,8 +1741,10 @@ export const getBookings = async ({
     query.restaurantId = restaurantId;
   }
 
+  // Match the table whether it is the primary table or a secondary table of a
+  // multi-table booking.
   if (tableId) {
-    query.tableId = tableId;
+    query.$or = [{ tableId }, { tableIds: tableId }];
   }
 
   if (bookingStatus) {
@@ -1713,19 +1759,28 @@ export const getBookings = async ({
     query.paymentStatus = paymentStatus;
   }
 
+  if (from) {
+    query.bookingDateTime = { $gte: new Date(from) };
+  }
+
   const pageNumber = Math.max(Number(page) || 1, 1);
   const pageSize = Math.min(Math.max(Number(limit) || 10, 1), 100);
   const skip = (pageNumber - 1) * pageSize;
 
+  const orderBy =
+    sort === "bookingDateTime" ? { bookingDateTime: 1 } : { createdAt: -1 };
+
   const [bookings, total] = await Promise.all([
     Booking.find(query)
-      .sort({ createdAt: -1 })
+      .sort(orderBy)
       .skip(skip)
       .limit(pageSize)
       .populate("userId", "userCode fullName email phoneNumber role profileImage")
       .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating")
       .populate("tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
       .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
+      .populate("preOrderedFoods.foodId", "foodCode foodName coverImage")
+      .populate("refundId", "refundCode refundStatus refundMethod amount")
       .populate("billId"),
     Booking.countDocuments(query),
   ]);

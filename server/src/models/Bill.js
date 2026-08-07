@@ -110,6 +110,12 @@ const billSchema = new mongoose.Schema(
       unique: true,
     },
 
+    restaurantId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Restaurant",
+      default: null,
+    },
+
     orderedItems: {
       type: [orderedItemSchema],
       default: [],

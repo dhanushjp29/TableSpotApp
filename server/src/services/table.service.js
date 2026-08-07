@@ -16,6 +16,7 @@ import {
     BOOKING_STATUS,
     CODE_PREFIX,
     SEAT_SELECTION_MODE,
+    SEAT_STATUS,
     TABLE_LOCATION_VALUES,
     TABLE_SHAPE,
     TABLE_STATUS,
@@ -68,7 +69,6 @@ const getTableOrThrow = async (tableId) => {
 const BOOKED_STATUSES = [
     BOOKING_STATUS.PENDING,
     BOOKING_STATUS.CONFIRMED,
-    BOOKING_STATUS.CHECKED_IN,
 ];
 
 const preserveSeatIds = (submittedSeats, existingSeats) => {
@@ -81,12 +81,8 @@ const preserveSeatIds = (submittedSeats, existingSeats) => {
     });
 
     return submittedSeats.map((seat) => {
-        let _id;
-
-        if (seat._id) {
-            const existing = existingById.get(String(seat._id));
-            _id = existing ? existing._id : undefined;
-        }
+        const existing = existingById.get(String(seat._id));
+        const _id = existing ? existing._id : undefined;
 
         return {
             ...(_id ? { _id } : {}),
@@ -97,6 +93,11 @@ const preserveSeatIds = (submittedSeats, existingSeats) => {
                 y: Number(seat.position.y),
             },
             isActive: seat.isActive !== false,
+            status: seat.status || existing?.status || SEAT_STATUS.AVAILABLE,
+            statusScheduledUntil:
+                seat.statusScheduledUntil ??
+                existing?.statusScheduledUntil ??
+                null,
         };
     });
 };
@@ -114,6 +115,8 @@ const regenerateSeatsPreservingIds = ({ table, shape, tableLabel, count }) => {
             seatLabel: buildSeatLabel(tableLabel, index + 1),
             position: item.position,
             isActive: true,
+            status: existing?.status || SEAT_STATUS.AVAILABLE,
+            statusScheduledUntil: existing?.statusScheduledUntil ?? null,
         };
     });
 };
@@ -125,6 +128,8 @@ const plainSeats = (seats = []) =>
         seatLabel: seat.seatLabel,
         position: { x: seat.position.x, y: seat.position.y },
         isActive: seat.isActive,
+        status: seat.status || SEAT_STATUS.AVAILABLE,
+        statusScheduledUntil: seat.statusScheduledUntil ?? null,
     }));
 
 const assertUniqueSeatLabels = (seats) => {
@@ -411,7 +416,15 @@ export const updateTable = async ({
 
     sanitizeEnumFields(table);
 
+    // A full-edit status change supersedes any manual revert timer and marks
+    // the status as owner-set so the booking-window scheduler never overrides it.
+    if (updates.status !== undefined) {
+        table.statusScheduledUntil = null;
+        table.statusSource = "manual";
+    }
+
     await table.save();
+    await emitTableUpdated(table);
 
     return {
         table,
@@ -421,41 +434,165 @@ export const updateTable = async ({
 
 import { getIO } from "../sockets/socket.handler.js";
 
+const RESTAURANT_POPULATE = "restaurantCode restaurantName slug city state";
+
+/**
+ * Push the full (restaurant-populated) table to the restaurant room so
+ * owner dashboards can update live without refetching.
+ */
+export const emitTableUpdated = async (table) => {
+    try {
+        const populated = await RestaurantTable.findById(table._id)
+            .populate("restaurantId", RESTAURANT_POPULATE)
+            .lean();
+
+        const io = getIO();
+        io.to(`restaurant_${table.restaurantId}`).emit("table:updated", populated);
+    } catch (error) {
+        console.error("Socket error on table update:", error);
+    }
+};
+
+/**
+ * If a manual status timer has elapsed, revert the table to Available in
+ * memory + DB and broadcast the change. Returns true when reverted.
+ */
+const applyExpiredManualBlock = async (table) => {
+    if (
+        table.statusScheduledUntil &&
+        table.status !== TABLE_STATUS.AVAILABLE &&
+        new Date(table.statusScheduledUntil).getTime() <= Date.now()
+    ) {
+        table.status = TABLE_STATUS.AVAILABLE;
+        table.isReservable = true;
+        table.statusScheduledUntil = null;
+        await table.save();
+        await emitTableUpdated(table);
+        return true;
+    }
+    return false;
+};
+
+/**
+ * Revert any seat whose manual status timer has elapsed back to Available
+ * in memory. Returns true when at least one seat changed.
+ */
+export const applyExpiredSeatBlocks = (table) => {
+    const now = Date.now();
+    let changed = false;
+
+    (table.seats || []).forEach((seat) => {
+        if (
+            seat.status &&
+            seat.status !== SEAT_STATUS.AVAILABLE &&
+            seat.statusScheduledUntil &&
+            new Date(seat.statusScheduledUntil).getTime() <= now
+        ) {
+            seat.status = SEAT_STATUS.AVAILABLE;
+            seat.statusScheduledUntil = null;
+            changed = true;
+        }
+    });
+
+    return changed;
+};
+
+const applyExpiredSeatBlocksAndSave = async (table) => {
+    const changed = applyExpiredSeatBlocks(table);
+
+    if (changed) {
+        await table.save();
+        await emitTableUpdated(table);
+    }
+
+    return changed;
+};
+
 export const updateTableStatus = async ({
     tableId,
     status,
+    revertAfterMinutes = null,
 }) => {
     const table = await getTableOrThrow(tableId);
 
     table.status = status;
+    table.statusSource = "manual";
 
-    if (
-        status === TABLE_STATUS.AVAILABLE
-    ) {
+    if (status === TABLE_STATUS.AVAILABLE) {
         table.isReservable = true;
-    } else if (
-        status === TABLE_STATUS.RESERVED ||
-        status === TABLE_STATUS.OCCUPIED
-    ) {
+        table.statusScheduledUntil = null;
+    } else {
+        // Any non-Available manual status blocks new bookings until the owner
+        // releases it (or the optional timer elapses).
         table.isReservable = false;
+
+        if (Number(revertAfterMinutes) > 0) {
+            table.statusScheduledUntil = new Date(
+                Date.now() + Number(revertAfterMinutes) * 60 * 1000
+            );
+        } else {
+            table.statusScheduledUntil = null;
+        }
     }
 
     await table.save();
-
-    try {
-        const io = getIO();
-        io.to(`restaurant_${table.restaurantId}`).emit("table:statusUpdated", {
-            tableId: table._id,
-            status: table.status,
-            isReservable: table.isReservable
-        });
-    } catch (error) {
-        console.error("Socket error on table status update:", error);
-    }
+    await emitTableUpdated(table);
 
     return {
         table,
         message: "Table status updated successfully.",
+    };
+};
+
+export const updateSeatsStatus = async ({
+    tableId,
+    seatIds = [],
+    status,
+    revertAfterMinutes = null,
+}) => {
+    const table = await getTableOrThrow(tableId);
+
+    if (!Array.isArray(seatIds) || seatIds.length === 0) {
+        throw new ApiError(400, "Select at least one seat.");
+    }
+
+    const requested = new Set(seatIds.map((id) => String(id)));
+    let updated = 0;
+
+    (table.seats || []).forEach((seat) => {
+        if (!requested.has(String(seat._id))) return;
+
+        seat.status = status;
+
+        if (status === SEAT_STATUS.AVAILABLE) {
+            seat.statusScheduledUntil = null;
+        } else if (Number(revertAfterMinutes) > 0) {
+            seat.statusScheduledUntil = new Date(
+                Date.now() + Number(revertAfterMinutes) * 60 * 1000
+            );
+        } else {
+            seat.statusScheduledUntil = null;
+        }
+
+        updated += 1;
+    });
+
+    if (requested.size !== updated) {
+        throw new ApiError(
+            400,
+            "One or more selected seats do not belong to this table."
+        );
+    }
+
+    await table.save();
+    await emitTableUpdated(table);
+
+    return {
+        table,
+        message:
+            updated === 1
+                ? "Seat status updated successfully."
+                : `${updated} seats updated successfully.`,
     };
 };
 
@@ -466,6 +603,7 @@ export const deleteTable = async ({ tableId }) => {
     table.isReservable = false;
 
     await table.save();
+    await emitTableUpdated(table);
 
     return {
         table,
@@ -482,6 +620,9 @@ export const getTableById = async ({ tableId }) => {
     if (!table) {
         throw new ApiError(404, "Table not found.");
     }
+
+    await applyExpiredManualBlock(table);
+    await applyExpiredSeatBlocksAndSave(table);
 
     return { table };
 };
@@ -506,6 +647,13 @@ export const getTablesByRestaurant = async ({
         displayOrder: 1,
         tableNumber: 1,
     });
+
+    await Promise.all(
+        tables.map(async (table) => {
+            await applyExpiredManualBlock(table);
+            await applyExpiredSeatBlocksAndSave(table);
+        })
+    );
 
     return { tables };
 };
@@ -551,6 +699,13 @@ export const getTables = async ({
             .populate("restaurantId", "restaurantCode restaurantName slug city state"),
         RestaurantTable.countDocuments(query),
     ]);
+
+    await Promise.all(
+        tables.map(async (table) => {
+            await applyExpiredManualBlock(table);
+            await applyExpiredSeatBlocksAndSave(table);
+        })
+    );
 
     return {
         tables,
@@ -633,10 +788,6 @@ export const getTablesWithAvailability = async ({
         RestaurantTable.find({
             restaurantId: restaurant._id,
             isActive: true,
-            isReservable: true,
-            status: {
-                $nin: [TABLE_STATUS.MAINTENANCE, TABLE_STATUS.CLEANING],
-            },
         }).sort({ displayOrder: 1, tableNumber: 1 }),
         Booking.find({
             restaurantId: restaurant._id,
@@ -663,6 +814,13 @@ export const getTablesWithAvailability = async ({
             .lean(),
     ]);
 
+    await Promise.all(
+        tables.map(async (table) => {
+            await applyExpiredManualBlock(table);
+            await applyExpiredSeatBlocksAndSave(table);
+        })
+    );
+
     const bookingsByTable = new Map();
 
     overlappingBookings.forEach((booking) => {
@@ -678,7 +836,58 @@ export const getTablesWithAvailability = async ({
         });
     });
 
+    const BLOCKED_STATUSES = [
+        TABLE_STATUS.MAINTENANCE,
+        TABLE_STATUS.CLEANING,
+        TABLE_STATUS.RESERVED,
+        TABLE_STATUS.OCCUPIED,
+    ];
+
+    const serializeTable = (table) => ({
+        _id: table._id,
+        tableCode: table.tableCode,
+        tableNumber: table.tableNumber,
+        tableName: table.tableName,
+        tableLabel: table.tableLabel,
+        shape: table.shape,
+        seatSelectionMode: table.seatSelectionMode,
+        capacity: table.capacity,
+        minimumCapacity: table.minimumCapacity,
+        tableType: table.tableType,
+        tableLocation: table.tableLocation,
+        floor: table.floor,
+        status: table.status,
+        isReservable: table.isReservable,
+        seats: table.seats,
+    });
+
     const availableTables = tables.map((table) => {
+        const isManuallyBlocked =
+            !table.isReservable ||
+            table.status === TABLE_STATUS.MAINTENANCE ||
+            table.status === TABLE_STATUS.CLEANING;
+
+        if (isManuallyBlocked) {
+            // Owner-marked tables (manual status / not reservable) are shown
+            // to customers as unavailable, with the reason surfaced in the UI.
+            const activeSeats = (table.seats || []).filter(
+                (seat) => seat.isActive !== false
+            );
+
+            return {
+                table: serializeTable(table),
+                available: false,
+                fullyAvailable: false,
+                blocked: true,
+                blockReason: BLOCKED_STATUSES.includes(table.status)
+                    ? table.status
+                    : "Unavailable",
+                freeSeatIds: [],
+                freeSeatCount: 0,
+                occupiedSeatCount: activeSeats.length,
+            };
+        }
+
         const tableBookings = bookingsByTable.get(String(table._id)) || [];
         const isSeatMode =
             table.seatSelectionMode === SEAT_SELECTION_MODE.INDIVIDUAL_SEATS;
@@ -694,12 +903,31 @@ export const getTablesWithAvailability = async ({
             (seat) => seat.isActive !== false
         );
 
+        // Seats the owner manually marked non-Available (via the Status modal)
+        // are excluded from new bookings until released or the timer expires.
+        const manualBlockedSeatIds = activeSeats
+            .filter(
+                (seat) =>
+                    seat.status && seat.status !== SEAT_STATUS.AVAILABLE
+            )
+            .map((seat) => String(seat._id));
+
+        const unavailableSeatCount = new Set([
+            ...occupiedSeatIds,
+            ...manualBlockedSeatIds,
+        ]).size;
+
         let freeSeatIds = [];
         let available = false;
 
         if (isSeatMode) {
             freeSeatIds = activeSeats
                 .filter((seat) => !occupiedSeatIds.has(String(seat._id)))
+                .filter(
+                    (seat) =>
+                        !seat.status ||
+                        seat.status === SEAT_STATUS.AVAILABLE
+                )
                 .map((seat) => String(seat._id));
 
             // Any free seat is selectable: multiple tables can be combined to
@@ -712,28 +940,13 @@ export const getTablesWithAvailability = async ({
         }
 
         return {
-            table: {
-                _id: table._id,
-                tableCode: table.tableCode,
-                tableNumber: table.tableNumber,
-                tableName: table.tableName,
-                tableLabel: table.tableLabel,
-                shape: table.shape,
-                seatSelectionMode: table.seatSelectionMode,
-                capacity: table.capacity,
-                minimumCapacity: table.minimumCapacity,
-                tableType: table.tableType,
-                tableLocation: table.tableLocation,
-                floor: table.floor,
-                status: table.status,
-                isReservable: table.isReservable,
-                seats: table.seats,
-            },
+            table: serializeTable(table),
             available,
             fullyAvailable: tableBookings.length === 0,
             freeSeatIds,
             freeSeatCount: freeSeatIds.length,
-            occupiedSeatCount: occupiedSeatIds.size,
+            occupiedSeatCount: unavailableSeatCount,
+            manualBlockedSeatCount: manualBlockedSeatIds.length,
         };
     });
 

@@ -10,6 +10,9 @@ import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
 import { createAuditLog } from "./auditLog.service.js";
 import { createRefund } from "./refund.service.js";
+import { createNotification } from "./notification.service.js";
+import { updateBookingStatus } from "./booking.service.js";
+import { getIO } from "../sockets/socket.handler.js";
 
 import {
   BILL_STATUS,
@@ -96,16 +99,26 @@ const ensureExcessRefund = async ({ bill, booking, createdBy }) => {
  * Resolve bill line items against the Food model so that food name, unit
  * price and GST rate are always taken from the server, never the client.
  * GST is derived from each item's food category slab (food.gstRate).
+ *
+ * Scoped to the booking's restaurant so an owner can never add another
+ * restaurant's food to a bill, and only available (in-stock) items resolve.
  */
-const resolveOrderedItems = async ({ items = [] }) => {
+const resolveOrderedItems = async ({ items = [], restaurantId = null }) => {
   const foodIds = items.map((item) => item.foodId).filter(Boolean);
 
   let foods = [];
   if (foodIds.length > 0) {
-    foods = await Food.find({
+    const foodQuery = {
       _id: { $in: foodIds },
       isDeleted: false,
-    }).select(
+      isAvailable: true,
+    };
+
+    if (restaurantId) {
+      foodQuery.restaurantId = restaurantId;
+    }
+
+    foods = await Food.find(foodQuery).select(
       "_id foodName category gstRate hasVariants variants"
     );
   }
@@ -118,7 +131,7 @@ const resolveOrderedItems = async ({ items = [] }) => {
     if (item.foodId && !food) {
       throw new ApiError(
         400,
-        "One or more food items are invalid or unavailable."
+        "One or more food items are invalid, unavailable, or do not belong to this restaurant."
       );
     }
 
@@ -258,8 +271,114 @@ const getBookingOrThrow = async (bookingId) => {
 
 const populateBill = (query) =>
   query
-    .populate("bookingId")
+    .populate({
+      path: "bookingId",
+      populate: [
+        {
+          path: "userId",
+          select: "userCode fullName email phoneNumber role profileImage",
+        },
+        {
+          path: "restaurantId",
+          select:
+            "restaurantCode restaurantName slug city state country coverImage gstin averageRating",
+        },
+      ],
+    })
     .populate("generatedBy", "userCode fullName email phoneNumber role profileImage");
+
+/**
+ * Push a bill update to the restaurant and customer rooms. Payload is
+ * deliberately small (billCode, status, totals) so both owner and customer
+ * screens can refresh without leaking unrelated data.
+ */
+const emitBillSocket = ({ bill, booking }) => {
+  const payload = {
+    billId: bill._id,
+    billCode: bill.billCode,
+    billStatus: bill.billStatus,
+    paymentStatus: bill.payment?.paymentStatus || bill.paymentStatus,
+    grandTotal: bill.grandTotal,
+    totalPaid: bill.payment?.totalPaid || 0,
+    balanceDue: bill.payment?.balanceDue || 0,
+    bookingId: bill.bookingId?._id || bill.bookingId,
+    bookingCode: booking?.bookingCode || null,
+  };
+
+  try {
+    const io = getIO();
+    io.to(`restaurant_${String(booking?.restaurantId || bill.restaurantId)}`)
+      .to(`user_${String(booking?.userId)}`)
+      .emit("bill:updated", payload);
+
+    if (bill.billStatus === BILL_STATUS.PAID) {
+      io.to(`restaurant_${String(booking?.restaurantId || bill.restaurantId)}`)
+        .to(`user_${String(booking?.userId)}`)
+        .emit("bill:completed", payload);
+    }
+  } catch (error) {
+    console.error("Socket error on bill update:", error.message);
+  }
+};
+
+/**
+ * Close a fully-reconciled bill (recorded payments cover the grand total):
+ * mark the bill PAID and complete the booking. This is the single place where
+ * a settled bill moves the booking lifecycle forward — a PAID bill is
+ * terminal and can never be edited or paid into again.
+ *
+ * Idempotent: calling it again on an already PAID bill is a no-op.
+ */
+const finalizeBillAndCompleteBooking = async ({
+  bill,
+  performedBy = null,
+}) => {
+  if (bill.billStatus === BILL_STATUS.PAID) {
+    return bill;
+  }
+
+  bill.billStatus = BILL_STATUS.PAID;
+  bill.payment = bill.payment || {};
+  bill.payment.paymentStatus = PAYMENT_STATUS.PAID;
+  bill.payment.balanceDue = 0;
+  await bill.save();
+
+  const booking = await Booking.findById(bill.bookingId);
+
+  if (booking && booking.bookingStatus !== BOOKING_STATUS.COMPLETED) {
+    try {
+      await updateBookingStatus({
+        bookingId: booking._id,
+        bookingStatus: BOOKING_STATUS.COMPLETED,
+        performedBy: performedBy || bill.generatedBy,
+        performedByRole: "owner",
+      });
+    } catch (error) {
+      // The bill is settled even if the booking cannot complete (e.g. it was
+      // already cancelled by a concurrent action). Do not fail the payment.
+      console.error("Booking completion failed on bill settlement:", error.message);
+    }
+  }
+
+  if (booking?.userId) {
+    try {
+      await createNotification({
+        userId: booking.userId,
+        title: "Bill Settled",
+        message: `Your bill (${bill.billCode}) for booking ${booking.bookingCode || ""} is settled. You can now review your visit.`,
+        type: "Bill",
+        linkId: bill._id,
+        linkModel: "Bill",
+      });
+    } catch (error) {
+      console.error("Notification error on bill settlement:", error.message);
+    }
+  }
+
+  emitBillSocket({ bill, booking });
+
+  return bill;
+};
 
 /**
  * Allocate the taxable base (subTotal - discount) across GST slabs in
@@ -393,18 +512,17 @@ export const createBill = async ({
   }
 
   // Booking-state gate: bills can only be raised for bookings that have
-  // reached the restaurant (confirmed) or are dining / done. Pending,
-  // cancelled and no-show bookings cannot be billed.
+  // reached the restaurant (confirmed) or have finished dining (completed).
+  // Pending, cancelled and no-show bookings cannot be billed.
   if (
     ![
       BOOKING_STATUS.CONFIRMED,
-      BOOKING_STATUS.CHECKED_IN,
       BOOKING_STATUS.COMPLETED,
     ].includes(booking.bookingStatus)
   ) {
     throw new ApiError(
       409,
-      "Bills can only be created for confirmed, checked-in or completed bookings."
+      "Bills can only be created for confirmed or completed bookings."
     );
   }
 
@@ -419,7 +537,10 @@ export const createBill = async ({
     "gstin restaurantName"
   );
 
-  const resolvedItems = await resolveOrderedItems({ items: orderedItems });
+  const resolvedItems = await resolveOrderedItems({
+    items: orderedItems,
+    restaurantId: booking.restaurantId,
+  });
 
   const billCode = await generateCode(
     Bill,
@@ -438,6 +559,7 @@ export const createBill = async ({
   const bill = await Bill.create({
     billCode,
     bookingId: booking._id,
+    restaurantId: booking.restaurantId,
     orderedItems: totals.orderedItems,
     subTotal: totals.subTotal,
     discount: totals.discount,
@@ -461,6 +583,21 @@ export const createBill = async ({
   booking.paymentStatus = totals.payment.paymentStatus;
   booking.paymentMethod = booking.paymentMethod || "Cash";
   await booking.save();
+
+  // A bill that is already fully covered by the carried advance closes
+  // immediately (billStatus PAID + booking COMPLETED).
+  if (totals.payment.paymentStatus === PAYMENT_STATUS.PAID) {
+    try {
+      await finalizeBillAndCompleteBooking({
+        bill: await Bill.findById(bill._id),
+        performedBy: generatedBy,
+      });
+    } catch (error) {
+      console.error("Bill finalization error on creation:", error.message);
+    }
+  } else {
+    emitBillSocket({ bill, booking });
+  }
 
   try {
     await ensureExcessRefund({ bill, booking, createdBy: generatedBy });
@@ -518,15 +655,20 @@ export const convertBookingToBill = async ({
     throw new ApiError(409, "A bill already exists for this booking.");
   }
 
-  if (
-    ![
-      BOOKING_STATUS.CONFIRMED,
-      BOOKING_STATUS.CHECKED_IN,
-    ].includes(booking.bookingStatus)
-  ) {
+  if (booking.bookingStatus !== BOOKING_STATUS.CONFIRMED) {
     throw new ApiError(
       409,
-      "Only confirmed or checked-in bookings can be converted to a bill."
+      "Only confirmed bookings can be converted to a bill."
+    );
+  }
+
+  // Time gate: an owner can only raise a bill once the booking's scheduled
+  // time has arrived. Before that the guest has not dined, so there is
+  // nothing to bill.
+  if (new Date(booking.bookingDateTime).getTime() > Date.now()) {
+    throw new ApiError(
+      409,
+      "You can only raise a bill once the booking time has arrived."
     );
   }
 
@@ -538,6 +680,14 @@ export const convertBookingToBill = async ({
     quantity: Number(item.quantity),
     orderSource: ORDER_SOURCE.PRE_ORDER,
   }));
+
+  // Carry the customer's special request onto the bill when the owner did not
+  // provide their own notes, so no booking detail is lost in conversion.
+  const effectiveNotes =
+    String(notes || "").trim() ||
+    (booking.specialRequest
+      ? `Customer request: ${String(booking.specialRequest).trim()}`
+      : "");
 
   // Carry the advance into the bill ledger only when there are actual items
   // on the bill — an empty bill must never be auto-marked Paid off the
@@ -566,7 +716,7 @@ export const convertBookingToBill = async ({
     bookingId,
     orderedItems,
     payment: { payments: advancePayments },
-    notes,
+    notes: effectiveNotes,
     generatedBy,
     allowEmptyItems: true,
   });
@@ -578,9 +728,24 @@ export const updateBill = async ({
 }) => {
   const bill = await getBillOrThrow(billId);
 
+  // Terminal-state guard: a Paid or Cancelled bill is immutable. Never allow
+  // an owner to change items, charges or payments on a closed invoice.
+  if (
+    bill.billStatus === BILL_STATUS.PAID ||
+    bill.billStatus === BILL_STATUS.CANCELLED
+  ) {
+    throw new ApiError(
+      409,
+      `This bill is already ${bill.billStatus.toLowerCase()} and can no longer be edited.`
+    );
+  }
+
+  const booking = await Booking.findById(bill.bookingId);
+
   if (updates.orderedItems !== undefined) {
     bill.orderedItems = await resolveOrderedItems({
       items: updates.orderedItems,
+      restaurantId: booking?.restaurantId,
     });
   }
 
@@ -647,13 +812,8 @@ export const updateBill = async ({
   bill.grandTotal = totals.grandTotal;
   bill.payment = totals.payment;
 
-  if (bill.payment.paymentStatus === PAYMENT_STATUS.PAID) {
-    bill.billStatus = BILL_STATUS.PAID;
-  }
-
   await bill.save();
 
-  const booking = await Booking.findById(bill.bookingId);
   if (booking) {
     booking.totalAmount = bill.grandTotal;
     booking.paymentStatus = bill.payment.paymentStatus;
@@ -668,6 +828,17 @@ export const updateBill = async ({
     } catch (error) {
       console.error("Excess refund creation error on bill update:", error.message);
     }
+  }
+
+  // Closing the bill (payments now cover the total) also completes the
+  // booking — never leave a paid bill on an open reservation.
+  if (bill.payment.paymentStatus === PAYMENT_STATUS.PAID) {
+    await finalizeBillAndCompleteBooking({
+      bill: await Bill.findById(bill._id),
+      performedBy: bill.generatedBy,
+    });
+  } else {
+    emitBillSocket({ bill, booking });
   }
 
   return {
@@ -685,6 +856,12 @@ export const addBillPayment = async ({
   paidAt = new Date(),
 }) => {
   const bill = await getBillOrThrow(billId);
+
+  // Terminal-state guard: a Paid bill is a closed invoice — the BIL000009 bug.
+  // No further payments may ever be recorded against it.
+  if (bill.billStatus === BILL_STATUS.PAID) {
+    throw new ApiError(409, "This bill is already paid and cannot accept more payments.");
+  }
 
   if (bill.billStatus === BILL_STATUS.CANCELLED) {
     throw new ApiError(409, "Payments cannot be added to a cancelled bill.");
@@ -731,10 +908,6 @@ export const addBillPayment = async ({
   bill.serviceCharge = totals.serviceCharge;
   bill.deliveryCharge = totals.deliveryCharge;
   bill.grandTotal = totals.grandTotal;
-  bill.billStatus =
-    bill.payment.paymentStatus === PAYMENT_STATUS.PAID
-      ? BILL_STATUS.PAID
-      : bill.billStatus;
 
   await bill.save();
 
@@ -754,6 +927,17 @@ export const addBillPayment = async ({
     }
   }
 
+  // Payments now cover the total → close the bill (PAID) and complete the
+  // booking in the same pass.
+  if (bill.payment.paymentStatus === PAYMENT_STATUS.PAID) {
+    await finalizeBillAndCompleteBooking({
+      bill: await Bill.findById(bill._id),
+      performedBy: bill.generatedBy,
+    });
+  } else {
+    emitBillSocket({ bill, booking });
+  }
+
   return {
     bill: await populateBill(Bill.findById(bill._id)),
     message: "Payment added successfully.",
@@ -768,6 +952,24 @@ export const markBillStatus = async ({
 
   if (!Object.values(BILL_STATUS).includes(billStatus)) {
     throw new ApiError(400, "Invalid bill status.");
+  }
+
+  // Terminal-state guard: a Paid or Cancelled bill can never transition again.
+  if (
+    bill.billStatus === BILL_STATUS.PAID ||
+    bill.billStatus === BILL_STATUS.CANCELLED
+  ) {
+    if (bill.billStatus === billStatus) {
+      // no-op write of the same terminal status is tolerated.
+      return {
+        bill: await populateBill(Bill.findById(bill._id)),
+        message: "Bill status is unchanged.",
+      };
+    }
+    throw new ApiError(
+      409,
+      `This bill is already ${bill.billStatus.toLowerCase()} and its status cannot be changed.`
+    );
   }
 
   // Bill status state machine + payment reconciliation.
@@ -832,6 +1034,15 @@ export const markBillStatus = async ({
     } catch (error) {
       console.error("Excess refund creation error on bill status:", error.message);
     }
+  }
+
+  if (billStatus === BILL_STATUS.PAID) {
+    await finalizeBillAndCompleteBooking({
+      bill: await Bill.findById(bill._id),
+      performedBy: bill.generatedBy,
+    });
+  } else {
+    emitBillSocket({ bill, booking });
   }
 
   return {
