@@ -1261,7 +1261,7 @@ export const cancelBooking = async ({
       createdBy: cancelledBy || booking.userId,
     });
 
-    booking.refundStatus = REFUND_STATUS.REFUND_PENDING;
+    booking.refundStatus = refund.refundStatus;
     booking.refundId = refund._id;
     await booking.save();
 
@@ -1282,6 +1282,9 @@ export const cancelBooking = async ({
     } catch (error) {
       console.error("Audit log error on refund creation:", error.message);
     }
+  } else {
+    booking.refundStatus = null;
+    await booking.save();
   }
 
   const freshBooking = await getBookingOrThrow(bookingId);
@@ -1667,7 +1670,7 @@ export const markNoShowBooking = async ({
       createdBy: confirmedBy || booking.userId,
     });
 
-    booking.refundStatus = REFUND_STATUS.REFUND_PENDING;
+    booking.refundStatus = refund.refundStatus;
     booking.refundId = refund._id;
     await booking.save();
 
@@ -1688,6 +1691,9 @@ export const markNoShowBooking = async ({
     } catch (error) {
       console.error("Audit log error on no-show refund creation:", error.message);
     }
+  } else {
+    booking.refundStatus = null;
+    await booking.save();
   }
 
   const freshBooking = await getBookingOrThrow(bookingId);

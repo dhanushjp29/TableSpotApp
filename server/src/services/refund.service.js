@@ -96,6 +96,24 @@ export const getRefundOrThrow = async (refundId) => {
   return refund;
 };
 
+export const syncBookingRefundStatus = async (
+  refund,
+  refundStatus = refund?.refundStatus ?? null
+) => {
+  if (!refund?.bookingId) {
+    return null;
+  }
+
+  const booking = await Booking.findById(refund.bookingId);
+  if (!booking) {
+    return null;
+  }
+
+  booking.refundStatus = refundStatus ?? null;
+  await booking.save();
+  return booking;
+};
+
 /**
  * Push a real-time refund status update to the restaurant (owner) and the
  * customer rooms. Best-effort — socket failures never break the flow.
@@ -186,6 +204,8 @@ export const createRefund = async ({
     createdBy,
     idempotencyKey: String(idempotencyKey || "").trim() || null,
   });
+
+  await syncBookingRefundStatus(refund);
 
   return refund;
 };
@@ -300,6 +320,7 @@ export const processRefund = async ({
     refund.refundStatus = REFUND_STATUS.REFUND_AWAITING_CUSTOMER_CONFIRMATION;
     refund.customerConfirmationRequired = true;
     await refund.save();
+    await syncBookingRefundStatus(refund);
     emitRefundUpdate(refund);
 
     await writeAudit({
@@ -339,6 +360,7 @@ export const processRefund = async ({
     refund.failureReason =
       "No captured Razorpay payment was found for this booking.";
     await refund.save();
+    await syncBookingRefundStatus(refund);
     emitRefundUpdate(refund);
 
     await writeAudit({
@@ -353,6 +375,7 @@ export const processRefund = async ({
 
   refund.refundStatus = REFUND_STATUS.REFUND_PROCESSING;
   await refund.save();
+  await syncBookingRefundStatus(refund);
   emitRefundUpdate(refund);
 
   await writeAudit({
@@ -374,16 +397,11 @@ export const processRefund = async ({
     refund.refundStatus = REFUND_STATUS.REFUNDED;
     refund.completedAt = new Date();
     await refund.save();
+    await syncBookingRefundStatus(refund);
     emitRefundUpdate(refund);
 
     payment.gatewayRefundId = gatewayRefund.id;
     await payment.save();
-
-    const booking = await Booking.findById(refund.bookingId);
-    if (booking) {
-      booking.refundStatus = REFUND_STATUS.REFUNDED;
-      await booking.save();
-    }
 
     await writeAudit({
       eventType: "REFUNDED",
@@ -405,6 +423,7 @@ export const processRefund = async ({
     refund.failedAt = new Date();
     refund.failureReason = error.message;
     await refund.save();
+    await syncBookingRefundStatus(refund);
     emitRefundUpdate(refund);
 
     await writeAudit({
@@ -453,13 +472,8 @@ export const confirmCashRefundReceived = async ({
   refund.customerConfirmationAt = new Date();
   refund.customerConfirmationBy = confirmedBy;
   await refund.save();
+  await syncBookingRefundStatus(refund);
   emitRefundUpdate(refund);
-
-  const booking = await Booking.findById(refund.bookingId);
-  if (booking) {
-    booking.refundStatus = REFUND_STATUS.REFUNDED;
-    await booking.save();
-  }
 
   await writeAudit({
     eventType: "REFUNDED",
@@ -526,6 +540,7 @@ export const disputeRefund = async ({ refundId, confirmedBy, disputeReason = "" 
   refund.disputedAt = new Date();
   refund.disputeReason = reason;
   await refund.save();
+  await syncBookingRefundStatus(refund);
   emitRefundUpdate(refund);
 
   await writeAudit({

@@ -247,7 +247,7 @@ const bookingSchema = new mongoose.Schema(
     refundStatus: {
       type: String,
       enum: REFUND_STATUS_VALUES,
-      default: REFUND_STATUS.NOT_REQUIRED,
+      default: null,
     },
 
     refundId: {

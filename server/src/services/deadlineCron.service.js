@@ -3,6 +3,7 @@ import Refund from "../models/Refund.js";
 import Restaurant from "../models/Restaurant.js";
 import { createAuditLog } from "./auditLog.service.js";
 import { markNoShowBooking } from "./booking.service.js";
+import { syncBookingRefundStatus } from "./refund.service.js";
 import { restrictOwnerIfUnresolvedRefunds } from "./ownerRestriction.service.js";
 import {
   BOOKING_STATUS,
@@ -103,11 +104,7 @@ const expireOverdueRefunds = async (log) => {
       refund.overdueReason =
         "Refund was not processed within the allowed deadline.";
       await refund.save();
-
-      await Booking.updateOne(
-        { _id: refund.bookingId },
-        { $set: { refundStatus: REFUND_STATUS.REFUND_OVERDUE } }
-      );
+      await syncBookingRefundStatus(refund);
 
       try {
         const { restricted } = await restrictOwnerIfUnresolvedRefunds(

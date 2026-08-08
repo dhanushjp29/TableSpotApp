@@ -9,7 +9,7 @@ import User from "../models/User.js";
 import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
 import { createAuditLog } from "./auditLog.service.js";
-import { createRefund } from "./refund.service.js";
+import { createRefund, syncBookingRefundStatus } from "./refund.service.js";
 import { createNotification } from "./notification.service.js";
 import { updateBookingStatus } from "./booking.service.js";
 import { getIO } from "../sockets/socket.handler.js";
@@ -40,6 +40,10 @@ const ensureExcessRefund = async ({ bill, booking, createdBy }) => {
   const excess = roundAmount(totalPaid - grandTotal);
 
   if (excess <= 0) {
+    if (!booking.refundId) {
+      booking.refundStatus = null;
+      await booking.save();
+    }
     return null;
   }
 
@@ -50,6 +54,7 @@ const ensureExcessRefund = async ({ bill, booking, createdBy }) => {
   });
 
   if (existing) {
+    await syncBookingRefundStatus(existing);
     return existing;
   }
 
@@ -69,7 +74,7 @@ const ensureExcessRefund = async ({ bill, booking, createdBy }) => {
   });
 
   if (!booking.refundId) {
-    booking.refundStatus = REFUND_STATUS.REFUND_PENDING;
+    booking.refundStatus = refund.refundStatus;
     booking.refundId = refund._id;
     await booking.save();
   }
