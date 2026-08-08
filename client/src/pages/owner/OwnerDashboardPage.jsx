@@ -299,9 +299,9 @@ function OwnerDashboardPage() {
             />
           </Card>
         ) : (
-          <div className="overflow-x-auto rounded-xl border border-gray-200 bg-surface shadow-sm">
+          <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
             <table className="w-full text-left text-sm text-text">
-              <thead className="bg-gray-50 text-xs uppercase font-semibold text-muted border-b border-gray-200">
+              <thead className="bg-surface-secondary/60 text-xs uppercase font-semibold text-muted border-b border-border">
                 <tr>
                   <th className="px-5 py-3">Guest</th>
                   <th className="px-5 py-3">Restaurant</th>
@@ -310,7 +310,7 @@ function OwnerDashboardPage() {
                   <th className="px-5 py-3">Status</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 font-medium">
+              <tbody className="divide-y divide-border/70 font-medium">
                 {recentBookings.map((booking) => {
                   const restaurant =
                     typeof booking.restaurantId === "object"
@@ -322,7 +322,7 @@ function OwnerDashboardPage() {
                     ? new Date(booking.bookingDateTime)
                     : null;
                   return (
-                    <tr key={booking._id} className="hover:bg-gray-50/80 transition-colors">
+                    <tr key={booking._id} className="transition-colors hover:bg-primary/[0.04] dark:hover:bg-white/[0.03]">
                       <td className="px-5 py-3 font-semibold text-text">
                         {customer?.fullName || "Guest"}
                       </td>

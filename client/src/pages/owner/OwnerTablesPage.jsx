@@ -138,7 +138,7 @@ function ShapePicker({ value, onChange }) {
             className={`flex flex-col items-center gap-1 rounded-lg border-2 p-3 transition-colors ${
               isSelected
                 ? "border-primary bg-primary/5"
-                : "border-gray-200 hover:border-primary/50 hover:bg-gray-50"
+                : "border-border hover:border-primary/50 hover:bg-surface-hover"
             }`}
           >
             <TableShape
@@ -208,7 +208,7 @@ function SeatEditor({ seats, tableLabel, shape, onChange }) {
 
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-      <div className="flex flex-col items-center justify-center rounded-lg border border-gray-200 bg-surface p-3">
+      <div className="flex flex-col items-center justify-center rounded-lg border border-border bg-surface-secondary/50 p-3">
         <TableShape
           shape={shape}
           seats={seats}
@@ -243,7 +243,7 @@ function SeatEditor({ seats, tableLabel, shape, onChange }) {
 
       <div>
         <p className="input-label">Seat Labels</p>
-        <div className="grid max-h-44 grid-cols-3 gap-2 overflow-y-auto rounded-lg border border-gray-200 p-2">
+        <div className="grid max-h-44 grid-cols-3 gap-2 overflow-y-auto rounded-lg border border-border bg-surface-secondary/30 p-2">
           {seats.map((seat, index) => (
             <div key={seat.seatIndex} className="flex items-center gap-1">
               <input
@@ -534,7 +534,7 @@ function TableForm({
                   className={`rounded-lg border-2 p-3 text-left transition-colors ${
                     seatSelectionMode === mode
                       ? "border-primary bg-primary/5"
-                      : "border-gray-200 hover:border-primary/50 hover:bg-gray-50"
+                : "border-border hover:border-primary/50 hover:bg-surface-hover"
                   }`}
                 >
                   <p className="text-sm font-semibold text-text">
@@ -569,7 +569,7 @@ function TableForm({
         />
       </div>
 
-      <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+      <div className="rounded-xl border border-border bg-surface-secondary/60 p-4">
         <p className="mb-3 text-sm font-semibold text-text">
           Layout Preview
         </p>
@@ -829,7 +829,7 @@ function StatusControlModal({ table, onClose, onApplied }) {
       className="space-y-5"
     >
       {isSeatMode && (
-        <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+        <div className="rounded-xl border border-border bg-surface-secondary/60 p-4">
           <div className="flex items-center justify-between">
             <p className="text-sm font-semibold text-text">Select Seats</p>
             <button
@@ -919,7 +919,7 @@ function StatusControlModal({ table, onClose, onApplied }) {
       </div>
 
       {isBlockedStatus && (
-        <div className="rounded-xl border border-gray-200 bg-gray-50/60 p-4">
+        <div className="rounded-xl border border-border bg-surface-secondary/60 p-4">
           <p className="mb-3 text-sm font-semibold text-text">
             Auto-return to Available (optional)
           </p>
@@ -939,7 +939,7 @@ function StatusControlModal({ table, onClose, onApplied }) {
                   className={`rounded-lg border-2 p-3 text-sm font-semibold transition-colors ${
                     isActive
                       ? "border-primary bg-primary/5 text-primary"
-                      : "border-gray-200 text-text hover:border-primary/50 hover:bg-gray-50"
+                      : "border-border text-text hover:border-primary/50 hover:bg-surface-hover"
                   }`}
                 >
                   {preset} min
@@ -952,7 +952,7 @@ function StatusControlModal({ table, onClose, onApplied }) {
               className={`rounded-lg border-2 p-3 text-sm font-semibold transition-colors ${
                 mode === "custom"
                   ? "border-primary bg-primary/5 text-primary"
-                  : "border-gray-200 text-text hover:border-primary/50 hover:bg-gray-50"
+                  : "border-border text-text hover:border-primary/50 hover:bg-surface-hover"
               }`}
             >
               Custom
@@ -1063,14 +1063,14 @@ function UpcomingBookingRow({ booking, table }) {
   })();
 
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50/40 p-3">
+    <div className="rounded-lg border border-border bg-surface-secondary/40 p-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
           <h3 className="truncate text-sm font-semibold text-text">
             {customer?.fullName || customer?.name || "Guest Customer"}
           </h3>
           {booking.bookingCode && (
-            <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted">
+            <span className="rounded bg-surface-secondary/70 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted">
               {booking.bookingCode}
             </span>
           )}
@@ -1475,7 +1475,7 @@ function OwnerTablesPage() {
                           : `Table ${table.tableNumber}`}
                       </h3>
                       {table.tableCode && (
-                        <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted">
+                        <span className="rounded bg-surface-secondary/70 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted">
                           {table.tableCode}
                         </span>
                       )}
@@ -1507,7 +1507,7 @@ function OwnerTablesPage() {
                 </div>
 
                 {seats.length > 0 && (
-                  <div className="mt-3 flex justify-center rounded-lg border border-gray-100 bg-gray-50/60 py-2">
+                  <div className="mt-3 flex justify-center rounded-lg border border-border bg-surface-secondary/60 py-2">
                     <TableShape
                       shape={table.shape || TABLE_SHAPE.SQUARE}
                       seats={seats}

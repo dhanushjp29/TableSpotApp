@@ -109,7 +109,7 @@ function TransactionRow({ transaction, role }) {
   const sign = moneyIn ? "+" : "-";
 
   return (
-    <li className="flex items-start gap-3 border-b border-gray-100 px-4 py-4 last:border-0 hover:bg-gray-50/70 transition-colors sm:px-5">
+    <li className="flex items-start gap-3 border-b border-border/70 px-4 py-4 transition-colors hover:bg-primary/[0.03] last:border-0 dark:hover:bg-white/[0.03] sm:px-5">
       <div
         className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${
           isRefund ? "bg-blue-50 text-blue-600" : "bg-primary/10 text-primary"
@@ -147,7 +147,7 @@ function TransactionRow({ transaction, role }) {
         </p>
 
         {transaction.transactionId && (
-          <p className="mt-0.5 truncate font-mono text-[10px] text-gray-400">
+        <p className="mt-0.5 truncate font-mono text-[10px] text-muted">
             Txn: {transaction.transactionId}
           </p>
         )}
@@ -364,7 +364,7 @@ function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
         </Card>
       ) : (
         <Card className="overflow-hidden">
-          <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3 sm:px-5">
+          <div className="flex items-center justify-between border-b border-border px-4 py-3 sm:px-5">
             <p className="text-sm font-semibold text-text">
               Transaction History
             </p>

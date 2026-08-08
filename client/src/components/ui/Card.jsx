@@ -1,13 +1,13 @@
 function Card({ children, className = "", ...props }) {
   return (
-    <div className={`card ${className}`} {...props}>
+    <div className={`card-theme ${className}`} {...props}>
       {children}
     </div>
   );
 }
 
 export function CardHeader({ children, className = "" }) {
-  return <div className={`p-5 border-b border-gray-100 ${className}`}>{children}</div>;
+  return <div className={`border-b border-border/80 bg-surface-secondary/35 p-5 ${className}`}>{children}</div>;
 }
 
 export function CardBody({ children, className = "" }) {
@@ -15,7 +15,7 @@ export function CardBody({ children, className = "" }) {
 }
 
 export function CardFooter({ children, className = "" }) {
-  return <div className={`p-5 border-t border-gray-100 ${className}`}>{children}</div>;
+  return <div className={`border-t border-border/80 bg-surface-secondary/25 p-5 ${className}`}>{children}</div>;
 }
 
 export default Card;

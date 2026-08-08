@@ -150,14 +150,14 @@ function DatePicker({
           ref={popupRef}
           role="dialog"
           style={{ position: "fixed", ...popupStyle, width: 300 }}
-          className="z-50 max-h-[80vh] overflow-y-auto rounded-lg border border-gray-200 bg-surface p-3 shadow-lg"
+          className="dropdown-popup z-50 max-h-[80vh] overflow-y-auto p-3"
         >
           <div className="mb-2 flex items-center justify-between">
             <button
               type="button"
               onClick={() => setViewDate(new Date(year, month - 1, 1))}
               disabled={!canGoPrev}
-              className="rounded-md p-1 text-muted transition-colors hover:bg-gray-100 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-md p-1 text-muted transition-colors hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronLeft size={18} />
             </button>
@@ -168,7 +168,7 @@ function DatePicker({
               type="button"
               onClick={() => setViewDate(new Date(year, month + 1, 1))}
               disabled={!canGoNext}
-              className="rounded-md p-1 text-muted transition-colors hover:bg-gray-100 hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
+              className="rounded-md p-1 text-muted transition-colors hover:bg-surface-hover hover:text-text disabled:cursor-not-allowed disabled:opacity-40"
             >
               <ChevronRight size={18} />
             </button>
@@ -202,7 +202,7 @@ function DatePicker({
                     isSelected
                       ? "bg-primary text-white"
                       : dayDisabled
-                        ? "cursor-not-allowed text-gray-300"
+                        ? "cursor-not-allowed text-muted opacity-50"
                         : isToday
                           ? "border border-primary text-primary hover:bg-primary/10"
                           : "text-text hover:bg-primary/10"

@@ -1,10 +1,15 @@
 function Skeleton({ className = "" }) {
-  return <div className={`animate-pulse bg-gray-200 rounded ${className}`} />;
+  return (
+    <div
+      className={`skeleton-shimmer rounded-lg ${className}`}
+      aria-hidden="true"
+    />
+  );
 }
 
 export function SkeletonText({ lines = 3, className = "" }) {
   return (
-    <div className={`space-y-2 ${className}`}>
+    <div className={`space-y-2.5 ${className}`}>
       {Array.from({ length: lines }).map((_, i) => (
         <Skeleton
           key={i}
@@ -17,23 +22,23 @@ export function SkeletonText({ lines = 3, className = "" }) {
 
 export function SkeletonCard({ className = "" }) {
   return (
-    <div className={`card p-5 space-y-3 ${className}`}>
-      <Skeleton className="h-40 w-full" />
+    <div className={`card-theme space-y-3 p-5 ${className}`}>
+      <Skeleton className="h-40 w-full rounded-xl" />
       <Skeleton className="h-4 w-3/4" />
       <Skeleton className="h-3 w-1/2" />
       <SkeletonText lines={2} />
-      <Skeleton className="h-9 w-full" />
+      <Skeleton className="h-9 w-full rounded-xl" />
     </div>
   );
 }
 
 export function SkeletonTable({ rows = 5, columns = 4 }) {
   return (
-    <div className="card overflow-hidden">
+    <div className="card-theme overflow-hidden">
       <div className="overflow-x-auto">
         <table className="w-full">
           <thead>
-            <tr className="border-b border-gray-100">
+            <tr className="border-b border-border bg-surface-secondary/50">
               {Array.from({ length: columns }).map((_, i) => (
                 <th key={i} className="p-4">
                   <Skeleton className="h-3 w-20" />
@@ -43,7 +48,7 @@ export function SkeletonTable({ rows = 5, columns = 4 }) {
           </thead>
           <tbody>
             {Array.from({ length: rows }).map((_, rowIdx) => (
-              <tr key={rowIdx} className="border-b border-gray-50">
+              <tr key={rowIdx} className="border-b border-border-subtle">
                 {Array.from({ length: columns }).map((_, colIdx) => (
                   <td key={colIdx} className="p-4">
                     <Skeleton className="h-3 w-full" />

@@ -125,7 +125,7 @@ export const createReview = async ({
     title = "",
     comment,
     images = [],
-    status = "Pending",
+    status = "Published",
 }) => {
     const user = await User.findById(userId).select("_id isActive isDeleted");
 

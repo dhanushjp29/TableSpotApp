@@ -21,6 +21,8 @@ import {
   fetchRefundById,
   processRefund,
 } from "../../store/slices/refundSlice.js";
+import { REFUND_METHOD, REFUND_METHOD_LABELS } from "../../constants/refund.js";
+import RefundMethodSelector from "../../components/payment/RefundMethodSelector.jsx";
 import { useAuth } from "../../hooks/useAuth.js";
 import { subscribeToBookingUpdates } from "../../services/socket/socketService.js";
 import Card from "../../components/ui/Card.jsx";
@@ -59,6 +61,7 @@ export default function OwnerReservationsPage() {
   const [actionDialog, setActionDialog] = useState(null);
   const [actionNotes, setActionNotes] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
+  const [actionRefundMethod, setActionRefundMethod] = useState(REFUND_METHOD.CASH);
 
   // No-Show requires mandatory remarks — captured in a Modal, never a
   // window.prompt.
@@ -115,12 +118,12 @@ export default function OwnerReservationsPage() {
     }
   };
 
-  const openRefundDialog = async (booking, refundMethod) => {
+  const openRefundDialog = async (booking) => {
     setActionNotes("");
+    setActionRefundMethod(REFUND_METHOD.CASH);
     setActionDialog({
       type: "refund",
       booking,
-      refundMethod,
     });
 
     if (!booking?.refundId) return;
@@ -143,6 +146,7 @@ export default function OwnerReservationsPage() {
   const closeActionDialog = () => {
     setActionDialog(null);
     setActionNotes("");
+    setActionRefundMethod(REFUND_METHOD.CASH);
     setActionBusy(false);
   };
 
@@ -159,7 +163,8 @@ export default function OwnerReservationsPage() {
   const handleActionConfirm = async () => {
     if (!actionDialog?.booking) return;
 
-    const { booking, type, refundMethod } = actionDialog;
+    const { booking, type } = actionDialog;
+    const refundMethod = actionRefundMethod;
     setActionBusy(true);
 
     try {
@@ -260,7 +265,7 @@ export default function OwnerReservationsPage() {
       </div>
 
       {/* Filters & Search */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-surface p-4 rounded-xl border border-gray-100 shadow-sm">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl border border-border bg-surface/90 p-4 shadow-sm">
         <div className="relative flex-1 w-full">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <input
@@ -281,7 +286,7 @@ export default function OwnerReservationsPage() {
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg shrink-0 transition-all ${
                 statusFilter === st
                   ? "bg-primary text-white"
-                  : "bg-gray-100 text-muted hover:bg-gray-200"
+                  : "border border-border bg-surface-secondary/70 text-muted hover:bg-surface-hover hover:text-text"
               }`}
             >
               {st}
@@ -320,7 +325,7 @@ export default function OwnerReservationsPage() {
               : 0;
 
             return (
-              <Card key={b._id} className="p-5 hover:shadow-md transition-shadow border border-gray-100">
+              <Card key={b._id} className="p-5 transition-all hover:-translate-y-px hover:shadow-md border border-border">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   <div className="space-y-2">
                     <div className="flex items-center gap-3">
@@ -328,7 +333,7 @@ export default function OwnerReservationsPage() {
                         {customer?.name || "Guest Customer"}
                       </h3>
                       {b.bookingCode && (
-                        <span className="rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted">
+                        <span className="rounded bg-surface-secondary/70 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted">
                           {b.bookingCode}
                         </span>
                       )}
@@ -383,7 +388,7 @@ export default function OwnerReservationsPage() {
                         <span>{b.bookingType || "Online"} booking</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[11px] font-semibold text-muted">
+                        <span className="rounded-full border border-border bg-surface-secondary/70 px-2 py-0.5 text-[11px] font-semibold text-muted">
                           {b.paymentStatus || "Pending"}
                         </span>
                         <span>{formatCurrency(b.totalAmount || 0)} total</span>
@@ -404,7 +409,7 @@ export default function OwnerReservationsPage() {
                   </div>
 
                   {/* Actions */}
-                  <div className="flex flex-wrap items-center gap-2 pt-2 lg:pt-0 border-t lg:border-t-0 border-gray-100">
+                  <div className="flex flex-wrap items-center gap-2 pt-2 lg:pt-0 border-t lg:border-t-0 border-border">
                     <Button
                       size="sm"
                       variant="outline"
@@ -444,40 +449,22 @@ export default function OwnerReservationsPage() {
                     )}
 
                     {b.refundId &&
-                      b.refundStatus === "REFUND_PENDING" && (
-                        <>
-                          <Button
-                            size="sm"
-                            variant="secondary"
-                            isLoading={
-                              actionBusy &&
-                              actionDialog?.type === "refund" &&
-                              actionDialog?.booking?._id === b._id
-                            }
-                            onClick={() => openRefundDialog(b, "Cash")}
-                          >
-                            <Banknote size={15} className="mr-1" />
-                            Refund in Cash
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="primary"
-                            isLoading={
-                              actionBusy &&
-                              actionDialog?.type === "refund" &&
-                              actionDialog?.booking?._id === b._id
-                            }
-                            onClick={() => openRefundDialog(b, "RAZORPAY")}
-                          >
-                            <HandCoins size={15} className="mr-1" />
-                            Refund Online
-                          </Button>
-                        </>
+                      ["REFUND_PENDING", "REFUND_OVERDUE"].includes(
+                        b.refundStatus
+                      ) && (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          onClick={() => openRefundDialog(b)}
+                        >
+                          <HandCoins size={15} className="mr-1" />
+                          Process Refund
+                        </Button>
                       )}
 
                     {b.refundId &&
                       b.refundStatus === "REFUND_AWAITING_CUSTOMER_CONFIRMATION" && (
-                        <span className="inline-flex items-center gap-1.5 rounded-md bg-amber-50 px-2.5 py-1.5 text-xs font-medium text-amber-700">
+                        <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-200/70 bg-amber-50/70 px-2.5 py-1.5 text-xs font-medium text-amber-700">
                           <Banknote size={14} />
                           Cash refund — awaiting customer confirmation
                         </span>
@@ -560,7 +547,7 @@ export default function OwnerReservationsPage() {
                     The server will create the bill from this booking's current model values. It will carry the
                     confirmed booking, pre-ordered foods, and any online advance into the bill ledger.
                   </p>
-                  <div className="rounded-lg bg-gray-50 p-3 text-xs text-muted">
+                  <div className="rounded-xl border border-border bg-surface-secondary/60 p-3 text-xs text-muted">
                     <div className="flex justify-between gap-4">
                       <span>Pre-ordered items</span>
                       <span>{Array.isArray(actionDialog.booking.preOrderedFoods) ? actionDialog.booking.preOrderedFoods.length : 0}</span>
@@ -577,40 +564,73 @@ export default function OwnerReservationsPage() {
                       onChange={(e) => setActionNotes(e.target.value)}
                       placeholder="Optional internal notes for the bill"
                       rows={4}
-                      className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+                      className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
                     />
                   </div>
                 </div>
               ) : (
                 <div className="mt-3 space-y-3 text-sm text-text">
                   <p className="text-muted">
-                    This will update the linked refund record. For a cash refund, the customer will be asked to confirm receipt
-                    inside the app instead of seeing a browser alert.
+                    The refundable amount below is calculated by the backend.
+                    Choose the refund method, then confirm.
                   </p>
-                  <div className="rounded-lg bg-gray-50 p-3 text-xs text-muted">
-                    <div className="flex justify-between gap-4">
-                      <span>Refund method</span>
-                      <span>{actionDialog.refundMethod === "Cash" ? "Cash" : "Online / Razorpay"}</span>
-                    </div>
-                    <div className="mt-1 flex justify-between gap-4">
-                      <span>Refund record</span>
-                      <span>{actionDialog.booking.refundId ? String(actionDialog.booking.refundId).slice(-6) : "N/A"}</span>
-                    </div>
-                  </div>
+
                   {refundPreviewLoading ? (
                     <p className="text-muted">Loading refund details...</p>
                   ) : refundPreview ? (
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-lg border border-gray-100 p-3">
-                        <p className="text-xs uppercase tracking-wide text-muted">Refund amount</p>
-                        <p className="mt-1 font-semibold text-text">{formatCurrency(refundPreview.amount || 0)}</p>
+                    <div className="rounded-xl border border-border bg-surface-secondary/60 p-3 text-xs text-muted">
+                      <div className="flex justify-between gap-4">
+                        <span>Refund amount</span>
+                        <span className="font-semibold text-text">{formatCurrency(refundPreview.amount || 0)}</span>
                       </div>
-                      <div className="rounded-lg border border-gray-100 p-3">
-                        <p className="text-xs uppercase tracking-wide text-muted">Refund status</p>
-                        <p className="mt-1 font-semibold text-text">{refundPreview.refundStatus || "Pending"}</p>
+                      <div className="mt-1 flex justify-between gap-4">
+                        <span>Refund status</span>
+                        <span className="font-medium text-text">{refundPreview.refundStatus || "Pending"}</span>
+                      </div>
+                      <div className="mt-1 flex justify-between gap-4">
+                        <span>Refund reason</span>
+                        <span className="font-medium text-text">{refundPreview.reason || "N/A"}</span>
+                      </div>
+                      <div className="mt-1 flex justify-between gap-4">
+                        <span>Refund code</span>
+                        <span className="font-medium text-text">{refundPreview.refundCode || "N/A"}</span>
+                      </div>
+                      <div className="mt-1 flex justify-between gap-4">
+                        <span>Refund deadline</span>
+                        <span className="font-medium text-text">
+                          {refundPreview.deadlineAt ? formatDateTime(refundPreview.deadlineAt) : "N/A"}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex justify-between gap-4">
+                        <span>Booking number</span>
+                        <span className="font-medium text-text">
+                          {typeof refundPreview.bookingId === "object"
+                            ? refundPreview.bookingId.bookingCode || "N/A"
+                            : "N/A"}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex justify-between gap-4">
+                        <span>Customer</span>
+                        <span className="font-medium text-text">
+                          {typeof refundPreview.customerId === "object"
+                            ? refundPreview.customerId.fullName || "N/A"
+                            : "N/A"}
+                        </span>
+                      </div>
+                      <div className="mt-1 flex justify-between gap-4">
+                        <span>Restaurant</span>
+                        <span className="font-medium text-text">
+                          {actionDialog.booking.restaurantId?.restaurantName || "N/A"}
+                        </span>
                       </div>
                     </div>
                   ) : null}
+
+                  <RefundMethodSelector
+                    value={actionRefundMethod}
+                    onChange={setActionRefundMethod}
+                    disabled={actionBusy}
+                  />
                 </div>
               )}
             </Card>
@@ -624,8 +644,11 @@ export default function OwnerReservationsPage() {
                 onClick={handleActionConfirm}
                 isLoading={actionBusy}
                 loadingText="Processing..."
+                disabled={!actionRefundMethod}
               >
-                {actionDialog.type === "refund" ? "Post refund update" : "Convert to Bill"}
+                {actionDialog.type === "refund"
+                  ? `Confirm Refund via ${REFUND_METHOD_LABELS[actionRefundMethod] || actionRefundMethod}`
+                  : "Convert to Bill"}
               </Button>
             </div>
           </div>
@@ -651,7 +674,7 @@ export default function OwnerReservationsPage() {
               onChange={(e) => setNoShowRemarks(e.target.value)}
               placeholder="e.g. Guest never arrived, no response on call"
               rows={4}
-              className="w-full rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
+              className="w-full rounded-lg border border-border bg-surface px-3 py-2 text-sm outline-none transition focus:border-primary focus:ring-2 focus:ring-primary/20"
             />
           </div>
           <div className="flex justify-end gap-3 pt-2">
@@ -806,7 +829,7 @@ export default function OwnerReservationsPage() {
             )}
 
             {detailsBooking.specialRequest && (
-              <div className="rounded-lg bg-amber-50 p-3 text-sm text-amber-800">
+              <div className="rounded-xl border border-amber-200/60 bg-amber-50/60 p-3 text-sm text-amber-800">
                 <p className="font-semibold">Special request</p>
                 <p className="mt-1">{detailsBooking.specialRequest}</p>
               </div>

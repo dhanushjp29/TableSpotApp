@@ -318,7 +318,7 @@ export default function OwnerBillingPage() {
       </div>
 
       {/* Search & Filter */}
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-surface p-4 rounded-xl border border-gray-100 shadow-sm">
+      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 rounded-2xl border border-border bg-surface/90 p-4 shadow-sm">
         <div className="relative flex-1 w-full">
           <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
           <input
@@ -339,7 +339,7 @@ export default function OwnerBillingPage() {
               className={`px-3 py-1.5 text-xs font-semibold rounded-lg shrink-0 transition-all ${
                 statusFilter === st
                   ? "bg-primary text-white"
-                  : "bg-gray-100 text-muted hover:bg-gray-200"
+                  : "border border-border bg-surface-secondary/70 text-muted hover:bg-surface-hover hover:text-text"
               }`}
             >
               {st}
@@ -362,9 +362,9 @@ export default function OwnerBillingPage() {
       ) : filteredBills.length === 0 ? (
         <EmptyState title="No billing records" description="Click 'Generate New Bill' to create an invoice." />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-surface shadow-sm">
+        <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
           <table className="w-full text-left text-sm text-text">
-            <thead className="bg-gray-50 text-xs uppercase font-semibold text-muted border-b border-gray-200">
+            <thead className="bg-surface-secondary/60 text-xs uppercase font-semibold text-muted border-b border-border">
               <tr>
                 <th className="px-5 py-3">Bill ID</th>
                 <th className="px-5 py-3">Booking Ref</th>
@@ -374,9 +374,9 @@ export default function OwnerBillingPage() {
                 <th className="px-5 py-3 text-right">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100 font-medium">
+            <tbody className="divide-y divide-border/70 font-medium">
               {filteredBills.map((bill) => (
-                <tr key={bill._id} className="hover:bg-gray-50/80 transition-colors">
+                <tr key={bill._id} className="transition-colors hover:bg-primary/[0.04] dark:hover:bg-white/[0.03]">
                   <td className="px-5 py-4 font-mono text-xs font-semibold text-primary">
                     {bill.billCode || `#${bill._id.slice(-6)}`}
                   </td>
@@ -460,7 +460,7 @@ export default function OwnerBillingPage() {
               ))}
           </Select>
 
-          <p className="rounded-lg bg-gray-50 p-3 text-xs text-muted">
+          <p className="rounded-xl border border-border bg-surface-secondary/60 p-3 text-xs text-muted">
             A bill can only be raised once the booking time has arrived. The bill
             is created from the reservation's pre-ordered items and any online
             advance is carried into the bill ledger.
@@ -486,7 +486,7 @@ export default function OwnerBillingPage() {
           size="lg"
         >
           <div className="space-y-5 pt-2">
-            <div className="rounded-lg bg-gray-50 p-3 text-sm text-text">
+            <div className="rounded-xl border border-border bg-surface-secondary/60 p-3 text-sm text-text">
               <div className="flex justify-between">
                 <span>Grand Total</span>
                 <span className="font-bold">₹{manageBill.grandTotal ?? manageBill.subTotal ?? 0}</span>
@@ -512,7 +512,7 @@ export default function OwnerBillingPage() {
                     <span className="text-xs text-muted">Prices are re-derived server-side</span>
                   </div>
                   {billItems.length === 0 ? (
-                    <p className="rounded-lg bg-gray-50 p-3 text-sm text-muted">
+                    <p className="rounded-xl border border-border bg-surface-secondary/60 p-3 text-sm text-muted">
                       No items on this bill yet. Add spot food below.
                     </p>
                   ) : (
@@ -520,7 +520,7 @@ export default function OwnerBillingPage() {
                       {billItems.map((item, idx) => (
                         <div
                           key={idx}
-                          className="flex items-center justify-between gap-3 rounded-lg border border-gray-200 p-2.5 text-sm"
+                        className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-secondary/40 p-2.5 text-sm"
                         >
                           <div className="min-w-0">
                             <p className="truncate font-medium text-text">
@@ -572,7 +572,7 @@ export default function OwnerBillingPage() {
                   )}
                 </div>
 
-                <div className="rounded-lg border border-gray-200 p-3">
+                <div className="rounded-xl border border-border bg-surface-secondary/40 p-3">
                   <p className="mb-2 text-sm font-medium text-text">Add spot food</p>
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                     <Select
@@ -672,7 +672,7 @@ export default function OwnerBillingPage() {
             )}
 
             {billPayStatus(manageBill) !== "Paid" && (
-              <div className="border-t border-gray-100 pt-4">
+              <div className="border-t border-border pt-4">
                 <p className="mb-2 text-sm font-medium text-text">Record a spot payment</p>
                 <form onSubmit={handleAddSpotPayment} className="space-y-4">
                   <div className="grid grid-cols-2 gap-3">
@@ -718,8 +718,8 @@ export default function OwnerBillingPage() {
           onClose={() => setActiveReceiptBill(null)}
           title={`Invoice Receipt ${activeReceiptBill.billCode || `#${activeReceiptBill._id.slice(-6)}`}`}
         >
-          <div className="space-y-4 p-2 font-mono text-sm border-y border-dashed border-gray-300 py-4 my-2">
-            <div className="text-center pb-2 border-b border-gray-200">
+          <div className="space-y-4 rounded-2xl border border-dashed border-border bg-surface-secondary/40 p-4 font-mono text-sm my-2">
+            <div className="text-center pb-2 border-b border-border">
               <h3 className="text-lg font-bold text-text font-sans">TABLESPOT RECEIPT</h3>
               <p className="text-xs text-muted">Thank you for dining with us!</p>
             </div>
@@ -740,7 +740,7 @@ export default function OwnerBillingPage() {
             </div>
 
             {(activeReceiptBill.orderedItems?.length > 0) && (
-              <div className="space-y-1 text-xs border-t border-gray-200 pt-2">
+              <div className="space-y-1 border-t border-border pt-2 text-xs">
                 {activeReceiptBill.orderedItems.map((item, idx) => (
                   <div key={idx} className="flex justify-between gap-2">
                     <span className="truncate">
@@ -752,7 +752,7 @@ export default function OwnerBillingPage() {
               </div>
             )}
 
-            <div className="space-y-1 text-xs border-t border-gray-200 pt-2">
+            <div className="space-y-1 border-t border-border pt-2 text-xs">
               <div className="flex justify-between">
                 <span>Subtotal:</span>
                 <span>₹{activeReceiptBill.subTotal ?? 0}</span>
@@ -765,14 +765,14 @@ export default function OwnerBillingPage() {
                 <span>Discount:</span>
                 <span>-₹{activeReceiptBill.discount?.value ?? 0}</span>
               </div>
-              <div className="flex justify-between font-bold text-sm text-text pt-2 border-t border-gray-300">
+              <div className="flex justify-between border-t border-border pt-2 text-sm font-bold text-text">
                 <span>Grand Total:</span>
                 <span>₹{activeReceiptBill.grandTotal ?? activeReceiptBill.subTotal ?? 0}</span>
               </div>
             </div>
 
             {(activeReceiptBill.payment?.payments?.length > 0) && (
-              <div className="space-y-1 text-xs border-t border-gray-200 pt-2">
+              <div className="space-y-1 border-t border-border pt-2 text-xs">
                 <p className="font-semibold text-text">Payments</p>
                 {activeReceiptBill.payment.payments.map((pay, idx) => (
                   <div key={idx} className="flex justify-between gap-2">

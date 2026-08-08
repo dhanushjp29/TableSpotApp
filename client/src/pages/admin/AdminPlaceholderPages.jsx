@@ -1,56 +1,56 @@
-import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
-import { useDispatch, useSelector } from "react-redux";
 import {
-  Users,
-  Utensils,
-  Calendar,
-  CheckCircle,
-  XCircle,
-  Trash2,
-  Shield,
-  Search,
-  Star,
-  BarChart2,
-  AlertTriangle,
-  Lock,
-  Unlock,
-} from "lucide-react";
-import toast from "react-hot-toast";
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
+  ArcElement,
   BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  Legend,
+  LinearScale,
   Title,
   Tooltip,
-  Legend,
-  ArcElement,
 } from "chart.js";
-import { Pie, Bar } from "react-chartjs-2";
+import {
+  AlertTriangle,
+  BarChart2,
+  Calendar,
+  CheckCircle,
+  Lock,
+  Search,
+  Shield,
+  Star,
+  Trash2,
+  Unlock,
+  Users,
+  Utensils,
+  XCircle,
+} from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Bar, Pie } from "react-chartjs-2";
+import toast from "react-hot-toast";
+import { useDispatch, useSelector } from "react-redux";
+import { Link } from "react-router-dom";
 
+import { fetchBills } from "../../store/slices/billSlice.js";
+import { fetchBookings } from "../../store/slices/reservationSlice.js";
+import {
+  fetchRestaurants,
+  verifyRestaurant,
+} from "../../store/slices/restaurantSlice.js";
+import { fetchRestaurantReviews } from "../../store/slices/reviewSlice.js";
 import {
   deleteUser,
   fetchUsers,
   toggleUserActive,
 } from "../../store/slices/userSlice.js";
-import {
-  fetchRestaurants,
-  verifyRestaurant,
-} from "../../store/slices/restaurantSlice.js";
-import { fetchBookings } from "../../store/slices/reservationSlice.js";
-import { fetchBills } from "../../store/slices/billSlice.js";
-import { fetchRestaurantReviews } from "../../store/slices/reviewSlice.js";
 
-import Card from "../../components/ui/Card.jsx";
 import Badge from "../../components/ui/Badge.jsx";
 import Button from "../../components/ui/Button.jsx";
+import Card from "../../components/ui/Card.jsx";
 import ConfirmDialog from "../../components/ui/ConfirmDialog.jsx";
-import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
-import { formatCurrency } from "../../utils/formatCurrency.js";
+import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import { ROUTES } from "../../routes/routeConstants.js";
+import { formatCurrency } from "../../utils/formatCurrency.js";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
@@ -115,7 +115,7 @@ export function AdminDashboardPage() {
     } catch (err) {
       toast.error(err?.response?.data?.message || "Approval failed.");
     } finally {
-      dispatch(fetchRestaurants({ limit: 100 })).catch(() => {});
+      dispatch(fetchRestaurants({ limit: 100 })).catch(() => { });
     }
   };
 
@@ -329,46 +329,155 @@ export function AdminUsersPage() {
     return true;
   });
 
+  const userStats = useMemo(() => {
+    const activeUsers = users.filter((u) => u.isActive !== false);
+    const blockedUsers = users.filter((u) => u.isActive === false);
+    const adminUsers = users.filter((u) => u.role === "admin");
+    const ownerUsers = users.filter((u) => u.role === "owner");
+
+    return [
+      {
+        label: "Total Users",
+        value: users.length,
+        note: "Accounts on the platform",
+        icon: Users,
+        tone: "primary",
+      },
+      {
+        label: "Active",
+        value: activeUsers.length,
+        note: "Currently accessible",
+        icon: CheckCircle,
+        tone: "success",
+      },
+      {
+        label: "Blocked",
+        value: blockedUsers.length,
+        note: "Temporarily restricted",
+        icon: XCircle,
+        tone: "danger",
+      },
+      {
+        label: "Staff Roles",
+        value: adminUsers.length + ownerUsers.length,
+        note: "Admins and owners",
+        icon: Shield,
+        tone: "warning",
+      },
+    ];
+  }, [users]);
+
+  const roleTabs = [
+    { key: "ALL", label: "All", count: users.length },
+    { key: "customer", label: "Customers", count: users.filter((u) => u.role === "customer").length },
+    { key: "owner", label: "Owners", count: users.filter((u) => u.role === "owner").length },
+    { key: "admin", label: "Admins", count: users.filter((u) => u.role === "admin").length },
+  ];
+
+  const hasFilters = search || roleFilter !== "ALL";
+
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-text">User Management</h1>
-        <p className="text-sm text-muted">Manage platform accounts, roles, and status</p>
+    <div className="mx-auto max-w-7xl space-y-6 px-4 py-6 sm:px-6 lg:px-8">
+      <div className="rounded-3xl border border-border bg-surface/90 p-6 shadow-lg shadow-black/5 backdrop-blur-xl">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="max-w-2xl space-y-3">
+            <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+              <Shield size={12} />
+              Admin Control Center
+            </div>
+            <div className="space-y-1">
+              <h1 className="text-3xl font-bold tracking-tight text-text sm:text-4xl">User Management</h1>
+              <p className="max-w-2xl text-sm leading-6 text-muted sm:text-base">
+                Manage platform accounts, roles, and access with a cleaner overview and faster moderation workflow.
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 lg:min-w-[42rem]">
+            {userStats.map((stat) => {
+              const Icon = stat.icon;
+              const toneClass =
+                stat.tone === "primary"
+                  ? "bg-primary/10 text-primary border-primary/15"
+                  : stat.tone === "success"
+                    ? "bg-emerald-500/10 text-emerald-600 border-emerald-500/15"
+                    : stat.tone === "danger"
+                      ? "bg-red-500/10 text-red-600 border-red-500/15"
+                      : "bg-amber-500/10 text-amber-600 border-amber-500/15";
+
+              return (
+                <Card key={stat.label} className="border-border/80 bg-white/70 p-4 shadow-sm dark:bg-surface/90">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">{stat.label}</p>
+                      <p className="mt-2 text-2xl font-bold tracking-tight text-text">{stat.value}</p>
+                      <p className="mt-1 text-xs text-muted">{stat.note}</p>
+                    </div>
+                    <div className={`flex h-10 w-10 items-center justify-center rounded-2xl border ${toneClass}`}>
+                      <Icon size={18} />
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-surface p-4 rounded-xl border border-gray-100 shadow-sm">
-        <div className="relative flex-1 w-full">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            type="text"
-            placeholder="Search by user name or email..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input-field pl-10 w-full"
-          />
-        </div>
+      <div className="rounded-3xl border border-border bg-surface/90 p-4 shadow-lg shadow-black/5 backdrop-blur-xl">
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="relative w-full xl:max-w-xl">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              type="text"
+              placeholder="Search by user name or email..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input-field w-full pl-11 pr-4"
+            />
+          </div>
 
-        <div className="flex items-center gap-2">
-          {["ALL", "customer", "owner", "admin"].map((r) => (
-            <button
-              key={r}
-              onClick={() => setRoleFilter(r)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg capitalize transition-all ${
-                roleFilter === r
-                  ? "bg-primary text-white"
-                  : "bg-gray-100 text-muted hover:bg-gray-200"
-              }`}
-            >
-              {r}
-            </button>
-          ))}
+          <div className="flex flex-wrap items-center gap-2">
+            {roleTabs.map((role) => (
+              <button
+                key={role.key}
+                onClick={() => setRoleFilter(role.key)}
+                className={`inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold capitalize transition-all duration-200 ${roleFilter === role.key
+                    ? "border-primary/20 bg-primary text-white shadow-md shadow-primary/20"
+                    : "border-border bg-muted/40 text-muted hover:border-primary/20 hover:bg-primary/5 hover:text-text"
+                  }`}
+              >
+                <span>{role.label}</span>
+                <span
+                  className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${roleFilter === role.key ? "bg-white/20 text-white" : "bg-background/70 text-muted"
+                    }`}
+                >
+                  {role.count}
+                </span>
+              </button>
+            ))}
+
+            {hasFilters && (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearch("");
+                  setRoleFilter("ALL");
+                }}
+                className="text-muted hover:text-text"
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
         </div>
       </div>
 
       {isLoading ? (
         <div className="space-y-3">
-          {[1, 2, 3].map((i) => (
-            <Card key={i} className="p-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i} className="border-border/80 p-4 shadow-sm">
               <SkeletonText lines={2} />
             </Card>
           ))}
@@ -376,64 +485,90 @@ export function AdminUsersPage() {
       ) : error ? (
         <ErrorState title="Unable to load users" description={error} onRetry={reloadUsers} />
       ) : filteredUsers.length === 0 ? (
-        <EmptyState title="No users found" description="No accounts match your criteria." />
+        <EmptyState
+          title="No users found"
+          description={hasFilters ? "No accounts match your current search or role filter." : "No accounts are available yet."}
+        />
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-gray-200 bg-surface shadow-sm">
-          <table className="w-full text-left text-sm text-text">
-            <thead className="bg-gray-50 text-xs uppercase font-semibold text-muted border-b border-gray-200">
-              <tr>
-                <th className="px-5 py-3">User</th>
-                <th className="px-5 py-3">Email</th>
-                <th className="px-5 py-3">Role</th>
-                <th className="px-5 py-3">Status</th>
-                <th className="px-5 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 font-medium">
-              {filteredUsers.map((u) => (
-                <tr key={u._id} className="hover:bg-gray-50/80 transition-colors">
-                  <td className="px-5 py-4 font-bold text-text flex items-center gap-2">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-primary/10 text-primary font-bold text-xs uppercase">
-                      {u.fullName?.[0] || "U"}
-                    </div>
-                    {u.fullName}
-                  </td>
-                  <td className="px-5 py-4 text-xs text-muted">{u.email}</td>
-                  <td className="px-5 py-4">
-                    <Badge variant={u.role === "admin" ? "danger" : u.role === "owner" ? "info" : "default"} className="capitalize">
-                      {u.role}
-                    </Badge>
-                  </td>
-                  <td className="px-5 py-4">
-                    <Badge variant={u.isActive !== false ? "success" : "danger"}>
-                      {u.isActive !== false ? "Active" : "Blocked"}
-                    </Badge>
-                  </td>
-                  <td className="px-5 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        onClick={() => handleToggleActive(u._id, u.isActive !== false)}
-                        title={u.isActive !== false ? "Block User" : "Unblock User"}
-                      >
-                        {u.isActive !== false ? <Lock size={15} className="text-amber-600" /> : <Unlock size={15} className="text-green-600" />}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="ghost"
-                        className="text-red-600 hover:bg-red-50"
-                        onClick={() => setDeleteTarget(u)}
-                        title="Delete User"
-                      >
-                        <Trash2 size={15} />
-                      </Button>
-                    </div>
-                  </td>
+        <div className="overflow-hidden rounded-3xl border border-border bg-surface/90 shadow-lg shadow-black/5 backdrop-blur-xl">
+          <div className="flex items-center justify-between border-b border-border px-5 py-4">
+            <div>
+              <h2 className="text-base font-semibold text-text">Accounts</h2>
+              <p className="text-sm text-muted">
+                {filteredUsers.length} {filteredUsers.length === 1 ? "record" : "records"} shown
+              </p>
+            </div>
+
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-text">
+              <thead className="border-b border-border bg-muted/40 text-xs font-semibold uppercase tracking-[0.18em] text-muted">
+                <tr>
+                  <th className="px-5 py-3">User</th>
+                  <th className="px-5 py-3">Email</th>
+                  <th className="px-5 py-3">Role</th>
+                  <th className="px-5 py-3">Status</th>
+                  <th className="px-5 py-3 text-right">Actions</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody className="divide-y divide-border/70 font-medium">
+                {filteredUsers.map((u) => (
+                  <tr
+                    key={u._id}
+                    className="group transition-colors duration-200 hover:bg-primary/5 dark:hover:bg-white/5"
+                  >
+                    <td className="px-5 py-4 font-bold text-text">
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-primary/10 bg-gradient-to-br from-primary/15 to-primary/5 text-sm font-bold uppercase text-primary shadow-sm">
+                          {u.fullName?.[0] || "U"}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="truncate font-semibold text-text">{u.fullName}</div>
+                          <div className="text-xs font-normal text-muted">User ID: {u._id?.slice?.(-6)}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="px-5 py-4 text-sm text-muted">{u.email}</td>
+                    <td className="px-5 py-4">
+                      <Badge
+                        variant={u.role === "admin" ? "danger" : u.role === "owner" ? "info" : "default"}
+                        className="capitalize shadow-sm"
+                      >
+                        {u.role || "customer"}
+                      </Badge>
+                    </td>
+                    <td className="px-5 py-4">
+                      <Badge variant={u.isActive !== false ? "success" : "danger"} className="shadow-sm">
+                        {u.isActive !== false ? "Active" : "Blocked"}
+                      </Badge>
+                    </td>
+                    <td className="px-5 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="rounded-full border border-border/70 bg-background/60 px-3 text-muted hover:border-amber-500/20 hover:bg-amber-500/10 hover:text-amber-700 dark:hover:text-amber-300"
+                          onClick={() => handleToggleActive(u._id, u.isActive !== false)}
+                          title={u.isActive !== false ? "Block User" : "Unblock User"}
+                        >
+                          {u.isActive !== false ? <Lock size={15} className="text-amber-600" /> : <Unlock size={15} className="text-emerald-600" />}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="rounded-full border border-border/70 bg-background/60 px-3 text-muted hover:border-red-500/20 hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-300"
+                          onClick={() => setDeleteTarget(u)}
+                          title="Delete User"
+                        >
+                          <Trash2 size={15} />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
 
@@ -561,8 +696,8 @@ export function AdminRestaurantsPage() {
                         r.verificationStatus === "Verified"
                           ? "success"
                           : r.verificationStatus === "Rejected"
-                          ? "danger"
-                          : "warning"
+                            ? "danger"
+                            : "warning"
                       }
                     >
                       {r.verificationStatus || "Pending"}

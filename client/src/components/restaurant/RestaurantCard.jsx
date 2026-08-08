@@ -17,16 +17,16 @@ function RestaurantCard({
   return (
     <div
       onClick={handleSelect}
-      className={`card cursor-pointer overflow-hidden transition-all duration-200 hover:shadow-md ${
-        isSelected ? "ring-2 ring-primary" : ""
+      className={`group card card-interactive cursor-pointer overflow-hidden ${
+        isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
       }`}
     >
-      <div className="relative h-40 overflow-hidden bg-gray-100">
+      <div className="relative h-40 overflow-hidden bg-surface-secondary">
         {restaurant.coverImage ? (
           <img
             src={restaurant.coverImage}
             alt={restaurant.restaurantName}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
           />
         ) : (
@@ -34,8 +34,9 @@ function RestaurantCard({
             <MapPin size={32} />
           </div>
         )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
         {restaurant.isFeatured && (
-          <span className="absolute left-2 top-2 badge bg-accent text-white">
+          <span className="badge-primary absolute left-2 top-2">
             Featured
           </span>
         )}
@@ -81,7 +82,7 @@ function RestaurantCard({
         <Link
           to={`/restaurants/${restaurant._id}`}
           onClick={(e) => e.stopPropagation()}
-          className="mt-3 block text-center text-sm font-medium text-primary hover:text-primary-dark"
+          className="mt-3 inline-flex items-center justify-center rounded-lg border border-primary/20 bg-primary/5 px-3 py-2 text-center text-sm font-medium text-primary transition-all duration-200 hover:-translate-y-px hover:bg-primary hover:text-white hover:shadow-sm"
         >
           View Details
         </Link>

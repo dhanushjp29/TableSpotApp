@@ -7,16 +7,16 @@ function ErrorState({
   onRetry = null,
 }) {
   return (
-    <div className="flex flex-col items-center justify-center py-12 px-4 text-center">
-      <div className="mb-4 rounded-full bg-red-50 p-4">
+    <div className="flex flex-col items-center justify-center px-4 py-16 text-center">
+      <div className="mb-4 rounded-2xl border border-error/20 bg-error/5 p-5 shadow-sm">
         <AlertTriangle size={32} className="text-error" aria-hidden="true" />
       </div>
       <h3 className="text-base font-semibold text-text">{title}</h3>
       {description && (
-        <p className="mt-1 max-w-sm text-sm text-muted">{description}</p>
+        <p className="mt-2 max-w-sm text-sm text-muted">{description}</p>
       )}
       {onRetry && (
-        <div className="mt-5">
+        <div className="mt-6">
           <Button variant="outline" onClick={onRetry}>
             Retry
           </Button>

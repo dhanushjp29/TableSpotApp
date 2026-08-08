@@ -20,7 +20,10 @@ export const refundApi = {
   },
 
   async confirmReceipt(refundId) {
-    const response = await apiClient.post(`/refunds/${refundId}/confirm-receipt`);
+    const response = await apiClient.post(
+      `/refunds/${refundId}/confirm-receipt`,
+      {}
+    );
     return response.data;
   },
 

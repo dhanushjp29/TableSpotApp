@@ -396,7 +396,7 @@ function RestaurantDiscoveryMap({
 
                     <Link
                       to={`/restaurants/${restaurant._id}`}
-                      className="mt-3 block w-full rounded-lg bg-primary px-3 py-2 text-center text-sm font-semibold text-white transition-colors hover:bg-primary-dark"
+                      className="mt-3 block w-full rounded-lg bg-primary px-3 py-2 text-center text-sm font-semibold !text-black transition-colors hover:bg-primary-dark"
                     >
                       Book a Table →
                     </Link>

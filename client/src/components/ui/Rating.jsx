@@ -13,7 +13,7 @@ function Rating({ value = 0, count = 0, size = 16, showValue = true }) {
             className={
               star <= Math.round(rounded)
                 ? "fill-accent text-accent"
-                : "fill-gray-200 text-gray-200"
+                : "fill-surface-hover text-border-strong dark:fill-surface-secondary dark:text-border"
             }
             aria-hidden="true"
           />

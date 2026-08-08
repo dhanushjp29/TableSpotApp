@@ -5,6 +5,7 @@ const variantClasses = {
   secondary: "btn-secondary",
   outline: "btn-outline",
   danger: "btn-danger",
+  ghost: "btn-ghost",
 };
 
 const sizeClasses = {

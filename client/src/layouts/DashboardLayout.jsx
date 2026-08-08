@@ -25,6 +25,7 @@ import { toggleSidebar } from "../store/slices/uiSlice.js";
 import { fetchUnreadCount } from "../store/slices/notificationSlice.js";
 import { ROUTES } from "../routes/routeConstants.js";
 import Avatar from "../components/ui/Avatar.jsx";
+import ThemeToggle from "../components/theme/ThemeToggle.jsx";
 import ConfirmDialog from "../components/ui/ConfirmDialog.jsx";
 
 const roleNavConfig = {
@@ -108,27 +109,37 @@ function DashboardLayout() {
 
   return (
     <div className="min-h-screen bg-background">
-      {/* Mobile overlay */}
+      <div className="pointer-events-none fixed inset-0 -z-10 bg-[radial-gradient(circle_at_top_left,rgba(198,40,40,0.08),transparent_25%),radial-gradient(circle_at_top_right,rgba(245,158,11,0.05),transparent_20%)]" />
+
       {sidebarOpen && (
         <div
-          className="fixed inset-0 z-30 bg-black/50 lg:hidden"
+          className="fixed inset-0 z-30 bg-black/40 backdrop-blur-sm lg:hidden"
           onClick={() => dispatch(toggleSidebar())}
           aria-hidden="true"
         />
       )}
 
-      {/* Sidebar */}
       <aside
-        className={`fixed inset-y-0 left-0 z-40 w-64 transform bg-surface border-r border-gray-100 transition-transform duration-200 lg:translate-x-0 ${
+        className={`fixed inset-y-0 left-0 z-40 flex w-72 transform flex-col border-r border-border bg-surface/90 backdrop-blur-xl transition-transform duration-300 lg:translate-x-0 ${
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-16 items-center justify-between px-6 border-b border-gray-100">
-          <Link to="/" className="text-xl font-bold text-primary">
-            TableSpot
+        <div className="flex h-16 items-center justify-between border-b border-border px-5">
+          <Link to="/" className="flex items-center gap-3">
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-white shadow-sm">
+              T
+            </span>
+            <div className="leading-tight">
+              <span className="block text-base font-bold tracking-tight text-text">
+                TableSpot
+              </span>
+              <span className="block text-[11px] uppercase tracking-[0.28em] text-muted">
+                {role} portal
+              </span>
+            </div>
           </Link>
           <button
-            className="lg:hidden p-1 rounded-lg hover:bg-gray-100"
+            className="icon-btn lg:hidden"
             onClick={() => dispatch(toggleSidebar())}
             aria-label="Close sidebar"
           >
@@ -136,7 +147,7 @@ function DashboardLayout() {
           </button>
         </div>
 
-        <nav className="flex-1 overflow-y-auto py-4 px-3">
+        <nav className="flex-1 overflow-y-auto px-3 py-4">
           {navItems.map((item) => {
             const Icon = item.icon;
             return (
@@ -144,17 +155,13 @@ function DashboardLayout() {
                 key={item.to}
                 to={item.to}
                 className={({ isActive }) =>
-                  `mb-1 flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition-colors ${
-                    isActive
-                      ? "bg-primary text-white"
-                      : "text-text hover:bg-gray-50"
-                  }`
+                  `nav-item ${isActive ? "nav-item-active" : "nav-item-inactive"}`
                 }
               >
                 <Icon size={18} aria-hidden="true" />
                 {item.label}
                 {item.label === "Notifications" && unreadCount > 0 && (
-                  <span className="ml-auto flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
+                  <span className="ml-auto flex h-5 min-w-5 items-center justify-center rounded-full bg-error px-1 text-[10px] font-bold text-white">
                     {unreadCount > 99 ? "99+" : unreadCount}
                   </span>
                 )}
@@ -162,46 +169,61 @@ function DashboardLayout() {
             );
           })}
         </nav>
+
+        <div className="border-t border-border p-4">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.24em] text-muted">
+            Signed in as
+          </p>
+          <div className="mt-3 flex items-center gap-3 rounded-2xl border border-border bg-surface-secondary/60 p-3">
+            <Avatar user={user} size={38} />
+            <div className="min-w-0">
+              <p className="truncate text-sm font-semibold text-text">{user?.fullName}</p>
+              <p className="truncate text-xs text-muted">{role}</p>
+            </div>
+          </div>
+        </div>
       </aside>
 
-      {/* Main content */}
-      <div className="lg:pl-64">
-        <header className="sticky top-0 z-20 flex h-16 items-center justify-between border-b border-gray-100 bg-surface px-4 sm:px-6">
-          <button
-            className="p-1 rounded-lg hover:bg-gray-100 lg:hidden"
-            onClick={() => dispatch(toggleSidebar())}
-            aria-label="Open sidebar"
-          >
-            <Menu size={20} />
-          </button>
-
-          <div className="flex items-center gap-4 ml-auto">
-            <Link
-              to={NOTIFICATION_ROUTE[role] || ROUTES.CUSTOMER_NOTIFICATIONS}
-              className="relative p-2 rounded-lg hover:bg-gray-100 text-muted"
-              aria-label="Notifications"
-            >
-              <Bell size={20} />
-              {unreadCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white">
-                  {unreadCount > 99 ? "99+" : unreadCount}
-                </span>
-              )}
-            </Link>
-            <div className="flex items-center gap-3">
-              <Avatar user={user} size={36} />
-              <div className="hidden sm:block">
-                <p className="text-sm font-medium text-text">{user?.fullName}</p>
-                <p className="text-xs text-muted capitalize">{role}</p>
-              </div>
-            </div>
+      <div className="lg:pl-72">
+        <header className="sticky top-0 z-20 border-b border-border bg-background/85 backdrop-blur-xl">
+          <div className="flex h-16 items-center justify-between px-4 sm:px-6">
             <button
-              onClick={() => setLogoutOpen(true)}
-              className="p-2 rounded-lg hover:bg-gray-100 text-muted"
-              aria-label="Logout"
+              className="icon-btn lg:hidden"
+              onClick={() => dispatch(toggleSidebar())}
+              aria-label="Open sidebar"
             >
-              <LogOut size={20} />
+              <Menu size={20} />
             </button>
+
+            <div className="ml-auto flex items-center gap-2 sm:gap-3">
+              <ThemeToggle />
+              <Link
+                to={NOTIFICATION_ROUTE[role] || ROUTES.CUSTOMER_NOTIFICATIONS}
+                className="icon-btn relative"
+                aria-label="Notifications"
+              >
+                <Bell size={20} />
+                {unreadCount > 0 && (
+                  <span className="absolute -right-0.5 -top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-error px-1 text-[10px] font-bold text-white">
+                    {unreadCount > 99 ? "99+" : unreadCount}
+                  </span>
+                )}
+              </Link>
+              <div className="hidden items-center gap-3 sm:flex">
+                <Avatar user={user} size={36} />
+                <div>
+                  <p className="text-sm font-medium text-text">{user?.fullName}</p>
+                  <p className="text-xs capitalize text-muted">{role}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setLogoutOpen(true)}
+                className="icon-btn"
+                aria-label="Logout"
+              >
+                <LogOut size={20} />
+              </button>
+            </div>
           </div>
         </header>
 

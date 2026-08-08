@@ -36,22 +36,22 @@ function Modal({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      className="modal-backdrop fixed inset-0 z-50 flex items-center justify-center bg-background/70 p-4 backdrop-blur-md"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={title || "Modal"}
     >
       <div
-        className={`w-full ${sizeClasses[size]} bg-surface rounded-xl shadow-xl max-h-[90vh] flex flex-col`}
+        className={`modal-panel w-full ${sizeClasses[size]} flex max-h-[90vh] flex-col rounded-2xl border border-border bg-surface shadow-xl`}
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
-          <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100">
+          <div className="flex items-center justify-between border-b border-border px-6 py-4">
             <h2 className="text-lg font-semibold text-text">{title}</h2>
             <button
               onClick={onClose}
-              className="p-1 rounded-lg hover:bg-gray-100 text-muted"
+              className="icon-btn"
               aria-label="Close modal"
             >
               <X size={20} />
@@ -60,7 +60,7 @@ function Modal({
         )}
         <div className="flex-1 overflow-y-auto px-6 py-5">{children}</div>
         {footer && (
-          <div className="px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
+          <div className="flex justify-end gap-3 border-t border-border px-6 py-4">
             {footer}
           </div>
         )}

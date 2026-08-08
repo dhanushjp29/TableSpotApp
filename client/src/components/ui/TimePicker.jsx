@@ -218,7 +218,7 @@ function TimePicker({
           ref={popupRef}
           role="dialog"
           style={{ position: "fixed", ...popupStyle, width: 252 }}
-          className="z-50 max-h-[80vh] overflow-y-auto rounded-lg border border-gray-200 bg-surface p-3 shadow-lg"
+          className="dropdown-popup z-50 max-h-[80vh] overflow-y-auto p-3"
         >
           <div className="mb-2 flex items-center justify-between gap-2">
             <button
@@ -227,7 +227,7 @@ function TimePicker({
               className={`rounded px-2 py-1 text-xs font-semibold transition-colors ${
                 mode === "hour"
                   ? "bg-primary text-white"
-                  : "text-muted hover:bg-gray-100 hover:text-text"
+                  : "text-muted hover:bg-surface-hover hover:text-text"
               }`}
             >
               Hour
@@ -242,7 +242,7 @@ function TimePicker({
               className={`rounded px-2 py-1 text-xs font-semibold transition-colors ${
                 mode === "minute"
                   ? "bg-primary text-white"
-                  : "text-muted hover:bg-gray-100 hover:text-text"
+                  : "text-muted hover:bg-surface-hover hover:text-text"
               } ${
                 draftHour == null
                   ? "cursor-not-allowed opacity-40"
@@ -254,7 +254,7 @@ function TimePicker({
           </div>
 
           <div className="relative mx-auto h-[220px] w-[220px]">
-            <div className="absolute inset-0 rounded-full border border-gray-200 bg-background" />
+            <div className="absolute inset-0 rounded-full border border-border bg-background" />
             {handPos && (
               <div
                 className="absolute top-0 left-0 h-0.5 rounded-full bg-primary/80"
@@ -293,7 +293,7 @@ function TimePicker({
                       ? "bg-primary text-white"
                       : enabled
                         ? "text-text hover:bg-primary/10"
-                        : "cursor-not-allowed text-gray-300"
+                        : "cursor-not-allowed text-muted opacity-50"
                   }`}
                 >
                   {mark}
@@ -304,7 +304,7 @@ function TimePicker({
 
           <div className="mt-3 flex items-center justify-center gap-2">
             <span className="text-xs font-medium text-muted">Period</span>
-            <div className="flex overflow-hidden rounded-lg border border-gray-200">
+            <div className="flex overflow-hidden rounded-lg border border-border">
               {["AM", "PM"].map((p) => (
                 <button
                   key={p}
@@ -313,7 +313,7 @@ function TimePicker({
                   className={`px-4 py-1.5 text-sm font-medium transition-colors ${
                     period === p
                       ? "bg-primary text-white"
-                      : "text-text hover:bg-gray-100"
+                      : "text-text hover:bg-surface-hover"
                   }`}
                 >
                   {p}

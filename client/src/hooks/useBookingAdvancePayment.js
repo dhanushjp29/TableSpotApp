@@ -6,6 +6,8 @@ import {
   openRazorpayCheckout,
 } from "../utils/razorpay.js";
 
+const IS_ORDER_MOCK = import.meta.env.VITE_RAZORPAY_ORDER_MOCK === "true";
+
 const getErrorMessage = (err, fallback) =>
   err?.response?.data?.message || err?.message || fallback;
 
@@ -36,6 +38,35 @@ export const useBookingAdvancePayment = () => {
       const { order, razorpayKeyId } = response?.data || {};
       if (!order?.id || !razorpayKeyId) {
         throw new Error("Unable to start payment. Please try again.");
+      }
+
+      // VITE_RAZORPAY_ORDER_MOCK=true simulates a successful checkout so the
+      // full payment-first flow can be exercised without a live gateway. It
+      // MUST be removed in production.
+      if (IS_ORDER_MOCK) {
+        const mockPaymentId = `pay_mock_${order.id}_${Date.now()}`;
+        const mockSignature = `sig_mock_${order.id}`;
+        try {
+          const verifyResponse = await paymentApi.verifyPayment({
+            razorpay_order_id: order.id,
+            razorpay_payment_id: mockPaymentId,
+            razorpay_signature: mockSignature,
+            ...(bookingId ? { bookingId } : {}),
+          });
+          toast.success(
+            verifyResponse?.message || "Advance payment successful!"
+          );
+          onSuccess?.(verifyResponse?.data || {});
+        } catch (err) {
+          toast.error(
+            getErrorMessage(
+              err,
+              "Payment received but could not be verified. It will be confirmed shortly."
+            )
+          );
+          onDismiss?.();
+        }
+        return;
       }
 
       await loadRazorpayCheckoutScript();

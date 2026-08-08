@@ -114,7 +114,7 @@ function SearchableSelect({
               e.stopPropagation();
               clear();
             }}
-            className="absolute right-8 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted transition-colors hover:bg-gray-100 hover:text-text"
+            className="absolute right-8 top-1/2 -translate-y-1/2 rounded-full p-0.5 text-muted transition-colors hover:bg-surface-hover hover:text-text"
             aria-label={`Clear ${label}`}
           >
             <X size={14} />
@@ -130,7 +130,7 @@ function SearchableSelect({
         <ul
           role="listbox"
           ref={listRef}
-          className="absolute z-30 mt-1 max-h-60 w-full overflow-auto rounded-lg border border-gray-200 bg-surface shadow-lg"
+          className="dropdown-popup absolute z-30 mt-1 max-h-60 w-full overflow-auto"
         >
           {filtered.length === 0 ? (
             <li className="px-3.5 py-2.5 text-sm text-muted">

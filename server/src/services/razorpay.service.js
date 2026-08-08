@@ -5,6 +5,8 @@ import ApiError from "../utils/ApiError.js";
 const isOnboardingMock = () =>
   process.env.RAZORPAY_ONBOARDING_MOCK === "true";
 
+const isOrderMock = () => process.env.RAZORPAY_ORDER_MOCK === "true";
+
 // Initialize Razorpay client lazily to avoid crashing if env variables are not set during boot
 let razorpayInstance = null;
 
@@ -34,6 +36,39 @@ const getRazorpayInstance = () => {
  * @returns {Promise<object>} The created Razorpay Order object
  */
 export const createPaymentOrder = async ({ bookingId, amount, razorpayAccountId }) => {
+    // RAZORPAY_ORDER_MOCK=true short-circuits the real gateway call (the
+    // sandbox key used in automated tests does not support live orders) so the
+    // full payment-first flow can be exercised deterministically. It MUST be
+    // removed in production.
+    if (isOrderMock()) {
+        const amountInPaise = Math.round(amount * 100);
+        const uniqueSuffix = `${Date.now().toString(36)}${Math.random()
+            .toString(36)
+            .slice(2, 8)}`;
+        return {
+            id: `order_mock_${bookingId.toString().substring(0, 8)}_${uniqueSuffix}`,
+            amount: amountInPaise,
+            currency: "INR",
+            receipt: `rcpt_bk_${bookingId.toString().substring(0, 14)}`,
+            status: "created",
+            notes: {
+                bookingId: bookingId.toString(),
+            },
+            ...(razorpayAccountId && razorpayAccountId.trim() !== ""
+                ? {
+                      transfers: [
+                          {
+                              account: razorpayAccountId.trim(),
+                              amount: amountInPaise,
+                              currency: "INR",
+                              on_hold: false,
+                          },
+                      ],
+                  }
+                : {}),
+        };
+    }
+
     const razorpay = getRazorpayInstance();
 
     const amountInPaise = Math.round(amount * 100);
@@ -115,6 +150,13 @@ export const createRefundForPayment = async ({
  * @returns {boolean} True if signature matches, throws ApiError otherwise
  */
 export const verifyPaymentSignature = ({ razorpayOrderId, razorpayPaymentId, razorpaySignature }) => {
+    // RAZORPAY_ORDER_MOCK=true skips the HMAC check because the checkout is
+    // simulated (no real gateway signature exists). Test-only; MUST be removed
+    // in production.
+    if (isOrderMock()) {
+        return true;
+    }
+
     const keySecret = process.env.RAZORPAY_KEY_SECRET;
     if (!keySecret) {
         throw new ApiError(500, "Razorpay Secret Key is not configured.");

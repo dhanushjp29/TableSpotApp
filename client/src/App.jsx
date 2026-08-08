@@ -5,6 +5,7 @@ import { useDispatch } from "react-redux";
 
 import AppRoutes from "./routes/AppRoutes.jsx";
 import ErrorBoundary from "./components/common/ErrorBoundary.jsx";
+import { ThemeProvider } from "./context/ThemeContext.jsx";
 import { initializeAuth } from "./store/slices/authSlice.js";
 
 function RouteAwareErrorBoundary({ children }) {
@@ -22,36 +23,40 @@ function App() {
   }, [dispatch]);
 
   return (
-    <BrowserRouter>
-      <RouteAwareErrorBoundary>
-        <AppRoutes />
-      </RouteAwareErrorBoundary>
-      <Toaster
-        position="top-right"
-        containerStyle={{ top: 72 }}
-        toastOptions={{
-          duration: 4000,
-          style: {
-            background: "#fff",
-            color: "#171717",
-            borderRadius: "0.5rem",
-            fontSize: "0.875rem",
-          },
-          success: {
-            iconTheme: {
-              primary: "#16a34a",
-              secondary: "#fff",
+    <ThemeProvider>
+      <BrowserRouter>
+        <RouteAwareErrorBoundary>
+          <AppRoutes />
+        </RouteAwareErrorBoundary>
+        <Toaster
+          position="top-right"
+          containerStyle={{ top: 72 }}
+          toastOptions={{
+            duration: 4000,
+            style: {
+              background: "var(--color-surface)",
+              color: "var(--color-text)",
+              border: "1px solid var(--color-border)",
+              borderRadius: "0.875rem",
+              fontSize: "0.875rem",
+              boxShadow: "var(--shadow-md)",
             },
-          },
-          error: {
-            iconTheme: {
-              primary: "#dc2626",
-              secondary: "#fff",
+            success: {
+              iconTheme: {
+                primary: "#16a34a",
+                secondary: "var(--color-background)",
+              },
             },
-          },
-        }}
-      />
-    </BrowserRouter>
+            error: {
+              iconTheme: {
+                primary: "#dc2626",
+                secondary: "var(--color-background)",
+              },
+            },
+          }}
+        />
+      </BrowserRouter>
+    </ThemeProvider>
   );
 }
 

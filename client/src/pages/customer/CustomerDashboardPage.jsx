@@ -381,7 +381,7 @@ export default function CustomerDashboardPage() {
                   : null;
 
               return (
-                <Card key={booking._id} className="p-5 hover:shadow-lg transition-all border border-gray-100">
+                <Card key={booking._id} className="group p-5 transition-all border border-border hover:-translate-y-px hover:shadow-lg">
                   <div className="flex items-start justify-between">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2">
@@ -428,7 +428,7 @@ export default function CustomerDashboardPage() {
                     </Badge>
                   </div>
 
-                  <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
+                  <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
                     <span className="text-xs font-mono text-muted">
                       {booking.bookingCode || `ID: ${booking._id.slice(-6)}`}
                     </span>

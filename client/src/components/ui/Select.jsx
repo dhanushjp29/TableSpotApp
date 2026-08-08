@@ -157,7 +157,7 @@ function Select({
             width: popupWidth,
             maxHeight: Math.min(popupStyle.maxHeight, 256),
           }}
-          className="z-50 max-h-64 overflow-auto rounded-lg border border-gray-200 bg-surface py-1 shadow-lg"
+          className="dropdown-popup max-h-64"
         >
           {options.length === 0 && (
             <p className="px-3 py-2 text-sm text-muted">No options</p>
@@ -176,8 +176,8 @@ function Select({
                   isSelected
                     ? "bg-primary text-white"
                     : opt.disabled
-                      ? "cursor-not-allowed text-gray-300"
-                      : "text-text hover:bg-primary/10"
+                      ? "cursor-not-allowed text-muted opacity-50"
+                      : "text-text hover:bg-surface-hover"
                 }`}
               >
                 <span className="truncate">{opt.label}</span>

@@ -28,20 +28,20 @@ function FoodCard({
   return (
     <div
       onClick={handleSelect}
-      className={`card cursor-pointer overflow-hidden transition-all duration-200 hover:shadow-md ${
-        isSelected ? "ring-2 ring-primary" : ""
+      className={`group card card-interactive cursor-pointer overflow-hidden ${
+        isSelected ? "ring-2 ring-primary ring-offset-2 ring-offset-background" : ""
       }`}
     >
       <Link
         to={`/foods/${food._id}`}
         onClick={(e) => e.stopPropagation()}
-        className="relative block h-40 overflow-hidden bg-gray-100"
+        className="relative block h-40 overflow-hidden bg-surface-secondary"
       >
         {food.coverImage ? (
           <img
             src={food.coverImage}
             alt={food.foodName}
-            className="h-full w-full object-cover"
+            className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
             loading="lazy"
           />
         ) : (
@@ -49,8 +49,9 @@ function FoodCard({
             <UtensilsCrossed size={32} />
           </div>
         )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-transparent to-transparent" />
         {food.isRecommended && (
-          <span className="absolute left-2 top-2 badge bg-amber-500 text-white">
+          <span className="badge-warning absolute left-2 top-2">
             Recommended
           </span>
         )}
@@ -127,7 +128,7 @@ function FoodCard({
           <Link
             to={`/restaurants/${restaurant._id}`}
             onClick={(e) => e.stopPropagation()}
-            className="mt-3 block rounded-lg bg-primary px-3 py-2 text-center text-sm font-semibold text-white transition-colors hover:bg-primary-dark"
+            className="mt-3 block rounded-lg bg-primary px-3 py-2 text-center text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-px hover:bg-primary-dark hover:shadow-md"
           >
             Book a Food
           </Link>

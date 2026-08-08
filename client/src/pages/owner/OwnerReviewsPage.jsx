@@ -153,7 +153,7 @@ export default function OwnerReviewsPage() {
 
       {/* Summary Stat Card */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <Card className="p-5 flex items-center gap-4 bg-gradient-to-br from-amber-500/10 to-orange-500/5 border-amber-200">
+        <Card className="p-5 flex items-center gap-4 border border-amber-200/70 bg-gradient-to-br from-amber-500/10 to-orange-500/5 shadow-sm">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500 text-white font-bold text-2xl shadow-md">
             {avgRating}
           </div>
@@ -187,7 +187,7 @@ export default function OwnerReviewsPage() {
       </div>
 
       {/* Tabs and Filter */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-200 pb-3">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-border pb-3">
         <div className="flex items-center gap-3">
           <button
             onClick={() => setActiveTab("restaurant")}
@@ -221,7 +221,7 @@ export default function OwnerReviewsPage() {
               className={`px-2.5 py-1 text-xs font-semibold rounded-md border ${
                 starFilter === s
                   ? "bg-amber-500 text-white border-amber-500"
-                  : "bg-surface text-muted hover:bg-gray-100 border-gray-200"
+                : "border border-border bg-surface-secondary/70 text-muted hover:bg-surface-hover hover:text-text"
               }`}
             >
               {s === 0 ? "All" : `${s} ★`}
@@ -253,7 +253,7 @@ export default function OwnerReviewsPage() {
             const foodObj = typeof rev.foodId === "object" ? rev.foodId : null;
 
             return (
-              <Card key={rev._id} className="p-5 hover:shadow-md transition-shadow border border-gray-100">
+              <Card key={rev._id} className="p-5 transition-all hover:-translate-y-px hover:shadow-md border border-border">
                 <div className="flex items-start justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-bold">
@@ -279,7 +279,7 @@ export default function OwnerReviewsPage() {
                 )}
 
                 {rev.comment && (
-                  <p className="mt-3 text-sm text-text bg-gray-50/80 p-3 rounded-lg italic">
+                  <p className="mt-3 rounded-lg border border-border bg-surface-secondary/60 p-3 text-sm italic text-text">
                     "{rev.comment}"
                   </p>
                 )}
@@ -291,7 +291,7 @@ export default function OwnerReviewsPage() {
                         key={idx}
                         src={img}
                         alt={`Review image ${idx + 1}`}
-                        className="h-20 w-20 rounded-lg object-cover border border-gray-100"
+                        className="h-20 w-20 rounded-lg object-cover border border-border"
                         loading="lazy"
                       />
                     ))}
@@ -318,7 +318,7 @@ export default function OwnerReviewsPage() {
                 )}
 
                 {replyingTo === rev._id ? (
-                  <div className="mt-4 rounded-lg border border-gray-200 bg-gray-50/60 p-3">
+                  <div className="mt-4 rounded-lg border border-border bg-surface-secondary/60 p-3">
                     <label className="mb-1 block text-xs font-medium text-muted">
                       Reply to this review
                     </label>
@@ -332,7 +332,7 @@ export default function OwnerReviewsPage() {
                         }))
                       }
                       placeholder="Thank the guest and address their feedback..."
-                      className="w-full rounded-lg border border-gray-200 p-2 text-sm focus:border-primary focus:outline-none"
+                      className="w-full rounded-lg border border-border bg-surface p-2 text-sm focus:border-primary focus:outline-none"
                     />
                     <div className="mt-2 flex justify-end gap-2">
                       <Button

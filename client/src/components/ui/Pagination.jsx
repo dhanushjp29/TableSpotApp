@@ -13,6 +13,15 @@ function Pagination({ page = 1, totalPages = 1, onPageChange, className = "" }) 
     pages.push(i);
   }
 
+  const navBtnClass =
+    "inline-flex items-center justify-center rounded-lg border border-border bg-surface p-2 text-text transition-all duration-200 hover:-translate-y-px hover:bg-surface-hover hover:shadow-sm disabled:cursor-not-allowed disabled:opacity-40";
+  const pageBtnClass = (isActive) =>
+    `rounded-lg px-3 py-1.5 text-sm font-medium transition-all duration-200 ${
+      isActive
+        ? "bg-primary text-white shadow-sm"
+        : "text-text-secondary hover:bg-surface-hover hover:text-text"
+    }`;
+
   return (
     <nav
       className={`flex items-center justify-center gap-1 ${className}`}
@@ -21,7 +30,7 @@ function Pagination({ page = 1, totalPages = 1, onPageChange, className = "" }) 
       <button
         onClick={() => onPageChange?.(page - 1)}
         disabled={page <= 1}
-        className="p-2 rounded-lg border border-gray-200 bg-surface text-text hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        className={navBtnClass}
         aria-label="Previous page"
       >
         <ChevronLeft size={16} />
@@ -31,12 +40,12 @@ function Pagination({ page = 1, totalPages = 1, onPageChange, className = "" }) 
         <>
           <button
             onClick={() => onPageChange?.(1)}
-            className="px-3 py-1.5 rounded-lg text-sm text-text hover:bg-gray-50"
+            className={pageBtnClass(false)}
             aria-label="Page 1"
           >
             1
           </button>
-          {start > 2 && <span className="px-1 text-muted">…</span>}
+          {start > 2 && <span className="px-1 text-muted">...</span>}
         </>
       )}
 
@@ -44,11 +53,7 @@ function Pagination({ page = 1, totalPages = 1, onPageChange, className = "" }) 
         <button
           key={p}
           onClick={() => onPageChange?.(p)}
-          className={`px-3 py-1.5 rounded-lg text-sm ${
-            p === page
-              ? "bg-primary text-white font-semibold"
-              : "text-text hover:bg-gray-50"
-          }`}
+          className={pageBtnClass(p === page)}
           aria-label={`Page ${p}`}
           aria-current={p === page ? "page" : undefined}
         >
@@ -58,10 +63,10 @@ function Pagination({ page = 1, totalPages = 1, onPageChange, className = "" }) 
 
       {end < totalPages && (
         <>
-          {end < totalPages - 1 && <span className="px-1 text-muted">…</span>}
+          {end < totalPages - 1 && <span className="px-1 text-muted">...</span>}
           <button
             onClick={() => onPageChange?.(totalPages)}
-            className="px-3 py-1.5 rounded-lg text-sm text-text hover:bg-gray-50"
+            className={pageBtnClass(false)}
             aria-label={`Page ${totalPages}`}
           >
             {totalPages}
@@ -72,7 +77,7 @@ function Pagination({ page = 1, totalPages = 1, onPageChange, className = "" }) 
       <button
         onClick={() => onPageChange?.(page + 1)}
         disabled={page >= totalPages}
-        className="p-2 rounded-lg border border-gray-200 bg-surface text-text hover:bg-gray-50 disabled:opacity-40 disabled:cursor-not-allowed"
+        className={navBtnClass}
         aria-label="Next page"
       >
         <ChevronRight size={16} />
