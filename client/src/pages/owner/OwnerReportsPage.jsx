@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
   BarChart2,
@@ -20,8 +20,10 @@ import {
 } from "chart.js";
 import { Bar } from "react-chartjs-2";
 
+import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
 import { fetchBills } from "../../store/slices/billSlice.js";
 import { fetchBookings } from "../../store/slices/reservationSlice.js";
+import RestaurantFilter from "../../components/owner/RestaurantFilter.jsx";
 import Card from "../../components/ui/Card.jsx";
 import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 
@@ -38,17 +40,25 @@ ChartJS.register(
 
 export default function OwnerReportsPage() {
   const dispatch = useDispatch();
+  const user = useSelector((state) => state.auth.user);
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
   const bookings = useSelector((state) => state.reservation.bookings);
   const bookingLoading = useSelector((state) => state.reservation.isLoading);
   const bills = useSelector((state) => state.bill.bills);
   const billLoading = useSelector((state) => state.bill.isLoading);
   const isLoading = bookingLoading || billLoading;
+  const [selectedRestaurant, setSelectedRestaurant] = useState("");
 
   useEffect(() => {
-    Promise.all([dispatch(fetchBookings()), dispatch(fetchBills())]).catch(
-      () => {}
-    );
-  }, [dispatch]);
+    const userId = user?._id || user?.id;
+    if (userId) {
+      dispatch(fetchRestaurants({ ownerId: userId, isActive: true })).catch(() => {});
+    }
+    Promise.all([
+      dispatch(fetchBookings({ ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}) })),
+      dispatch(fetchBills({ ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}) })),
+    ]).catch(() => {});
+  }, [dispatch, selectedRestaurant, user?._id, user?.id]);
 
   const totalRevenue = useMemo(
     () => bills.reduce((acc, b) => acc + (b.grandTotal || b.subTotal || 0), 0),
@@ -110,6 +120,12 @@ export default function OwnerReportsPage() {
         </h1>
         <p className="text-sm text-muted">Insights into your restaurant reservations, revenue, and customer traffic</p>
       </div>
+
+      <RestaurantFilter
+        restaurants={restaurants}
+        value={selectedRestaurant}
+        onChange={setSelectedRestaurant}
+      />
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-4">

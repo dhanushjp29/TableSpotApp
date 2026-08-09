@@ -62,6 +62,67 @@ const seatSchema = new mongoose.Schema(
   { _id: true }
 );
 
+const bookingHoldSchema = new mongoose.Schema(
+  {
+    holdToken: {
+      type: String,
+      required: true,
+      trim: true,
+    },
+
+    bookingDateTime: {
+      type: Date,
+      required: true,
+    },
+
+    bookingEndTime: {
+      type: Date,
+      required: true,
+    },
+
+    seatSelectionMode: {
+      type: String,
+      enum: SEAT_SELECTION_MODE_VALUES,
+      required: true,
+    },
+
+    seatIds: {
+      type: [mongoose.Schema.Types.ObjectId],
+      ref: "RestaurantTable.seats",
+      default: [],
+    },
+
+    fullTable: {
+      type: Boolean,
+      default: false,
+    },
+
+    customerId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+
+    paymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+      default: null,
+    },
+
+    bookingId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Booking",
+      default: null,
+    },
+
+    expiresAt: {
+      type: Date,
+      required: true,
+    },
+  },
+  { _id: false }
+);
+
 const restaurantTableSchema = new mongoose.Schema(
   {
     tableCode: {
@@ -109,6 +170,11 @@ const restaurantTableSchema = new mongoose.Schema(
 
     seats: {
       type: [seatSchema],
+      default: [],
+    },
+
+    bookingHolds: {
+      type: [bookingHoldSchema],
       default: [],
     },
 

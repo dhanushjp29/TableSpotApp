@@ -16,6 +16,7 @@ import Card from "../../components/ui/Card.jsx";
 import Badge from "../../components/ui/Badge.jsx";
 import Rating from "../../components/ui/Rating.jsx";
 import Button from "../../components/ui/Button.jsx";
+import RestaurantFilter from "../../components/owner/RestaurantFilter.jsx";
 import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
@@ -37,6 +38,7 @@ export default function OwnerReviewsPage() {
   const [replyingTo, setReplyingTo] = useState(null);
   const [replyDraft, setReplyDraft] = useState({});
   const [isReplying, setIsReplying] = useState(false);
+  const [selectedRestaurant, setSelectedRestaurant] = useState("");
 
   const restaurant = restaurants[0] || null;
   const isLoading = reviewLoading || restaurantLoading;
@@ -46,15 +48,17 @@ export default function OwnerReviewsPage() {
     let allRestaurantReviews = [];
     let allFoodReviews = [];
 
-    const restRes = await dispatch(
-      fetchRestaurants({ ownerId: user?.id, isActive: true })
-    );
+    const restRes = await dispatch(fetchRestaurants({ ownerId: user?.id, isActive: true }));
     const ownedRestaurants =
       restRes?.data?.restaurants ||
       store.getState().restaurant.restaurants ||
       [];
 
-    for (const r of ownedRestaurants) {
+    const targets = selectedRestaurant
+      ? ownedRestaurants.filter((r) => String(r._id) === String(selectedRestaurant))
+      : ownedRestaurants;
+
+    for (const r of targets) {
       const [rRevRes, fRevRes] = await Promise.all([
         dispatch(fetchRestaurantReviewsByRestaurant(r._id, { limit: 100 })),
         dispatch(fetchFoodReviewsByRestaurant(r._id, { limit: 100 })),
@@ -97,7 +101,7 @@ export default function OwnerReviewsPage() {
       isMounted = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [selectedRestaurant]);
 
   const currentList = activeTab === "restaurant" ? restaurantReviews : foodReviews;
 
@@ -141,6 +145,9 @@ export default function OwnerReviewsPage() {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
+      <div className="max-w-xs">
+        <RestaurantFilter restaurants={restaurants} value={selectedRestaurant} onChange={setSelectedRestaurant} />
+      </div>
       <div>
         <h1 className="text-2xl font-bold text-text flex items-center gap-2">
           <Star className="text-amber-500 fill-amber-500" size={24} />

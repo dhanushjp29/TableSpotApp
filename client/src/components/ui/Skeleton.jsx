@@ -22,12 +22,17 @@ export function SkeletonText({ lines = 3, className = "" }) {
 
 export function SkeletonCard({ className = "" }) {
   return (
-    <div className={`card-theme space-y-3 p-5 ${className}`}>
-      <Skeleton className="h-40 w-full rounded-xl" />
-      <Skeleton className="h-4 w-3/4" />
-      <Skeleton className="h-3 w-1/2" />
-      <SkeletonText lines={2} />
-      <Skeleton className="h-9 w-full rounded-xl" />
+    <div className={`card-theme space-y-4 p-5 ${className}`}>
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-2"><Skeleton className="h-5 w-40" /><Skeleton className="h-3 w-24" /></div>
+        <Skeleton className="h-6 w-20 rounded-full" />
+      </div>
+      <div className="grid gap-2 sm:grid-cols-3">
+        <Skeleton className="h-9 w-full rounded-xl" />
+        <Skeleton className="h-9 w-full rounded-xl" />
+        <Skeleton className="h-9 w-full rounded-xl" />
+      </div>
+      <Skeleton className="h-8 w-28 rounded-lg" />
     </div>
   );
 }

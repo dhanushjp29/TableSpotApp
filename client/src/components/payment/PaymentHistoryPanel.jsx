@@ -16,7 +16,9 @@ import {
   Wallet,
 } from "lucide-react";
 
+import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
 import { fetchPaymentHistory } from "../../store/slices/paymentSlice.js";
+import RestaurantFilter from "../owner/RestaurantFilter.jsx";
 import Card from "../ui/Card.jsx";
 import Badge from "../ui/Badge.jsx";
 import Select from "../ui/Select.jsx";
@@ -181,9 +183,10 @@ function TransactionRow({ transaction, role }) {
   );
 }
 
-function FilterSelect({ label, value, options, onChange, allLabel }) {
+function FilterSelect({ label, value, options, onChange, allLabel, className }) {
   return (
     <Select
+      className={className}
       label={label}
       value={value}
       onChange={(e) => onChange(e.target.value)}
@@ -200,6 +203,8 @@ function FilterSelect({ label, value, options, onChange, allLabel }) {
 
 function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
   const dispatch = useDispatch();
+  const user = useSelector((state) => state.auth.user);
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
   const transactions = useSelector((state) => state.payment.transactions);
   const summary = useSelector((state) => state.payment.summary);
   const isLoading = useSelector((state) => state.payment.isLoading);
@@ -209,15 +214,27 @@ function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
   const [purpose, setPurpose] = useState("");
   const [method, setMethod] = useState("");
   const [status, setStatus] = useState("");
+  const [selectedRestaurant, setSelectedRestaurant] = useState("");
 
   const fetchHistory = async () => {
-    await dispatch(fetchPaymentHistory()).catch(() => {});
+    await dispatch(
+      fetchPaymentHistory({
+        ...(role === "owner" && selectedRestaurant ? { restaurantId: selectedRestaurant } : {}),
+      })
+    ).catch(() => {});
   };
 
   useEffect(() => {
     fetchHistory();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch]);
+  }, [dispatch, selectedRestaurant, role]);
+
+  useEffect(() => {
+    if (role !== "owner") return;
+    const userId = user?._id || user?.id;
+    if (!userId) return;
+    dispatch(fetchRestaurants({ ownerId: userId, isActive: true })).catch(() => {});
+  }, [dispatch, role, user?._id, user?.id]);
 
   const filteredTransactions = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -310,8 +327,8 @@ function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
       </div>
 
       {/* Filters */}
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-        <div className="relative flex-1">
+      <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-end">
+        <div className="relative w-full sm:w-90">
           <Search
             size={16}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-muted"
@@ -325,29 +342,38 @@ function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
             className="input-field w-full pl-9"
           />
         </div>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <FilterSelect
-            label="Purpose"
-            value={purpose}
-            options={PURPOSE_OPTIONS}
-            onChange={setPurpose}
-            allLabel="All purposes"
+        {role === "owner" && (
+          <RestaurantFilter
+            className="w-full sm:w-52"
+            restaurants={restaurants}
+            value={selectedRestaurant}
+            onChange={setSelectedRestaurant}
           />
-          <FilterSelect
-            label="Method"
-            value={method}
-            options={METHOD_OPTIONS}
-            onChange={setMethod}
-            allLabel="All methods"
-          />
-          <FilterSelect
-            label="Status"
-            value={status}
-            options={STATUS_OPTIONS}
-            onChange={setStatus}
-            allLabel="All statuses"
-          />
-        </div>
+        )}
+        <FilterSelect
+          className="w-full sm:w-40"
+          label="Purpose"
+          value={purpose}
+          options={PURPOSE_OPTIONS}
+          onChange={setPurpose}
+          allLabel="All purposes"
+        />
+        <FilterSelect
+          className="w-full sm:w-40"
+          label="Method"
+          value={method}
+          options={METHOD_OPTIONS}
+          onChange={setMethod}
+          allLabel="All methods"
+        />
+        <FilterSelect
+          className="w-full sm:w-40"
+          label="Status"
+          value={status}
+          options={STATUS_OPTIONS}
+          onChange={setStatus}
+          allLabel="All statuses"
+        />
       </div>
 
       {/* Transaction list */}

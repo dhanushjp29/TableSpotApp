@@ -1,4 +1,5 @@
 import { Children, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Check, ChevronDown } from "lucide-react";
 
 import { usePopupPosition } from "./usePopupPosition.js";
@@ -26,19 +27,25 @@ function Select({
   const [popupWidth, setPopupWidth] = useState(280);
   const { triggerRef, popupRef, popupStyle } = usePopupPosition(open, popupWidth, 320);
 
-  const options = Children.toArray(children)
-    .filter(
-      (child) =>
-        child &&
-        typeof child === "object" &&
-        child.type === "option"
-    )
-    .map((child, index) => ({
-      index,
-      value: child.props?.value ?? "",
-      label: child.props?.children,
-      disabled: Boolean(child.props?.disabled),
-    }));
+  const flattenOptions = (nodes) => {
+    const out = [];
+    for (const child of Children.toArray(nodes)) {
+      if (!child || typeof child !== "object") continue;
+      if (child.type === "option") {
+        out.push(child);
+      } else if (child.props?.children != null) {
+        out.push(...flattenOptions(child.props.children));
+      }
+    }
+    return out;
+  };
+
+  const options = flattenOptions(children).map((child, index) => ({
+    index,
+    value: child.props?.value ?? "",
+    label: child.props?.children,
+    disabled: Boolean(child.props?.disabled),
+  }));
 
   if (prevValue !== value) {
     setPrevValue(value);
@@ -64,13 +71,18 @@ function Select({
   useEffect(() => {
     if (!open) return;
     const handle = (e) => {
-      if (rootRef.current && !rootRef.current.contains(e.target)) {
+      if (
+        rootRef.current &&
+        !rootRef.current.contains(e.target) &&
+        popupRef.current &&
+        !popupRef.current.contains(e.target)
+      ) {
         setOpen(false);
       }
     };
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
+  }, [open, popupRef]);
 
   const selectedOption =
     displayValue === ""
@@ -147,46 +159,48 @@ function Select({
         />
       </button>
 
-      {open && (
-        <div
-          ref={popupRef}
-          role="listbox"
-          style={{
-            position: "fixed",
-            ...popupStyle,
-            width: popupWidth,
-            maxHeight: Math.min(popupStyle.maxHeight, 256),
-          }}
-          className="dropdown-popup max-h-64"
-        >
-          {options.length === 0 && (
-            <p className="px-3 py-2 text-sm text-muted">No options</p>
-          )}
-          {options.map((opt) => {
-            const isSelected = String(opt.value) === String(displayValue);
-            return (
-              <button
-                key={`${opt.value}-${opt.index}`}
-                type="button"
-                role="option"
-                aria-selected={isSelected}
-                disabled={opt.disabled}
-                onClick={() => emit(opt)}
-                className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
-                  isSelected
-                    ? "bg-primary text-white"
-                    : opt.disabled
-                      ? "cursor-not-allowed text-muted opacity-50"
-                      : "text-text hover:bg-surface-hover"
-                }`}
-              >
-                <span className="truncate">{opt.label}</span>
-                {isSelected && <Check size={16} className="shrink-0" />}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {open &&
+        createPortal(
+          <div
+            ref={popupRef}
+            role="listbox"
+            style={{
+              position: "fixed",
+              ...popupStyle,
+              width: popupWidth,
+              maxHeight: Math.min(popupStyle.maxHeight, 256),
+            }}
+            className="dropdown-popup max-h-64"
+          >
+            {options.length === 0 && (
+              <p className="px-3 py-2 text-sm text-muted">No options</p>
+            )}
+            {options.map((opt) => {
+              const isSelected = String(opt.value) === String(displayValue);
+              return (
+                <button
+                  key={`${opt.value}-${opt.index}`}
+                  type="button"
+                  role="option"
+                  aria-selected={isSelected}
+                  disabled={opt.disabled}
+                  onClick={() => emit(opt)}
+                  className={`flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-sm transition-colors ${
+                    isSelected
+                      ? "bg-primary text-white"
+                      : opt.disabled
+                        ? "cursor-not-allowed text-muted opacity-50"
+                        : "text-text hover:bg-surface-hover"
+                  }`}
+                >
+                  <span className="truncate">{opt.label}</span>
+                  {isSelected && <Check size={16} className="shrink-0" />}
+                </button>
+              );
+            })}
+          </div>,
+          document.body
+        )}
 
       {error && (
         <p className="input-error" role="alert">

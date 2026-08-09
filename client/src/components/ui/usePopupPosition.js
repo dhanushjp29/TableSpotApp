@@ -18,10 +18,15 @@ export function usePopupPosition(open, popupWidth = 280, popupHeight = 320) {
       let left = rect.left;
       if (left + popupWidth > vw - 8) left = Math.max(8, vw - popupWidth - 8);
 
-      const top = rect.bottom + 4;
-      const maxHeight = Math.max(80, vh - top - 8);
+      const below = vh - (rect.bottom + 4);
+      if (below >= 120 || rect.top < 120) {
+        setStyle({ top: rect.bottom + 4, left, maxHeight: Math.max(80, below - 4) });
+        return;
+      }
 
-      setStyle({ top, left, maxHeight });
+      const spaceAbove = rect.top - 8;
+      const maxHeight = Math.min(popupHeight, spaceAbove);
+      setStyle({ top: rect.top - maxHeight - 4, left, maxHeight });
     };
 
     compute();

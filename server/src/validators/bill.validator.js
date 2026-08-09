@@ -13,7 +13,7 @@ import {
 const orderedItemSchema = z
   .object({
     foodId: mongoIdSchema,
-    foodName: z.string().trim().min(1).max(150),
+    foodName: z.string().trim().min(1).max(150).optional().default(""),
     variantName: z.string().trim().min(1).optional().default("Regular"),
     quantity: z
       .number({
@@ -64,7 +64,9 @@ const paymentHistorySchema = z
 
 const discountSchema = z
   .object({
-    type: z.enum(DISCOUNT_TYPE_VALUES).optional(),
+    type: z
+      .union([z.enum(DISCOUNT_TYPE_VALUES), z.enum(["amount", "percentage"])])
+      .optional(),
     value: z
       .number({
         invalid_type_error: "Discount value must be a number.",
@@ -107,7 +109,13 @@ const paymentSummarySchema = z
 
 const billCoreSchema = z
   .object({
-    bookingId: mongoIdSchema,
+    bookingId: mongoIdSchema.optional(),
+    billType: z.enum(["ONLINE", "WALK_IN"]).optional().default("ONLINE"),
+    restaurantId: mongoIdSchema.optional(),
+    tableId: mongoIdSchema.optional(),
+    customerName: z.string().trim().max(150).optional().default(""),
+    customerPhone: z.string().trim().max(30).optional().default(""),
+    customerEmail: z.string().trim().email().optional().or(z.literal("")).default(""),
     orderedItems: z.array(orderedItemSchema),
     subTotal: z
       .number({
@@ -121,6 +129,13 @@ const billCoreSchema = z
         invalid_type_error: "Tax amount must be a number.",
       })
       .min(0)
+      .optional(),
+    taxPercentage: z
+      .number({
+        invalid_type_error: "Tax percentage must be a number.",
+      })
+      .min(0)
+      .max(100)
       .optional(),
     serviceCharge: z
       .number({

@@ -111,6 +111,12 @@ const paymentSchema = new mongoose.Schema(
             default: null,
         },
 
+        reservationHoldToken: {
+            type: String,
+            default: null,
+            trim: true,
+        },
+
         customerId: {
             type: mongoose.Schema.Types.ObjectId,
             ref: "User",
@@ -220,6 +226,7 @@ paymentSchema.index({ ownerId: 1, createdAt: -1 });
 paymentSchema.index({ restaurantId: 1, createdAt: -1 });
 
 paymentSchema.index({ razorpayOrderId: 1, paymentStatus: 1 });
+paymentSchema.index({ reservationHoldToken: 1 }, { sparse: true });
 
 const Payment = mongoose.model("Payment", paymentSchema);
 

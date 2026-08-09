@@ -4,12 +4,16 @@ import {
   Calendar,
   Users,
   Search,
-  Utensils,
   Filter,
   HandCoins,
   Banknote,
   UserX,
   ReceiptText,
+  CheckCircle2,
+  CircleDollarSign,
+  RotateCcw,
+  Building2,
+  Armchair,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -29,11 +33,13 @@ import Card from "../../components/ui/Card.jsx";
 import Badge from "../../components/ui/Badge.jsx";
 import Button from "../../components/ui/Button.jsx";
 import Modal from "../../components/ui/Modal.jsx";
-import { SkeletonText } from "../../components/ui/Skeleton.jsx";
+import { SkeletonCard } from "../../components/ui/Skeleton.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
 import { formatDate, formatDateTime, formatTime } from "../../utils/formatDate.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
+import RestaurantFilter from "../../components/owner/RestaurantFilter.jsx";
+import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
 
 const REFUND_BADGE = {
   REFUND_PENDING: { label: "Refund pending", variant: "warning" },
@@ -48,6 +54,13 @@ const REFUND_BADGE = {
   REFUND_DISPUTED: { label: "Refund disputed", variant: "error" },
 };
 
+const SUMMARY_CARDS = [
+  { key: "total", label: "Total reservations", icon: Calendar, tone: "text-primary bg-primary/10" },
+  { key: "confirmed", label: "Confirmed", icon: CheckCircle2, tone: "text-emerald-600 bg-emerald-500/10" },
+  { key: "completed", label: "Completed", icon: CircleDollarSign, tone: "text-sky-600 bg-sky-500/10" },
+  { key: "refunds", label: "Refunds linked", icon: RotateCcw, tone: "text-amber-600 bg-amber-500/10" },
+];
+
 export default function OwnerReservationsPage() {
   const { user } = useAuth();
   const dispatch = useDispatch();
@@ -56,12 +69,14 @@ export default function OwnerReservationsPage() {
   const loadError = useSelector((state) => state.reservation.error);
   const refundPreview = useSelector((state) => state.refund.currentRefund);
   const refundPreviewLoading = useSelector((state) => state.refund.isLoading);
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [search, setSearch] = useState("");
   const [actionDialog, setActionDialog] = useState(null);
   const [actionNotes, setActionNotes] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
   const [actionRefundMethod, setActionRefundMethod] = useState(REFUND_METHOD.CASH);
+  const [selectedRestaurant, setSelectedRestaurant] = useState("");
 
   // No-Show requires mandatory remarks — captured in a Modal, never a
   // window.prompt.
@@ -77,17 +92,20 @@ export default function OwnerReservationsPage() {
   const [now, setNow] = useState(0);
 
   const fetchReservations = () => {
-    dispatch(fetchBookings());
+    dispatch(fetchBookings({
+      ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}),
+    }));
   };
 
   useEffect(() => {
-    dispatch(fetchBookings());
+    dispatch(fetchRestaurants({ ownerId: user?.id, isActive: true })).catch(() => {});
+    fetchReservations();
 
-    const unsubscribe = subscribeToBookingUpdates("all", () => {
-      dispatch(fetchBookings());
+    const unsubscribe = subscribeToBookingUpdates(selectedRestaurant || "all", () => {
+      fetchReservations();
     });
     return unsubscribe;
-  }, [dispatch]);
+  }, [dispatch, selectedRestaurant]);
 
   useEffect(() => {
     const update = () => setNow(Date.now());
@@ -244,24 +262,26 @@ export default function OwnerReservationsPage() {
           <p className="text-sm text-muted">View and manage incoming customer table bookings</p>
         </div>
       </div>
+      <div className="max-w-xs">
+        <RestaurantFilter
+          restaurants={restaurants}
+          value={selectedRestaurant}
+          onChange={setSelectedRestaurant}
+        />
+      </div>
 
       <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-        <Card className="p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Total reservations</p>
-          <p className="mt-2 text-2xl font-bold text-text">{reservationStats.total}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Confirmed</p>
-          <p className="mt-2 text-2xl font-bold text-text">{reservationStats.confirmed}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Completed</p>
-          <p className="mt-2 text-2xl font-bold text-text">{reservationStats.completed}</p>
-        </Card>
-        <Card className="p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-muted">Refund linked</p>
-          <p className="mt-2 text-2xl font-bold text-text">{reservationStats.refunds}</p>
-        </Card>
+        {SUMMARY_CARDS.map(({ key, label, icon: Icon, tone }) => (
+          <Card key={key} className="group overflow-hidden p-4 transition duration-200 hover:-translate-y-0.5 hover:shadow-md">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-muted">{label}</p>
+                <p className="mt-2 text-3xl font-bold tracking-tight text-text">{reservationStats[key]}</p>
+              </div>
+              <div className={`rounded-xl p-2.5 ${tone}`}><Icon size={20} /></div>
+            </div>
+          </Card>
+        ))}
       </div>
 
       {/* Filters & Search */}
@@ -299,9 +319,7 @@ export default function OwnerReservationsPage() {
       {isLoading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <Card key={i} className="p-5">
-              <SkeletonText lines={3} />
-            </Card>
+            <SkeletonCard key={i} />
           ))}
         </div>
       ) : loadError ? (
@@ -325,12 +343,12 @@ export default function OwnerReservationsPage() {
               : 0;
 
             return (
-              <Card key={b._id} className="p-5 transition-all hover:-translate-y-px hover:shadow-md border border-border">
+              <Card key={b._id} className="overflow-hidden p-5 transition-all hover:-translate-y-px hover:shadow-md border border-border">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                   <div className="space-y-2">
                     <div className="flex items-center gap-3">
                       <h3 className="text-lg font-bold text-text">
-                        {customer?.name || "Guest Customer"}
+                        {customer?.fullName || customer?.name || "Guest Customer"}
                       </h3>
                       {b.bookingCode && (
                         <span className="rounded bg-surface-secondary/70 px-1.5 py-0.5 font-mono text-[10px] font-semibold text-muted">
@@ -359,20 +377,25 @@ export default function OwnerReservationsPage() {
                         )}
                     </div>
 
-                    <div className="flex flex-wrap items-center gap-4 text-xs sm:text-sm text-muted">
+                    <div className="flex items-center gap-1.5 text-xs font-semibold text-primary">
+                      <Building2 size={14} />
+                      <span>{b.restaurantId?.restaurantName || "Restaurant"}</span>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-2 text-xs sm:text-sm text-muted">
                       {bDate && (
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1.5 rounded-lg bg-surface-secondary/60 px-2.5 py-1.5">
                           <Calendar size={15} className="text-primary" />
                           <span>{formatDate(bDate)} at {formatTime(bDate)}</span>
                         </div>
                       )}
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 rounded-lg bg-surface-secondary/60 px-2.5 py-1.5">
                         <Users size={15} className="text-primary" />
                         <span>{b.numberOfGuests} Guests</span>
                       </div>
                       {bookingTableDocs.length > 0 && (
-                        <div className="flex items-center gap-1.5 font-medium text-text">
-                          <Utensils size={15} className="text-primary" />
+                        <div className="flex items-center gap-1.5 rounded-lg bg-surface-secondary/60 px-2.5 py-1.5 font-medium text-text">
+                          <Armchair size={15} className="text-primary" />
                           <span>
                             {bookingTableDocs
                               .map(
@@ -383,11 +406,11 @@ export default function OwnerReservationsPage() {
                           </span>
                         </div>
                       )}
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 rounded-lg bg-surface-secondary/60 px-2.5 py-1.5">
                         <ReceiptText size={15} className="text-primary" />
                         <span>{b.bookingType || "Online"} booking</span>
                       </div>
-                      <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 rounded-lg bg-surface-secondary/60 px-2.5 py-1.5">
                         <span className="rounded-full border border-border bg-surface-secondary/70 px-2 py-0.5 text-[11px] font-semibold text-muted">
                           {b.paymentStatus || "Pending"}
                         </span>

@@ -61,5 +61,16 @@ export const getOwnedRestaurantIds = async (req) => {
         return restaurants.map((r) => r._id);
     }
 
-    throw new ApiError(403, "You do not have permission to access this resource.");
+  throw new ApiError(403, "You do not have permission to access this resource.");
+};
+
+export const assertRestaurantOwnedByUser = async (req, restaurantId) => {
+    if (req.user.role === USER_ROLE.ADMIN) return null;
+
+    const restaurant = await Restaurant.findById(restaurantId).select("ownerId");
+    if (!restaurant || String(restaurant.ownerId) !== String(req.user._id)) {
+        throw new ApiError(403, "You do not have permission for this restaurant.");
+    }
+
+    return restaurant;
 };

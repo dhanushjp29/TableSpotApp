@@ -95,9 +95,9 @@ function PreOrderFoods({ foods = [], selection = {}, onChange }) {
           return (
             <div
               key={food._id}
-              className="flex gap-3 rounded-lg border border-gray-100 p-3"
+              className="flex gap-3 rounded-2xl border border-border bg-surface/90 p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
             >
-              <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-lg bg-gray-100">
+              <div className="h-16 w-16 flex-shrink-0 overflow-hidden rounded-xl border border-border bg-surface-secondary/70">
                 {food.coverImage && (
                   <img
                     src={food.coverImage}
@@ -170,7 +170,7 @@ function PreOrderFoods({ foods = [], selection = {}, onChange }) {
       </div>
 
       {totalCount > 0 && (
-        <div className="flex items-center justify-between rounded-lg border border-primary/20 bg-primary/5 px-3 py-2">
+        <div className="flex items-center justify-between rounded-2xl border border-primary/20 bg-primary/5 px-4 py-3 shadow-sm">
           <p className="text-sm font-medium text-text">
             {totalCount} item{totalCount > 1 ? "s" : ""} selected
           </p>

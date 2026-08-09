@@ -125,12 +125,12 @@ function TableSelector({
             return (
               <div
                 key={table._id}
-                className={`rounded-lg border-2 p-3 transition-all ${
+                className={`rounded-2xl border p-4 transition-all ${
                   isBlocked
-                    ? "border-gray-200 opacity-60"
+                    ? "border-border/60 bg-surface-secondary/40 opacity-60"
                     : isActive
-                      ? "border-primary bg-primary/5"
-                      : "border-gray-200"
+                      ? "border-primary/40 bg-primary/5 shadow-sm"
+                      : "border-border bg-surface/90 hover:-translate-y-0.5 hover:shadow-sm"
                 }`}
               >
                 <div className="flex items-center justify-between">
@@ -172,16 +172,16 @@ function TableSelector({
                 </div>
 
                 {isBlocked ? (
-                  <p className="mt-2 text-center text-xs font-medium text-error">
+                  <p className="mt-3 text-center text-xs font-medium text-error">
                     Unavailable — {item.blockReason || "Not reservable"}
                   </p>
                 ) : isActive ? (
-                  <p className="mt-2 text-center text-xs font-medium text-primary">
+                  <p className="mt-3 text-center text-xs font-medium text-primary">
                     {selectedForTable.length} of {guestCount} guest(s) seated
                     here
                   </p>
                 ) : (
-                  <p className="mt-2 text-center text-xs text-muted">
+                  <p className="mt-3 text-center text-xs text-muted">
                     Tap seats to select. You can pick from any table.
                   </p>
                 )}
@@ -197,12 +197,12 @@ function TableSelector({
             <div
               key={table._id}
               onClick={() => available && onToggleFullTable?.(table._id)}
-              className={`relative cursor-pointer rounded-lg border-2 p-3 transition-all ${
+              className={`relative cursor-pointer rounded-2xl border p-4 transition-all ${
                 !available
-                  ? "cursor-not-allowed border-gray-200 opacity-50"
+                  ? "cursor-not-allowed border-border/60 bg-surface-secondary/40 opacity-50"
                   : isSelected
-                    ? "border-primary bg-primary/5"
-                    : "border-gray-200 hover:border-primary hover:bg-gray-50"
+                    ? "border-primary/40 bg-primary/5 shadow-sm"
+                    : "border-border bg-surface/90 hover:-translate-y-0.5 hover:border-primary/40 hover:shadow-sm"
               }`}
             >
               <div className="flex items-center justify-between">
@@ -212,7 +212,7 @@ function TableSelector({
                       {tableName(table)}
                     </span>
                     {table.tableCode && (
-                      <span className="rounded bg-gray-100 px-1 py-0.5 font-mono text-[9px] font-semibold text-muted">
+                      <span className="rounded-md border border-border bg-surface-secondary/70 px-1.5 py-0.5 font-mono text-[9px] font-semibold text-muted">
                         {table.tableCode}
                       </span>
                     )}
@@ -237,19 +237,19 @@ function TableSelector({
                 </Badge>
               </div>
               {isSelected && (
-                <div className="mt-1.5">
+                <div className="mt-2">
                   <Badge variant="primary" className="text-xs">
                     Selected
                   </Badge>
                 </div>
               )}
               {!isSelected && available && (
-                <p className="mt-2 text-center text-xs text-muted">
+                <p className="mt-3 text-center text-xs text-muted">
                   Book this whole table. Combine with other tables if needed.
                 </p>
               )}
               {!isSelected && !available && (
-                <p className="mt-2 text-center text-xs text-muted">
+                <p className="mt-3 text-center text-xs text-muted">
                   {item.blocked
                     ? `Unavailable — ${item.blockReason || "Not reservable"}`
                     : "Not available at the selected time."}

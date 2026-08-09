@@ -106,8 +106,39 @@ const billSchema = new mongoose.Schema(
     bookingId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Booking",
-      required: true,
+      default: null,
       unique: true,
+      sparse: true,
+    },
+
+    billType: {
+      type: String,
+      enum: ["ONLINE", "WALK_IN"],
+      default: "ONLINE",
+    },
+
+    tableId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "RestaurantTable",
+      default: null,
+    },
+
+    customerName: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    customerPhone: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    customerEmail: {
+      type: String,
+      default: "",
+      trim: true,
     },
 
     restaurantId: {
@@ -145,6 +176,13 @@ const billSchema = new mongoose.Schema(
       type: Number,
       default: 0,
       min: 0,
+    },
+
+    taxPercentage: {
+      type: Number,
+      default: 0,
+      min: 0,
+      max: 100,
     },
 
     gstRate: {
@@ -295,6 +333,11 @@ const billSchema = new mongoose.Schema(
   {
     timestamps: true,
   }
+);
+
+billSchema.index(
+  { bookingId: 1 },
+  { unique: true, partialFilterExpression: { bookingId: { $type: "objectId" } } }
 );
 
 billSchema.index({ billStatus: 1, bookingId: 1 });

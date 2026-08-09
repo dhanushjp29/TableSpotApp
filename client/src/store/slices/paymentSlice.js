@@ -28,11 +28,11 @@ const paymentSlice = createSlice({
 
 export const { setLoading, setError, setHistory } = paymentSlice.actions;
 
-export const fetchPaymentHistory = () => async (dispatch) => {
+export const fetchPaymentHistory = (params = {}) => async (dispatch) => {
   dispatch(setLoading(true));
   dispatch(setError(null));
   try {
-    const response = await paymentApi.getHistory();
+    const response = await paymentApi.getHistory(params);
     const payload = response?.data?.data || response?.data || {};
     dispatch(
       setHistory({

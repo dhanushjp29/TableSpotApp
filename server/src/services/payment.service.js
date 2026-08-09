@@ -49,7 +49,25 @@ export const handlePaymentCaptured = async ({
   }
 
   if (paymentRecord.paymentStatus === PAYMENT_TRANSACTION_STATUS.CAPTURED) {
-    return { duplicate: true, paymentRecord };
+    let booking = paymentRecord.bookingId
+      ? await Booking.findById(paymentRecord.bookingId)
+      : null;
+
+    if (!booking && paymentRecord.bookingData) {
+      booking = await Booking.findOne({
+        sourcePaymentId: paymentRecord._id,
+        isDeleted: false,
+      });
+    }
+
+    if (booking) {
+      if (!paymentRecord.bookingId) {
+        paymentRecord.bookingId = booking._id;
+        await paymentRecord.save();
+      }
+
+      return { duplicate: true, paymentRecord };
+    }
   }
 
   paymentRecord.razorpayPaymentId = razorpayPaymentId;
@@ -161,6 +179,13 @@ export const handlePaymentFailed = async ({ razorpayOrderId, razorpayPaymentId =
   paymentRecord.paymentStatus = PAYMENT_TRANSACTION_STATUS.FAILED;
   await paymentRecord.save();
 
+  if (paymentRecord.reservationHoldToken && paymentRecord.bookingData) {
+    await releaseBookingHolds({
+      tableIds: (paymentRecord.bookingData.tables || []).map((entry) => entry.tableId),
+      holdToken: paymentRecord.reservationHoldToken,
+    });
+  }
+
   try {
     await createAuditLog({
       eventType: "PAYMENT_FAILED",
@@ -184,3 +209,4 @@ export const handlePaymentFailed = async ({ razorpayOrderId, razorpayPaymentId =
 
   return paymentRecord;
 };
+import { releaseBookingHolds } from "./bookingHold.service.js";

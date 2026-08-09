@@ -1,4 +1,5 @@
 import Booking from "../models/Booking.js";
+import mongoose from "mongoose";
 import Restaurant from "../models/Restaurant.js";
 import Bill from "../models/Bill.js";
 import Payment from "../models/Payment.js";
@@ -10,6 +11,10 @@ import {
   validateAndResolveOrderedFoods,
   validateBookingDraft,
 } from "../services/booking.service.js";
+import {
+  acquireBookingHolds,
+  releaseBookingHolds,
+} from "../services/bookingHold.service.js";
 import {
   calculateRequiredBookingPayment,
   getEffectiveBookingPaymentPolicy,
@@ -27,6 +32,7 @@ import {
   USER_ROLE,
 } from "../utils/constants.js";
 import { getOwnedRestaurantIds } from "../middleware/ownership.js";
+import { assertRestaurantOwnedByUser } from "../middleware/ownership.js";
 import { getIO } from "../sockets/socket.handler.js";
 
 const ONLINE_PAYMENT_METHODS = new Set([
@@ -139,6 +145,9 @@ export const createOrder = asyncHandler(async (req, res) => {
     // Ensure request is made by the customer of the booking or an owner / admin
     if (req.user.role === "customer" && String(booking.userId) !== String(req.user._id)) {
         throw new ApiError(403, "You can only make payment for your own bookings.");
+    }
+    if (req.user.role !== USER_ROLE.CUSTOMER) {
+      await assertRestaurantOwnedByUser(req, booking.restaurantId?._id || booking.restaurantId);
     }
 
     if (booking.paymentStatus === PAYMENT_STATUS.PAID) {
@@ -343,6 +352,21 @@ const createPaymentFirstOrder = async ({
       preOrderedFoods: bookingData.preOrderedFoods || [],
     });
 
+    const bookingAt = new Date(bookingData.bookingDateTime);
+    const bookingEnd = new Date(
+      bookingAt.getTime() + (Number(bookingData.expectedDuration) || 120) * 60 * 1000
+    );
+    const holdToken = new mongoose.Types.ObjectId().toString();
+    const hold = await acquireBookingHolds({
+      restaurantId: restaurant._id,
+      tables: bookingData.tables || [],
+      bookingAt,
+      bookingEnd,
+      customerId: req.user._id,
+      holdToken,
+      ttlMinutes: 15,
+    });
+
     // Compute the required advance from server-side food prices (never the
     // client-supplied price).
     const orderedFoods = await validateAndResolveOrderedFoods({
@@ -412,7 +436,7 @@ const createPaymentFirstOrder = async ({
           tableId: entry.tableId,
           seatIds: entry.seatIds || [],
         })),
-        bookingDateTime: new Date(bookingData.bookingDateTime),
+        bookingDateTime: bookingAt,
         expectedDuration: Number(bookingData.expectedDuration) || 120,
         numberOfGuests: Number(bookingData.numberOfGuests),
         specialRequest: String(bookingData.specialRequest || "").trim(),
@@ -423,6 +447,7 @@ const createPaymentFirstOrder = async ({
           price: Number(item.price || 0),
         })),
       },
+      reservationHoldToken: hold.holdToken,
       customerId: req.user._id,
       ownerId: restaurant.ownerId,
       restaurantId: restaurant._id,
@@ -488,6 +513,10 @@ export const verifyPayment = asyncHandler(async (req, res) => {
         const booking = await Booking.findById(bookingId);
         if (!booking || booking.isDeleted) {
             throw new ApiError(404, "Booking not found.");
+        }
+
+        if (req.user.role !== USER_ROLE.CUSTOMER) {
+          await assertRestaurantOwnedByUser(req, booking.restaurantId);
         }
 
         if (String(paymentRecord.bookingId) !== String(booking._id)) {
@@ -578,7 +607,7 @@ export const verifyPayment = asyncHandler(async (req, res) => {
  * ledger ordered by date (newest first).
  */
 export const getHistory = asyncHandler(async (req, res) => {
-    const { bookingId, paymentMethod, purpose, status } = req.query;
+    const { bookingId, restaurantId, paymentMethod, purpose, status } = req.query;
 
     let paymentQuery = {};
     let billQuery = { isDeleted: false };
@@ -610,16 +639,35 @@ export const getHistory = asyncHandler(async (req, res) => {
             restaurantId: { $in: ownedRestaurantIds },
         };
 
-        const restaurantBookings = await Booking.find({
-            restaurantId: { $in: ownedRestaurantIds },
-            isDeleted: false,
-        })
-            .select("_id")
-            .lean();
-        billQuery.bookingId = { $in: restaurantBookings.map((b) => b._id) };
+        if (restaurantId) {
+            await assertRestaurantOwnedByUser(req, restaurantId);
+            paymentQuery.restaurantId = restaurantId;
+            const scopedBookings = await Booking.find({
+                restaurantId,
+                isDeleted: false,
+            })
+                .select("_id")
+                .lean();
+            billQuery.bookingId = { $in: scopedBookings.map((b) => b._id) };
+        } else {
+            const restaurantBookings = await Booking.find({
+                restaurantId: { $in: ownedRestaurantIds },
+                isDeleted: false,
+            })
+                .select("_id")
+                .lean();
+            billQuery.bookingId = { $in: restaurantBookings.map((b) => b._id) };
+        }
     }
 
     if (bookingId) {
+        if (req.user.role === USER_ROLE.OWNER) {
+            const booking = await Booking.findById(bookingId).select("restaurantId").lean();
+            if (!booking) {
+                throw new ApiError(404, "Booking not found.");
+            }
+            await assertRestaurantOwnedByUser(req, booking.restaurantId);
+        }
         paymentQuery.bookingId = bookingId;
         billQuery.bookingId = bookingId;
     }

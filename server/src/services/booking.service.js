@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import Booking from "../models/Booking.js";
 import Food from "../models/food.js";
 import Restaurant from "../models/Restaurant.js";
@@ -18,6 +19,11 @@ import {
 } from "./refund.service.js";
 import { createAuditLog } from "./auditLog.service.js";
 import { recomputeBookingTableStatus } from "./bookingWindow.service.js";
+import {
+  acquireBookingHolds,
+  findActiveHoldByToken,
+  releaseBookingHolds,
+} from "./bookingHold.service.js";
 
 import {
   BOOKING_STATUS,
@@ -723,34 +729,47 @@ export const createBooking = async ({
     CODE_PREFIX.BOOKING
   );
 
-  const booking = await Booking.create({
-    bookingCode,
-    userId,
+  const holdToken = new mongoose.Types.ObjectId().toString();
+  const hold = await acquireBookingHolds({
     restaurantId: restaurant._id,
-    tableId: resolvedSeats.primaryTableId,
-    tableIds: resolvedSeats.tableIds,
     tables: resolvedSeats.tables,
-    seatIds: resolvedSeats.seatIds,
-    seatLabels: resolvedSeats.seatLabels,
-    bookingMode: resolvedSeats.bookingMode,
-    bookingDateTime: bookingAt,
-    expectedDuration,
-    numberOfGuests,
-    bookingStatus: effectiveBookingStatus,
-    bookingType,
-    paymentStatus,
-    paymentMethod,
-    advanceAmount,
-    totalAmount,
-    specialRequest,
-    preOrderedFoods: orderedFoods,
-    billId,
-    cancellationCutoffAt,
+    bookingAt,
+    bookingEnd,
+    customerId: userId,
+    holdToken,
+    ttlMinutes: 5,
   });
 
-  // Race-condition guard: re-check the window after insert. If another
-  // booking claimed these seats between our check and insert, roll back.
+  let booking = null;
+
   try {
+    booking = await Booking.create({
+      bookingCode,
+      userId,
+      restaurantId: restaurant._id,
+      tableId: resolvedSeats.primaryTableId,
+      tableIds: resolvedSeats.tableIds,
+      tables: resolvedSeats.tables,
+      seatIds: resolvedSeats.seatIds,
+      seatLabels: resolvedSeats.seatLabels,
+      bookingMode: resolvedSeats.bookingMode,
+      bookingDateTime: bookingAt,
+      expectedDuration,
+      numberOfGuests,
+      bookingStatus: effectiveBookingStatus,
+      bookingType,
+      paymentStatus,
+      paymentMethod,
+      advanceAmount,
+      totalAmount,
+      specialRequest,
+      preOrderedFoods: orderedFoods,
+      billId,
+      cancellationCutoffAt,
+    });
+
+    // Keep the legacy availability re-check as a safety net, but the lock is
+    // the atomic gate that stops the race.
     await assertNoSeatConflicts({
       restaurantId: restaurant._id,
       tableIds: resolvedSeats.tableIds,
@@ -760,7 +779,9 @@ export const createBooking = async ({
       excludeBookingId: booking._id,
     });
   } catch (error) {
-    await Booking.deleteOne({ _id: booking._id });
+    if (booking?._id) {
+      await Booking.deleteOne({ _id: booking._id });
+    }
     if (error?.statusCode === 409) {
       throw new ApiError(
         409,
@@ -770,12 +791,16 @@ export const createBooking = async ({
     throw error;
   }
 
-  await Restaurant.findByIdAndUpdate(restaurant._id, {
-    $inc: { totalBookings: 1 },
-  });
-  await markTablesReservedAndNotify(resolvedSeats.tables);
-
   try {
+    await Restaurant.findByIdAndUpdate(restaurant._id, {
+      $inc: { totalBookings: 1 },
+    });
+    await markTablesReservedAndNotify(resolvedSeats.tables);
+    await releaseBookingHolds({
+      tableIds: resolvedSeats.tableIds,
+      holdToken: hold.holdToken,
+    });
+
     const io = getIO();
     io.to(`restaurant_${restaurant._id}`).emit("booking:created", {
       bookingId: booking._id,
@@ -792,6 +817,7 @@ export const createBooking = async ({
       .emit("booking:updated", populated);
   } catch (error) {
     console.error("Socket error on booking creation:", error);
+    throw error;
   }
 
   if (restaurant.ownerId) {
@@ -851,7 +877,7 @@ export const updateBooking = async ({
   // Defense-in-depth: booking status, payment state, amounts, billing linkage
   // and lifecycle timestamps are NEVER settable through the booking update
   // endpoint. They are managed exclusively by the dedicated status / cancel /
-  // check-in / complete / no-show endpoints and the payment & bill services.
+  // convert-to-bill / complete / no-show endpoints and the payment & bill services.
   const PROTECTED_UPDATE_KEYS = [
     "bookingStatus",
     "paymentStatus",
@@ -1439,11 +1465,36 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
       preOrderedFoods: bookingData.preOrderedFoods,
     });
 
+  const existingBooking = await Booking.findOne({
+    sourcePaymentId: paymentRecord._id,
+    isDeleted: false,
+  });
+  if (existingBooking) {
+    if (!paymentRecord.bookingId) {
+      paymentRecord.bookingId = existingBooking._id;
+      await paymentRecord.save();
+    }
+    return {
+      booking: existingBooking,
+      bookingEnd,
+      restaurant,
+    };
+  }
+
   // The payment window may overlap the booking time slightly; only reject
   // clearly-past times (a booking time that is a few minutes old because the
   // gateway was slow is still a valid, payable booking).
   if (bookingAt.getTime() < Date.now() - 15 * 60 * 1000) {
     throw new ApiError(400, "Booking time has already passed.");
+  }
+
+  const hold = await findActiveHoldByToken({
+    tableIds: resolvedSeats.tableIds,
+    holdToken: paymentRecord.reservationHoldToken,
+  });
+
+  if (!hold) {
+    throw new ApiError(409, "The reservation hold has expired. Please retry the booking.");
   }
 
   const totalAmount = calculateOrderedFoodsTotal(orderedFoods);
@@ -1465,6 +1516,7 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
     CODE_PREFIX.BOOKING
   );
 
+  const holdToken = paymentRecord.reservationHoldToken;
   const booking = await Booking.create({
     bookingCode,
     userId,
@@ -1520,6 +1572,12 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
     $inc: { totalBookings: 1 },
   });
   await markTablesReservedAndNotify(resolvedSeats.tables);
+  await releaseBookingHolds({
+    tableIds: resolvedSeats.tableIds,
+    holdToken,
+  });
+  paymentRecord.bookingId = booking._id;
+  await paymentRecord.save();
 
   try {
     const io = getIO();

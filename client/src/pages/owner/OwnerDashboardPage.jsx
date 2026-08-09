@@ -8,7 +8,7 @@ import {
   TrendingUp,
   UtensilsCrossed,
 } from "lucide-react";
-import { useEffect, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
 
@@ -18,6 +18,7 @@ import { fetchFoods } from "../../store/slices/foodSlice.js";
 import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
 import { fetchRestaurantReviews } from "../../store/slices/reviewSlice.js";
 import { fetchTables } from "../../store/slices/tableSlice.js";
+import RestaurantFilter from "../../components/owner/RestaurantFilter.jsx";
 
 import Card from "../../components/ui/Card.jsx";
 import Badge from "../../components/ui/Badge.jsx";
@@ -85,6 +86,7 @@ function OwnerDashboardPage() {
   const bills = useSelector((state) => state.bill.bills);
   const billLoading = useSelector((state) => state.bill.isLoading);
   const billError = useSelector((state) => state.bill.error);
+  const [selectedRestaurant, setSelectedRestaurant] = useState("");
 
   const isLoading =
     restaurantLoading ||
@@ -104,13 +106,13 @@ function OwnerDashboardPage() {
   useEffect(() => {
     Promise.all([
       dispatch(fetchRestaurants({ ownerId: userId, limit: 100 })),
-      dispatch(fetchTables({ limit: 100 })),
-      dispatch(fetchFoods({ limit: 100 })),
-      dispatch(fetchBookings({ limit: 100 })),
-      dispatch(fetchRestaurantReviews({ ownerId: userId, limit: 100 })),
-      dispatch(fetchBills({ limit: 100 })),
+      dispatch(fetchTables({ limit: 100, ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}) })),
+      dispatch(fetchFoods({ limit: 100, ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}) })),
+      dispatch(fetchBookings({ limit: 100, ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}) })),
+      dispatch(fetchRestaurantReviews({ ownerId: userId, ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}), limit: 100 })),
+      dispatch(fetchBills({ limit: 100, ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}) })),
     ]).catch(() => {});
-  }, [userId, dispatch]);
+  }, [userId, selectedRestaurant, dispatch]);
 
   const { stats, recentBookings } = useMemo(() => {
     const paidBills = bills.filter(
@@ -182,6 +184,13 @@ function OwnerDashboardPage() {
         <p className="mt-1 text-sm text-muted">
           Here's what's happening across your restaurants today.
         </p>
+      </div>
+      <div className="max-w-xs">
+        <RestaurantFilter
+          restaurants={restaurants}
+          value={selectedRestaurant}
+          onChange={setSelectedRestaurant}
+        />
       </div>
 
       {/* Stats Grid */}

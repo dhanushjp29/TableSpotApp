@@ -23,9 +23,11 @@ import Button from "../ui/Button.jsx";
 import Modal from "../ui/Modal.jsx";
 import EmptyState from "../ui/EmptyState.jsx";
 import ErrorState from "../ui/ErrorState.jsx";
-import { SkeletonText } from "../ui/Skeleton.jsx";
+import { SkeletonCard } from "../ui/Skeleton.jsx";
 import { formatCurrency } from "../../utils/formatCurrency.js";
 import { formatDateTime } from "../../utils/formatDate.js";
+import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
+import RestaurantFilter from "../owner/RestaurantFilter.jsx";
 
 const REASON_LABELS = {
   CUSTOMER_CANCELLED: "Customer cancellation",
@@ -74,6 +76,7 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
   const tabs = role === "owner" ? OWNER_TABS : CUSTOMER_TABS;
   const { user } = useAuth();
   const dispatch = useDispatch();
+  const restaurants = useSelector((state) => state.restaurant.restaurants);
   const refunds = useSelector((state) => state.refund.refunds);
   const isLoading = useSelector((state) => state.refund.isLoading);
   const error = useSelector((state) => state.refund.error);
@@ -83,6 +86,7 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
   const [selectedMethod, setSelectedMethod] = useState(REFUND_METHOD.CASH);
   const [processBusy, setProcessBusy] = useState(false);
   const [processError, setProcessError] = useState("");
+  const [selectedRestaurant, setSelectedRestaurant] = useState("");
 
   // Confirm-receipt modal state
   const [confirmTarget, setConfirmTarget] = useState(null);
@@ -95,7 +99,14 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
   const disputeReasonRef = useRef(null);
 
   const fetchRefundsData = async () => {
-    await dispatch(fetchRefunds({ page: 1, limit: 100 })).catch(() => {});
+    await Promise.all([
+      dispatch(fetchRestaurants({ ownerId: user?.id, isActive: true })),
+      dispatch(fetchRefunds({
+        page: 1,
+        limit: 100,
+        ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}),
+      })),
+    ]).catch(() => {});
   };
 
   const openProcessDialog = (refund) => {
@@ -117,7 +128,7 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
   useEffect(() => {
     fetchRefundsData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch]);
+  }, [dispatch, selectedRestaurant]);
 
   const filtered = useMemo(
     () => refunds.filter((r) => matchesTab(r, activeTab)),
@@ -256,6 +267,15 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
 
   return (
     <div className="space-y-6">
+      {role === "owner" && (
+        <div className="max-w-xs">
+          <RestaurantFilter
+            restaurants={restaurants}
+            value={selectedRestaurant}
+            onChange={setSelectedRestaurant}
+          />
+        </div>
+      )}
       {role === "owner" && user?.bookingStatus === "BOOKING_RESTRICTED" && (
         <div className="flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
           <AlertTriangle size={18} className="mt-0.5 shrink-0" />
@@ -296,9 +316,7 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
       {isLoading ? (
         <div className="space-y-4">
           {[1, 2, 3].map((i) => (
-            <Card key={i} className="p-5">
-              <SkeletonText lines={3} />
-            </Card>
+            <SkeletonCard key={i} />
           ))}
         </div>
       ) : error ? (
@@ -324,9 +342,9 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
               typeof refund.restaurantId === "object" ? refund.restaurantId : null;
 
             return (
-              <Card key={refund._id} className="p-5 transition-all hover:-translate-y-px hover:shadow-md border border-border">
+              <Card key={refund._id} className="overflow-hidden p-0 transition-all hover:-translate-y-px hover:shadow-md">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                  <div className="space-y-2 min-w-0">
+                  <div className="space-y-2 min-w-0 p-5">
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="text-base font-bold text-text">
                         {formatCurrency(refund.amount)}
@@ -364,7 +382,7 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
                     )}
                   </div>
 
-                  <div className="flex flex-wrap items-center gap-2 pt-2 lg:pt-0 border-t lg:border-t-0 border-border">
+                  <div className="flex flex-wrap items-center gap-2 border-t border-border/70 px-5 py-4 lg:border-l lg:border-t-0 lg:px-4 lg:py-5">
                     {renderActions(refund)}
                   </div>
                 </div>
@@ -407,13 +425,13 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
               return (
                 <>
                   <div className="grid gap-3 sm:grid-cols-2">
-                    <div className="rounded-xl border border-border bg-surface-secondary/40 p-3">
+                    <div className="rounded-2xl border border-border bg-surface-secondary/55 p-4 shadow-sm">
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted">Refund Amount</p>
                       <p className="mt-1 text-lg font-bold text-text">
                         {formatCurrency(processTarget.amount)}
                       </p>
                     </div>
-                    <div className="rounded-xl border border-border bg-surface-secondary/40 p-3">
+                    <div className="rounded-2xl border border-border bg-surface-secondary/55 p-4 shadow-sm">
                       <p className="text-xs font-semibold uppercase tracking-wide text-muted">Current Refund Status</p>
                       <div className="mt-1.5">
                         <Badge variant={statusMeta.variant}>
@@ -423,7 +441,7 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
                     </div>
                   </div>
 
-                  <div className="rounded-xl border border-border bg-surface-secondary/60 p-3 text-sm text-text space-y-2">
+                  <div className="rounded-2xl border border-border bg-surface-secondary/65 p-4 text-sm text-text space-y-2 shadow-sm">
                     <div className="flex justify-between gap-4">
                       <span className="text-muted">Refund Reason</span>
                       <span className="font-medium">

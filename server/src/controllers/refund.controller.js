@@ -3,7 +3,10 @@ import ApiResponse from "../utils/ApiResponse.js";
 import ApiError from "../utils/ApiError.js";
 import Restaurant from "../models/Restaurant.js";
 import { USER_ROLE } from "../utils/constants.js";
-import { getOwnedRestaurantIds } from "../middleware/ownership.js";
+import {
+  getOwnedRestaurantIds,
+  assertRestaurantOwnedByUser,
+} from "../middleware/ownership.js";
 
 const ensureOwnerOrAdmin = (req) => {
   if (req.user.role === USER_ROLE.CUSTOMER) {
@@ -19,6 +22,10 @@ const ensureCustomer = (req) => {
 
 export const process = async (req, res) => {
   ensureOwnerOrAdmin(req);
+  const { refund } = await refundService.getRefundById({
+    refundId: req.params.refundId,
+  });
+  await assertRestaurantOwnedByUser(req, refund.restaurantId?._id || refund.restaurantId);
 
   const result = await refundService.processRefund({
     refundId: req.params.refundId,
@@ -78,7 +85,11 @@ export const getAll = async (req, res) => {
   if (req.user.role === USER_ROLE.CUSTOMER) {
     query.customerId = req.user._id;
   } else if (req.user.role === USER_ROLE.OWNER) {
-    query.restaurantId = { $in: await getOwnedRestaurantIds(req) };
+    if (query.restaurantId && query.restaurantId !== "all") {
+      await assertRestaurantOwnedByUser(req, query.restaurantId);
+    } else {
+      query.restaurantId = { $in: await getOwnedRestaurantIds(req) };
+    }
   }
 
   const result = await refundService.listRefunds(query);

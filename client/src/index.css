@@ -151,13 +151,14 @@
 .card {
   @apply rounded-2xl border bg-surface shadow-sm transition-all duration-200;
   border-color: var(--color-border);
-  box-shadow: var(--shadow-sm);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.45);
   overflow: hidden;
 }
 .dark .card-theme,
 .dark .card {
   border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: var(--shadow-sm);
+  background: rgba(32, 35, 39, 0.82);
+  box-shadow: var(--shadow-sm), inset 0 1px 0 rgba(255, 255, 255, 0.035);
 }
 .card-theme:hover,
 .card:hover {
@@ -167,7 +168,7 @@
 .dark .card-theme:hover,
 .dark .card:hover {
   border-color: rgba(255, 255, 255, 0.13);
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-md), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 /* Interactive card variant — subtle brand accent on hover */
@@ -372,7 +373,8 @@
       var(--color-surface-secondary) 100%
     );
     background-size: 200% 100%;
-    animation: shimmer 1.6s ease-in-out infinite;
+    animation: shimmer 1.9s ease-in-out infinite;
+    opacity: 0.82;
   }
 
   /* Modal animations */

@@ -4,6 +4,7 @@ import Food from "../models/food.js";
 import Payment from "../models/Payment.js";
 import Refund from "../models/Refund.js";
 import Restaurant from "../models/Restaurant.js";
+import RestaurantTable from "../models/RestaurantTable.js";
 import User from "../models/User.js";
 
 import ApiError from "../utils/ApiError.js";
@@ -28,6 +29,24 @@ import {
 } from "../utils/constants.js";
 
 const roundAmount = (value) => Math.round(Number(value || 0) * 100) / 100;
+const BILL_EDIT_WINDOW_HOURS = 24;
+const WALK_IN_BILL_TYPE = "WALK_IN";
+
+const normalizeDiscountType = (type) => {
+  const normalized = String(type || "").toLowerCase();
+  return normalized === "percentage" ? DISCOUNT_TYPE.PERCENTAGE : DISCOUNT_TYPE.AMOUNT;
+};
+
+const assertBillEditableWithinWindow = (bill) => {
+  const createdAt = bill?.createdAt ? new Date(bill.createdAt).getTime() : NaN;
+  if (Number.isNaN(createdAt)) {
+    throw new ApiError(409, "Bill can only be modified within 24 hours of creation.");
+  }
+
+  if (Date.now() > createdAt + BILL_EDIT_WINDOW_HOURS * 60 * 60 * 1000) {
+    throw new ApiError(409, "Bill can only be modified within 24 hours of creation.");
+  }
+};
 
 /**
  * Detect overpayment on a settled bill (totalPaid > grandTotal) and create a
@@ -149,11 +168,24 @@ const resolveOrderedItems = async ({ items = [], restaurantId = null }) => {
         (v) =>
           String(v.variantName).toLowerCase() === variantName.toLowerCase()
       );
-      const selected = variant || variants[0];
-
-      if (selected) {
-        unitPrice =
-          selected.offerPrice > 0 ? selected.offerPrice : selected.price;
+      if (food.hasVariants) {
+        if (!variant) {
+          throw new ApiError(
+            400,
+            `Variant "${variantName}" is not valid for ${food.foodName}.`
+          );
+        }
+        unitPrice = variant.offerPrice > 0 ? variant.offerPrice : variant.price;
+      } else {
+        if (variantName && variantName !== "Regular") {
+          throw new ApiError(
+            400,
+            `Variant "${variantName}" is not valid for ${food.foodName}.`
+          );
+        }
+        if (variants[0]) {
+          unitPrice = variants[0].offerPrice > 0 ? variants[0].offerPrice : variants[0].price;
+        }
       }
     }
 
@@ -201,8 +233,9 @@ const calculateDiscountAmount = (discount = {}, subTotal = 0) => {
   }
 
   const value = Number(discount.value || 0);
+  const discountType = normalizeDiscountType(discount.type);
 
-  if (discount.type === DISCOUNT_TYPE.PERCENTAGE) {
+  if (discountType === DISCOUNT_TYPE.PERCENTAGE) {
     return roundAmount(Math.min(subTotal, (subTotal * value) / 100));
   }
 
@@ -288,8 +321,14 @@ const populateBill = (query) =>
           select:
             "restaurantCode restaurantName slug city state country coverImage gstin averageRating",
         },
+        {
+          path: "tableId",
+          select: "tableCode tableNumber tableName tableLabel",
+        },
       ],
     })
+    .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage gstin averageRating")
+    .populate("tableId", "tableCode tableNumber tableName tableLabel capacity")
     .populate("generatedBy", "userCode fullName email phoneNumber role profileImage");
 
 /**
@@ -436,24 +475,37 @@ const buildTaxBreakup = ({ orderedItems, taxableAmount }) => {
 const buildBillTotals = ({
   orderedItems,
   discount,
+  taxPercentage = 0,
   serviceCharge = 0,
   deliveryCharge = 0,
   payment = {},
 }) => {
   const subTotal = calculateSubTotal(orderedItems);
-  const discountAmount = calculateDiscountAmount(discount, subTotal);
+  const normalizedDiscount = {
+    type: normalizeDiscountType(discount?.type),
+    value: Number(discount?.value || 0),
+  };
+  const discountAmount = calculateDiscountAmount(normalizedDiscount, subTotal);
   const taxableAmount = roundAmount(
     Math.max(0, subTotal - discountAmount)
   );
+  const normalizedTaxPercentage = Math.max(0, Number(taxPercentage || 0));
+  const taxBreakup = normalizedTaxPercentage > 0
+    ? [{
+        rate: normalizedTaxPercentage,
+        baseAmount: taxableAmount,
+        taxAmount: roundAmount((taxableAmount * normalizedTaxPercentage) / 100),
+      }]
+    : buildTaxBreakup({
+        orderedItems,
+        taxableAmount,
+      });
 
-  const taxBreakup = buildTaxBreakup({
-    orderedItems,
-    taxableAmount,
-  });
-
-  const taxAmount = roundAmount(
-    taxBreakup.reduce((sum, entry) => sum + entry.taxAmount, 0)
-  );
+  const taxAmount = normalizedTaxPercentage > 0
+    ? roundAmount((taxableAmount * normalizedTaxPercentage) / 100)
+    : roundAmount(
+        taxBreakup.reduce((sum, entry) => sum + entry.taxAmount, 0)
+      );
 
   const service = roundAmount(serviceCharge);
   const delivery = roundAmount(deliveryCharge);
@@ -473,9 +525,10 @@ const buildBillTotals = ({
   return {
     orderedItems,
     subTotal,
-    discount: discount || { type: DISCOUNT_TYPE.AMOUNT, value: 0 },
+    discount: normalizedDiscount,
     taxableAmount,
-    gstRate,
+    gstRate: normalizedTaxPercentage > 0 ? normalizedTaxPercentage : gstRate,
+    taxPercentage: normalizedTaxPercentage > 0 ? normalizedTaxPercentage : gstRate,
     taxBreakup,
     taxAmount,
     serviceCharge: service,
@@ -487,6 +540,13 @@ const buildBillTotals = ({
 
 export const createBill = async ({
   bookingId,
+  billType = "ONLINE",
+  restaurantId = null,
+  tableId = null,
+  customerName = "",
+  customerPhone = "",
+  customerEmail = "",
+  taxPercentage = 0,
   orderedItems = [],
   discount = null,
   serviceCharge = 0,
@@ -497,7 +557,8 @@ export const createBill = async ({
   payment = {},
   allowEmptyItems = false,
 }) => {
-  if (!bookingId) {
+  const isWalkIn = billType === "WALK_IN";
+  if (!bookingId && !isWalkIn) {
     throw new ApiError(400, "Booking is required.");
   }
 
@@ -505,26 +566,25 @@ export const createBill = async ({
     throw new ApiError(400, "Generated by user is required.");
   }
 
-  const user = await User.findById(generatedBy).select("_id isActive isDeleted");
+  const user = await User.findById(generatedBy).select("_id role isActive isDeleted");
   if (!user || !user.isActive || user.isDeleted) {
     throw new ApiError(404, "Generator user not found.");
   }
 
-  const booking = await getBookingOrThrow(bookingId);
-
-  if (booking.billId) {
+  const booking = bookingId ? await getBookingOrThrow(bookingId) : null;
+  if (booking && booking.billId) {
     throw new ApiError(409, "A bill already exists for this booking.");
   }
 
   // Booking-state gate: bills can only be raised for bookings that have
   // reached the restaurant (confirmed) or have finished dining (completed).
   // Pending, cancelled and no-show bookings cannot be billed.
-  if (
+  if (booking && (
     ![
       BOOKING_STATUS.CONFIRMED,
       BOOKING_STATUS.COMPLETED,
     ].includes(booking.bookingStatus)
-  ) {
+  )) {
     throw new ApiError(
       409,
       "Bills can only be created for confirmed or completed bookings."
@@ -538,13 +598,55 @@ export const createBill = async ({
     throw new ApiError(400, "Ordered items are required to create a bill.");
   }
 
-  const restaurant = await Restaurant.findById(booking.restaurantId).select(
-    "gstin restaurantName"
-  );
+  const isOwner = String(user.role) === "owner";
+  const isAdmin = String(user.role) === "admin";
+  const billRestaurantId = booking ? booking.restaurantId : restaurantId;
+  const billTableId = booking ? booking.tableId : tableId;
+  const walkInCustomerName = String(customerName || "").trim();
+  const walkInCustomerPhone = String(customerPhone || "").trim();
+  const walkInCustomerEmail = String(customerEmail || "").trim();
+  const walkInTaxPercentage = Number(taxPercentage || 0);
+
+  if (isWalkIn) {
+    if (!restaurantId) {
+      throw new ApiError(400, "Restaurant is required for a walk-in bill.");
+    }
+    if (!tableId) {
+      throw new ApiError(400, "Table is required for a walk-in bill.");
+    }
+    if (isOwner) {
+      const restaurantOwnership = await Restaurant.findOne({
+        _id: restaurantId,
+        ownerId: generatedBy,
+      }).select("_id");
+      if (!restaurantOwnership) {
+        throw new ApiError(403, "You can only create walk-in bills for your restaurants.");
+      }
+    } else if (!isAdmin) {
+      throw new ApiError(403, "Only owners or admins can create walk-in bills.");
+    }
+
+    const table = await RestaurantTable.findById(tableId).select(
+      "_id restaurantId isDeleted isActive"
+    );
+    if (
+      !table ||
+      table.isDeleted ||
+      table.isActive === false ||
+      String(table.restaurantId) !== String(restaurantId)
+    ) {
+      throw new ApiError(400, "Selected table is invalid for the chosen restaurant.");
+    }
+  }
+
+  const restaurant = billRestaurantId
+    ? await Restaurant.findById(billRestaurantId).select("gstin restaurantName")
+    : null;
 
   const resolvedItems = await resolveOrderedItems({
     items: orderedItems,
-    restaurantId: booking.restaurantId,
+    restaurantId: billRestaurantId,
+    tableId: billTableId,
   });
 
   const billCode = await generateCode(
@@ -556,6 +658,7 @@ export const createBill = async ({
   const totals = buildBillTotals({
     orderedItems: resolvedItems,
     discount,
+    taxPercentage: walkInTaxPercentage,
     serviceCharge,
     deliveryCharge,
     payment,
@@ -563,12 +666,18 @@ export const createBill = async ({
 
   const bill = await Bill.create({
     billCode,
-    bookingId: booking._id,
-    restaurantId: booking.restaurantId,
+    bookingId: booking?._id || null,
+    billType: isWalkIn ? WALK_IN_BILL_TYPE : "ONLINE",
+    restaurantId: billRestaurantId,
+    tableId: billTableId || null,
+    customerName: isWalkIn ? walkInCustomerName : "",
+    customerPhone: isWalkIn ? walkInCustomerPhone : "",
+    customerEmail: isWalkIn ? walkInCustomerEmail : "",
     orderedItems: totals.orderedItems,
     subTotal: totals.subTotal,
     discount: totals.discount,
     taxableAmount: totals.taxableAmount,
+    taxPercentage: totals.taxPercentage,
     gstRate: totals.gstRate,
     taxBreakup: totals.taxBreakup,
     taxAmount: totals.taxAmount,
@@ -583,11 +692,13 @@ export const createBill = async ({
     generatedAt,
   });
 
-  booking.billId = bill._id;
-  booking.totalAmount = totals.grandTotal;
-  booking.paymentStatus = totals.payment.paymentStatus;
-  booking.paymentMethod = booking.paymentMethod || "Cash";
-  await booking.save();
+  if (booking) {
+    booking.billId = bill._id;
+    booking.totalAmount = totals.grandTotal;
+    booking.paymentStatus = totals.payment.paymentStatus;
+    booking.paymentMethod = booking.paymentMethod || "Cash";
+    await booking.save();
+  }
 
   // A bill that is already fully covered by the carried advance closes
   // immediately (billStatus PAID + booking COMPLETED).
@@ -605,7 +716,9 @@ export const createBill = async ({
   }
 
   try {
-    await ensureExcessRefund({ bill, booking, createdBy: generatedBy });
+    if (booking) {
+      await ensureExcessRefund({ bill, booking, createdBy: generatedBy });
+    }
   } catch (error) {
     console.error("Excess refund creation error on bill create:", error.message);
   }
@@ -614,10 +727,10 @@ export const createBill = async ({
     await createAuditLog({
       eventType: "BILL_CREATED",
       eventAction: "bill_created",
-      bookingId: booking._id,
+      bookingId: booking?._id || null,
       billId: bill._id,
-      restaurantId: booking.restaurantId,
-      userId: booking.userId,
+      restaurantId: booking ? booking.restaurantId : restaurantId,
+      userId: booking ? booking.userId : generatedBy,
       performedBy: generatedBy,
       amount: totals.grandTotal,
       status: BILL_STATUS.GENERATED,
@@ -732,30 +845,78 @@ export const updateBill = async ({
   updates = {},
 }) => {
   const bill = await getBillOrThrow(billId);
+  assertBillEditableWithinWindow(bill);
+  const booking = await Booking.findById(bill.bookingId);
 
-  // Terminal-state guard: a Paid or Cancelled bill is immutable. Never allow
-  // an owner to change items, charges or payments on a closed invoice.
-  if (
-    bill.billStatus === BILL_STATUS.PAID ||
-    bill.billStatus === BILL_STATUS.CANCELLED
-  ) {
+  // Cancelled bills stay immutable. Paid bills may still be edited inside the
+  // 24-hour creation window and are re-evaluated from the payment ledger below.
+  if (bill.billStatus === BILL_STATUS.CANCELLED) {
     throw new ApiError(
       409,
       `This bill is already ${bill.billStatus.toLowerCase()} and can no longer be edited.`
     );
   }
 
-  const booking = await Booking.findById(bill.bookingId);
+  const isWalkInBill = bill.billType === WALK_IN_BILL_TYPE;
+  const nextRestaurantId =
+    updates.restaurantId !== undefined
+      ? updates.restaurantId
+      : bill.restaurantId;
 
-  if (updates.orderedItems !== undefined) {
+  if (updates.restaurantId !== undefined) {
+    const restaurantExists = await Restaurant.findById(updates.restaurantId).select("_id");
+    if (!restaurantExists) {
+      throw new ApiError(400, "Selected restaurant is invalid.");
+    }
+  }
+
+  if (updates.tableId !== undefined) {
+    const table = await RestaurantTable.findById(updates.tableId).select(
+      "_id restaurantId isDeleted isActive"
+    );
+    if (
+      !table ||
+      table.isDeleted ||
+      table.isActive === false ||
+      (nextRestaurantId && String(table.restaurantId) !== String(nextRestaurantId))
+    ) {
+      throw new ApiError(400, "Selected table is invalid for the chosen restaurant.");
+    }
+  }
+
+  if (isWalkInBill || !bill.bookingId) {
+    if (updates.restaurantId !== undefined) {
+      bill.restaurantId = updates.restaurantId;
+    }
+    if (updates.tableId !== undefined) {
+      bill.tableId = updates.tableId;
+    }
+    if (updates.customerName !== undefined) {
+      bill.customerName = String(updates.customerName || "").trim();
+    }
+    if (updates.customerPhone !== undefined) {
+      bill.customerPhone = String(updates.customerPhone || "").trim();
+    }
+    if (updates.customerEmail !== undefined) {
+      bill.customerEmail = String(updates.customerEmail || "").trim();
+    }
+    if (updates.taxPercentage !== undefined) {
+      bill.taxPercentage = Number(updates.taxPercentage || 0);
+    }
+  }
+
+  if (updates.orderedItems !== undefined || (isWalkInBill && updates.restaurantId !== undefined)) {
     bill.orderedItems = await resolveOrderedItems({
-      items: updates.orderedItems,
-      restaurantId: booking?.restaurantId,
+      items: updates.orderedItems !== undefined ? updates.orderedItems : bill.orderedItems,
+      restaurantId: nextRestaurantId || booking?.restaurantId,
     });
   }
 
   if (updates.discount !== undefined) {
-    bill.discount = updates.discount;
+    bill.discount = {
+      type: normalizeDiscountType(updates.discount.type),
+      value: Number(updates.discount.value || 0),
+    };
   }
 
   const numericFields = [
@@ -798,6 +959,7 @@ export const updateBill = async ({
   const totals = buildBillTotals({
     orderedItems: bill.orderedItems,
     discount: bill.discount,
+    taxPercentage: bill.taxPercentage,
     serviceCharge: bill.serviceCharge,
     deliveryCharge: bill.deliveryCharge,
     payment: {
@@ -805,10 +967,18 @@ export const updateBill = async ({
     },
   });
 
+  if (!booking && totals.payment.totalPaid > totals.grandTotal) {
+    throw new ApiError(
+      409,
+      "This edit would create an overpayment on a walk-in bill. Reduce the recorded payments first."
+    );
+  }
+
   bill.orderedItems = totals.orderedItems;
   bill.subTotal = totals.subTotal;
   bill.discount = totals.discount;
   bill.taxableAmount = totals.taxableAmount;
+  bill.taxPercentage = totals.taxPercentage;
   bill.gstRate = totals.gstRate;
   bill.taxBreakup = totals.taxBreakup;
   bill.taxAmount = totals.taxAmount;
@@ -816,6 +986,7 @@ export const updateBill = async ({
   bill.deliveryCharge = totals.deliveryCharge;
   bill.grandTotal = totals.grandTotal;
   bill.payment = totals.payment;
+  bill.billStatus = bill.payment.paymentStatus === PAYMENT_STATUS.PAID ? BILL_STATUS.PAID : BILL_STATUS.GENERATED;
 
   await bill.save();
 
@@ -861,6 +1032,7 @@ export const addBillPayment = async ({
   paidAt = new Date(),
 }) => {
   const bill = await getBillOrThrow(billId);
+  assertBillEditableWithinWindow(bill);
 
   // Terminal-state guard: a Paid bill is a closed invoice — the BIL000009 bug.
   // No further payments may ever be recorded against it.
@@ -897,7 +1069,7 @@ export const addBillPayment = async ({
   const totals = buildBillTotals({
     orderedItems: bill.orderedItems,
     discount: bill.discount,
-    taxAmount: bill.taxAmount,
+    taxPercentage: bill.taxPercentage,
     serviceCharge: bill.serviceCharge,
     deliveryCharge: bill.deliveryCharge,
     payment: bill.payment,
@@ -907,6 +1079,7 @@ export const addBillPayment = async ({
   bill.subTotal = totals.subTotal;
   bill.discount = totals.discount;
   bill.taxableAmount = totals.taxableAmount;
+  bill.taxPercentage = totals.taxPercentage;
   bill.gstRate = totals.gstRate;
   bill.taxBreakup = totals.taxBreakup;
   bill.taxAmount = totals.taxAmount;
