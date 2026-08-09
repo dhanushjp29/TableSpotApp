@@ -28,6 +28,7 @@ import { formatCurrency } from "../../utils/formatCurrency.js";
 import { formatDateTime } from "../../utils/formatDate.js";
 import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
 import RestaurantFilter from "../owner/RestaurantFilter.jsx";
+import InvoiceDatePicker from "../common/InvoiceDatePicker.jsx";
 
 const REASON_LABELS = {
   CUSTOMER_CANCELLED: "Customer cancellation",
@@ -87,6 +88,8 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
   const [processBusy, setProcessBusy] = useState(false);
   const [processError, setProcessError] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   // Confirm-receipt modal state
   const [confirmTarget, setConfirmTarget] = useState(null);
@@ -131,8 +134,14 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
   }, [dispatch, selectedRestaurant]);
 
   const filtered = useMemo(
-    () => refunds.filter((r) => matchesTab(r, activeTab)),
-    [refunds, activeTab]
+    () => refunds.filter((r) => {
+      if (!matchesTab(r, activeTab)) return false;
+      const refundDate = r.createdAt ? new Date(r.createdAt).toISOString().slice(0, 10) : "";
+      if (dateFrom && refundDate < dateFrom) return false;
+      if (dateTo && refundDate > dateTo) return false;
+      return true;
+    }),
+    [refunds, activeTab, dateFrom, dateTo]
   );
 
   const handleProcess = async (refund, method) => {
@@ -311,6 +320,11 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
             {tab.charAt(0) + tab.slice(1).toLowerCase()}
           </button>
         ))}
+      </div>
+
+      <div className="flex flex-wrap gap-3">
+        <div className="w-full sm:w-44"><InvoiceDatePicker label="From date" value={dateFrom} onChange={setDateFrom} /></div>
+        <div className="w-full sm:w-44"><InvoiceDatePicker label="To date" value={dateTo} onChange={setDateTo} /></div>
       </div>
 
       {isLoading ? (

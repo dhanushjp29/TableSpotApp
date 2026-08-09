@@ -39,6 +39,7 @@ import ErrorState from "../../components/ui/ErrorState.jsx";
 import { formatDate, formatDateTime, formatTime } from "../../utils/formatDate.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
 import RestaurantFilter from "../../components/owner/RestaurantFilter.jsx";
+import InvoiceDatePicker from "../../components/common/InvoiceDatePicker.jsx";
 import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
 
 const REFUND_BADGE = {
@@ -72,6 +73,8 @@ export default function OwnerReservationsPage() {
   const restaurants = useSelector((state) => state.restaurant.restaurants);
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [actionDialog, setActionDialog] = useState(null);
   const [actionNotes, setActionNotes] = useState("");
   const [actionBusy, setActionBusy] = useState(false);
@@ -219,6 +222,9 @@ export default function OwnerReservationsPage() {
 
   const filteredBookings = visibleBookings.filter((b) => {
     if (statusFilter !== "ALL" && b.bookingStatus !== statusFilter) return false;
+    const bookingDate = b.bookingDateTime ? new Date(b.bookingDateTime).toISOString().slice(0, 10) : "";
+    if (dateFrom && bookingDate < dateFrom) return false;
+    if (dateTo && bookingDate > dateTo) return false;
     if (search) {
       const customerName = b.userId?.fullName?.toLowerCase() || "";
       const bookingId = b._id?.toLowerCase() || "";
@@ -297,7 +303,9 @@ export default function OwnerReservationsPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+        <div className="flex flex-wrap items-end gap-3 w-full sm:w-auto pb-1 sm:pb-0">
+          <div className="w-full sm:w-44"><InvoiceDatePicker label="From date" value={dateFrom} onChange={setDateFrom} /></div>
+          <div className="w-full sm:w-44"><InvoiceDatePicker label="To date" value={dateTo} onChange={setDateTo} /></div>
           <Filter size={16} className="text-muted shrink-0 ml-1" />
           {["ALL", "Confirmed", "Completed", "Cancelled", "No Show"].map((st) => (
             <button

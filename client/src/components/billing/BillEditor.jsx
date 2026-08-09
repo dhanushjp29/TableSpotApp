@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from "react";
-import Button from "../ui/Button.jsx";
 import BillInformation from "./BillInformation.jsx";
 import BillItems from "./BillItems.jsx";
 import BillDiscountTax from "./BillDiscountTax.jsx";
@@ -23,8 +22,6 @@ export default function BillEditor({
   loading = false,
   onRestaurantChange,
   onSubmit,
-  onClose,
-  submitting = false,
 }) {
   const isOnline = billType === "ONLINE";
   const [draft, setDraft] = useState(emptyDraft);
@@ -113,16 +110,12 @@ export default function BillEditor({
   };
 
   return (
-    <form onSubmit={submit} className="space-y-5 pt-1">
+    <form id="bill-editor-form" onSubmit={submit} className="space-y-5 pt-1">
       <BillInformation bill={bill} billType={billType} draft={draft} restaurants={restaurants} tables={tables} editable={!isOnline} onChange={update} onRestaurantChange={onRestaurantChange} />
       <BillItems items={draft.items} taxPercentage={draft.taxPercentage} foods={foods} loading={loading} selectedFoodId={selectedFoodId} selectedVariant={selectedVariant} quantity={quantity} onFoodChange={(value) => { setSelectedFoodId(value); setSelectedVariant(foods.find((food) => food._id === value)?.variants?.[0]?.variantName || ""); }} onVariantChange={setSelectedVariant} onQuantityChange={setQuantity} onAdd={addItem} onChange={(items) => update("items", items)} />
       <BillDiscountTax draft={draft} onChange={update} />
       <BillPayments payments={paymentEntries} existingPaymentCount={existingPaymentCount} paymentMethod={paymentMethod} amount={paymentAmount} reference={paymentReference} notes={paymentNotes} onPaymentChange={(index, field, value) => setPaymentEntries((current) => current.map((payment, paymentIndex) => paymentIndex === index ? { ...payment, [field]: value } : payment))} onMethodChange={setPaymentMethod} onAmountChange={setPaymentAmount} onReferenceChange={setPaymentReference} onNotesChange={setPaymentNotes} onAdd={addPayment} onRemove={(index) => setPaymentEntries((current) => current.filter((_, itemIndex) => itemIndex !== index))} />
       <BillSummary subtotal={subtotal} discount={discount} taxableAmount={taxable} tax={tax} taxPercentage={draft.taxPercentage} serviceCharge={bill?.serviceCharge || 0} deliveryCharge={bill?.deliveryCharge || 0} grandTotal={grandTotal} totalPaid={totalPaid} balanceDue={Math.max(0, grandTotal - totalPaid)} />
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:items-center sm:justify-end">
-        <Button type="button" variant="outline" onClick={onClose}>Cancel</Button>
-        <Button type="submit" isLoading={submitting}>{bill ? "Update Bill" : "Create Walk-in Bill"}</Button>
-      </div>
     </form>
   );
 }

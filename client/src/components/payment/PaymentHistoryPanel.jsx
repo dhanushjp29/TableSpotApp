@@ -27,6 +27,7 @@ import ErrorState from "../ui/ErrorState.jsx";
 import EmptyState from "../ui/EmptyState.jsx";
 import { formatDateTime } from "../../utils/formatDate.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
+import InvoiceDatePicker from "../common/InvoiceDatePicker.jsx";
 
 const PURPOSE_ICONS = {
   "Booking Advance": CreditCard,
@@ -215,6 +216,8 @@ function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
   const [method, setMethod] = useState("");
   const [status, setStatus] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
 
   const fetchHistory = async () => {
     await dispatch(
@@ -242,6 +245,9 @@ function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
       if (purpose && t.purpose !== purpose) return false;
       if (method && t.method !== method) return false;
       if (status && t.status !== status) return false;
+      const transactionDate = t.date ? new Date(t.date).toISOString().slice(0, 10) : "";
+      if (dateFrom && transactionDate < dateFrom) return false;
+      if (dateTo && transactionDate > dateTo) return false;
       if (!term) return true;
       return (
         (t.bookingCode || "").toLowerCase().includes(term) ||
@@ -250,9 +256,9 @@ function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
         (t.notes || "").toLowerCase().includes(term)
       );
     });
-  }, [transactions, search, purpose, method, status]);
+  }, [transactions, search, purpose, method, status, dateFrom, dateTo]);
 
-  const hasFilters = search || purpose || method || status;
+  const hasFilters = search || purpose || method || status || dateFrom || dateTo;
   const moneyInLabel =
     role === "owner" ? "Net Collected" : "Net Spent";
 
@@ -374,6 +380,8 @@ function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
           onChange={setStatus}
           allLabel="All statuses"
         />
+        <div className="w-full sm:w-40"><InvoiceDatePicker label="From date" value={dateFrom} onChange={setDateFrom} /></div>
+        <div className="w-full sm:w-40"><InvoiceDatePicker label="To date" value={dateTo} onChange={setDateTo} /></div>
       </div>
 
       {/* Transaction list */}

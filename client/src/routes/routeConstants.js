@@ -36,6 +36,7 @@ export const ROUTES = {
   OWNER_FOODS: "/owner/foods",
   OWNER_RESERVATIONS: "/owner/reservations",
   OWNER_BILLING: "/owner/billing",
+  OWNER_BILLING_BILL: "/owner/billing/:billId",
   OWNER_REVIEWS: "/owner/reviews",
   OWNER_REPORTS: "/owner/reports",
   OWNER_NOTIFICATIONS: "/owner/notifications",

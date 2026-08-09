@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
+import { useNavigate, useParams } from "react-router-dom";
 import {
   Receipt,
   Plus,
@@ -14,6 +15,8 @@ import {
   Landmark,
   UtensilsCrossed,
   Percent,
+  FileSpreadsheet,
+  FileDown,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -40,7 +43,11 @@ import ErrorState from "../../components/ui/ErrorState.jsx";
 import { formatDate } from "../../utils/formatDate.js";
 import RestaurantFilter from "../../components/owner/RestaurantFilter.jsx";
 import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
+import { ROUTES } from "../../routes/routeConstants.js";
 import BillEditor from "../../components/billing/BillEditor.jsx";
+import BillingWorkspace from "../../components/billing/BillingWorkspace.jsx";
+import InvoiceDatePicker from "../../components/common/InvoiceDatePicker.jsx";
+import { exportBillsToExcel } from "../../utils/billingExport.js";
 
 const WALK_IN_PAY_METHODS = [
   { value: "Cash", label: "Cash", icon: Banknote },
@@ -85,6 +92,8 @@ function WalkInField({ label, error, hint, children }) {
 
 export default function OwnerBillingPage() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { billId: routeBillId } = useParams();
   const {
     bills,
     isLoading: billsLoading,
@@ -104,6 +113,8 @@ export default function OwnerBillingPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [billTypeFilter, setBillTypeFilter] = useState("ALL");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [selectedRestaurant, setSelectedRestaurant] = useState("");
   const isLoading = billsLoading || bookingsLoading;
   const error = billError || bookingError;
@@ -155,6 +166,8 @@ export default function OwnerBillingPage() {
 
   // Print / View Receipt Modal State
   const [activeReceiptBill, setActiveReceiptBill] = useState(null);
+  const [activeBillView, setActiveBillView] = useState(null);
+  const billLoadRequestRef = useRef(0);
 
   // Re-armed "now" so the Convert-to-Bill time gate stays pure (no Date.now
   // during render) while still auto-unlocking when the booking time arrives.
@@ -219,14 +232,21 @@ export default function OwnerBillingPage() {
   };
 
   const openWalkInModal = () => {
+    billLoadRequestRef.current += 1;
     setEditingWalkInBill(null);
+    setActiveReceiptBill(null);
     resetWalkInForm();
-    setIsWalkInModalOpen(true);
+    setActiveBillView({ bill: null, initialTab: "editor" });
+    navigate(`${ROUTES.OWNER_BILLING}/new`);
   };
 
   const closeWalkInModal = () => {
+    billLoadRequestRef.current += 1;
     setIsWalkInModalOpen(false);
     setEditingWalkInBill(null);
+    setActiveReceiptBill(null);
+    setActiveBillView(null);
+    navigate(ROUTES.OWNER_BILLING);
     resetWalkInForm();
   };
 
@@ -677,7 +697,11 @@ export default function OwnerBillingPage() {
     setWalkInFoodsLoading(false);
   };
 
-  const openManageBill = async (bill) => {
+  const openManageBill = async (bill, requestedTab = "editor") => {
+    const requestId = ++billLoadRequestRef.current;
+    setActiveReceiptBill(null);
+    setActiveBillView({ bill, initialTab: requestedTab });
+    navigate(`${ROUTES.OWNER_BILLING}/${bill._id}`);
     let response;
     try {
       response = await dispatch(fetchBillById(bill._id));
@@ -685,16 +709,19 @@ export default function OwnerBillingPage() {
       toast.error("Unable to load the complete bill details.");
       return;
     }
+    if (requestId !== billLoadRequestRef.current) return;
     const detailedBill = extractBillFromResponse(response) || bill;
 
     if (detailedBill?.billType === "WALK_IN") {
       setEditingWalkInBill(detailedBill);
       await loadWalkInBillDraft(detailedBill);
       setIsWalkInModalOpen(true);
+      setActiveBillView({ bill: detailedBill, initialTab: requestedTab });
       return;
     }
 
     setManageBill(detailedBill);
+    setActiveBillView({ bill: detailedBill, initialTab: requestedTab });
 
     setBillItems(
       (detailedBill.orderedItems || []).map((item) => ({
@@ -722,11 +749,127 @@ export default function OwnerBillingPage() {
   };
 
   const openReceipt = async (bill) => {
+    const requestId = ++billLoadRequestRef.current;
+    setActiveReceiptBill(bill);
+    setActiveBillView({ bill, initialTab: "receipt" });
+    navigate(`${ROUTES.OWNER_BILLING}/${bill._id}`);
     try {
       const response = await dispatch(fetchBillById(bill._id));
-      setActiveReceiptBill(extractBillFromResponse(response) || bill);
+      if (requestId !== billLoadRequestRef.current) return;
+      const detailedBill = extractBillFromResponse(response) || bill;
+      setActiveReceiptBill(detailedBill);
+      setActiveBillView({ bill: detailedBill, initialTab: "receipt" });
     } catch {
       toast.error("Unable to load the complete receipt.");
+    }
+  };
+
+  useEffect(() => {
+    if (!routeBillId || routeBillId === "new" || !bills.length || activeBillView?.bill?._id === routeBillId) return;
+    const routeBill = bills.find((bill) => bill._id === routeBillId);
+    // Route entry intentionally opens and hydrates the selected bill.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (routeBill) openManageBill(routeBill);
+    // openManageBill intentionally owns the detail fetch/navigation sequence.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [routeBillId, bills]);
+
+  const createReceiptPdfBlob = async (receiptBill = activeReceiptBill) => {
+    const element = document.getElementById("receipt-pdf-area");
+    if (!element || !receiptBill) throw new Error("Receipt is not ready");
+    const renderElement = element.cloneNode(true);
+    renderElement.removeAttribute("id");
+    renderElement.style.width = "100%";
+    const renderWrapper = document.createElement("div");
+    renderWrapper.style.position = "absolute";
+    renderWrapper.style.left = "-10000px";
+    renderWrapper.style.top = "0";
+    renderWrapper.style.width = "794px";
+    renderWrapper.style.pointerEvents = "none";
+    renderWrapper.appendChild(renderElement);
+    document.body.appendChild(renderWrapper);
+    const module = await import("html2pdf.js");
+    const html2pdf = module.default?.default || module.default || module;
+    try {
+      return await html2pdf()
+        .set({
+          margin: [8, 8, 8, 8],
+          filename: `${receiptBill.billCode || "tablespot-receipt"}.pdf`,
+          image: { type: "jpeg", quality: 0.98 },
+          backgroundColor: "#ffffff",
+          html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff" },
+          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
+          pagebreak: { mode: ["css", "legacy"], avoid: ["tr"] },
+        })
+        .from(renderElement)
+        .toPdf()
+        .output("blob");
+    } finally {
+      renderWrapper.remove();
+    }
+  };
+
+  const downloadReceiptPdf = async (receiptBill = activeReceiptBill) => {
+    try {
+      const blob = await createReceiptPdfBlob(receiptBill);
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${receiptBill.billCode || "tablespot-receipt"}.pdf`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      toast.success("Receipt PDF downloaded.");
+    } catch {
+      toast.error("Unable to generate the receipt PDF.");
+    }
+  };
+
+  const openReceiptPdf = async (receiptBill = activeReceiptBill) => {
+    try {
+      const blob = await createReceiptPdfBlob(receiptBill);
+      const url = URL.createObjectURL(blob);
+      const printWindow = window.open(url, "_blank");
+      if (!printWindow) {
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${receiptBill?.billCode || "tablespot-receipt"}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+      }
+      setTimeout(() => URL.revokeObjectURL(url), 60000);
+    } catch {
+      toast.error("Unable to generate the receipt PDF.");
+    }
+  };
+
+  const openOnlineBill = () => {
+    billLoadRequestRef.current += 1;
+    setIsCreateModalOpen(false);
+    setActiveReceiptBill(null);
+    setActiveBillView({ bill: null, billType: "ONLINE_CREATE", initialTab: "editor" });
+    navigate(`${ROUTES.OWNER_BILLING}/new`);
+  };
+
+  const createOnlineBill = async (bookingId) => {
+    setIsSubmitting(true);
+    try {
+      const response = await dispatch(convertBookingToBill(bookingId, { taxPercentage: 0 }));
+      const createdBill = extractBillFromResponse(response);
+      await fetchData();
+      if (createdBill?._id) {
+        const detailResponse = await dispatch(fetchBillById(createdBill._id));
+        const detailedBill = extractBillFromResponse(detailResponse) || createdBill;
+        setActiveBillView({ bill: detailedBill, initialTab: "editor" });
+        navigate(`${ROUTES.OWNER_BILLING}/${detailedBill._id}`);
+      }
+      toast.success("Online bill created successfully!");
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to create online bill.");
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -797,10 +940,22 @@ export default function OwnerBillingPage() {
     if (statusFilter !== "ALL" && (billPayStatus(b) || "Pending") !== statusFilter) {
       return false;
     }
+    const billDate = b.createdAt ? new Date(b.createdAt).toISOString().slice(0, 10) : "";
+    if (dateFrom && billDate < dateFrom) return false;
+    if (dateTo && billDate > dateTo) return false;
     if (!search) return true;
     const billId = b._id?.toLowerCase() || "";
     return billId.includes(search.toLowerCase());
   });
+
+  const exportVisibleBills = async () => {
+    try {
+      await exportBillsToExcel(filteredBills);
+      toast.success("Billing history exported to Excel.");
+    } catch {
+      toast.error("Unable to export billing history.");
+    }
+  };
 
   const billingStats = {
     total: bills.length,
@@ -808,6 +963,52 @@ export default function OwnerBillingPage() {
     partiallyPaid: bills.filter((b) => billPayStatus(b) === "Partially Paid").length,
     pending: bills.filter((b) => (billPayStatus(b) || "Pending") === "Pending").length,
   };
+
+  const saveWorkspaceBill = async (payload) => {
+    setIsSubmitting(true);
+    try {
+      const response = activeBillView?.bill
+        ? await dispatch(updateBill(activeBillView.bill._id, payload))
+        : await dispatch(createBill(payload));
+      const savedBill = extractBillFromResponse(response);
+      toast.success(activeBillView?.bill ? "Bill updated successfully!" : "Walk-in bill created successfully!");
+      await fetchData();
+      if (savedBill) setActiveBillView({ bill: savedBill, initialTab: "editor" });
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Failed to save bill.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (activeBillView) {
+    const workspaceBill = activeBillView.bill;
+    const workspaceIsWalkIn = workspaceBill?.billType === "WALK_IN" || !workspaceBill;
+    return <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
+      <BillingWorkspace
+        bill={workspaceBill}
+        billType={activeBillView.billType || workspaceBill?.billType || "WALK_IN"}
+        bookings={bookings}
+        bills={bills}
+        initialTab={activeBillView.initialTab}
+        restaurants={restaurants}
+        tables={workspaceIsWalkIn ? walkInTableOptions : []}
+        foods={workspaceIsWalkIn ? walkInFoods : spotFoods}
+        loading={workspaceIsWalkIn ? walkInFoodsLoading : foodsLoading}
+        submitting={isSubmitting}
+        onCreateOnline={createOnlineBill}
+        key={`${workspaceBill?._id || "new"}-${activeBillView.initialTab}`}
+        onBack={() => { setActiveBillView(null); setActiveReceiptBill(null); setManageBill(null); setEditingWalkInBill(null); setIsWalkInModalOpen(false); navigate(ROUTES.OWNER_BILLING); }}
+        onNew={openWalkInModal}
+        onNewOnline={openOnlineBill}
+        onSelectBill={openManageBill}
+        onRestaurantChange={loadWalkInContext}
+        onSave={saveWorkspaceBill}
+        onPrint={() => openReceiptPdf(workspaceBill)}
+        onDownloadPdf={() => downloadReceiptPdf(workspaceBill)}
+      />
+    </div>;
+  }
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
@@ -821,7 +1022,7 @@ export default function OwnerBillingPage() {
         </div>
 
         <div className="flex flex-wrap items-center gap-3">
-          <Button variant="primary" onClick={() => setIsCreateModalOpen(true)}>
+          <Button variant="primary" onClick={openOnlineBill}>
             <Plus size={18} className="mr-1.5" />
             Online Bill
           </Button>
@@ -853,8 +1054,9 @@ export default function OwnerBillingPage() {
       </div>
 
       {/* Search & Filter */}
-      <div className="flex flex-col items-center sm:flex-row sm:items-end justify-between gap-4 rounded-2xl border border-border bg-surface/90 p-4 shadow-sm">
-        <div className="w-full sm:max-w-xs">
+      <div className="flex flex-col gap-4 rounded-2xl border border-red-100 bg-red-50/40 p-4 shadow-sm dark:border-border dark:bg-surface/90">
+        <div className="flex flex-col items-stretch gap-4 xl:flex-row xl:items-end xl:justify-between">
+        <div className="w-full xl:max-w-xs">
           <RestaurantFilter restaurants={restaurants} value={selectedRestaurant} onChange={setSelectedRestaurant} />
         </div>
         <div className="relative flex-1 w-full">
@@ -868,7 +1070,13 @@ export default function OwnerBillingPage() {
           />
         </div>
 
-        <div className="flex items-center gap-2 overflow-x-auto w-full sm:w-auto pb-1 sm:pb-0">
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-full sm:w-44"><InvoiceDatePicker label="From date" value={dateFrom} onChange={setDateFrom} /></div>
+          <div className="w-full sm:w-44"><InvoiceDatePicker label="To date" value={dateTo} onChange={setDateTo} /></div>
+          <Button type="button" variant="outline" size="sm" onClick={exportVisibleBills}><FileSpreadsheet size={15} className="mr-1.5" />Excel</Button>
+        </div>
+        </div>
+        <div className="flex items-center gap-2 overflow-x-auto w-full pb-1 sm:pb-0">
           <Filter size={16} className="text-muted shrink-0 ml-1" />
           {["ALL", "ONLINE", "WALK_IN"].map((st) => (
             <button
@@ -1832,7 +2040,7 @@ export default function OwnerBillingPage() {
           onClose={() => setActiveReceiptBill(null)}
           title={`Invoice Receipt ${activeReceiptBill.billCode || `#${activeReceiptBill._id.slice(-6)}`}`}
         >
-          <div className="space-y-4 rounded-2xl border border-dashed border-border bg-surface-secondary/40 p-4 font-mono text-sm my-2">
+          <div id="receipt-print-area" className="space-y-4 rounded-2xl border border-dashed border-border bg-surface-secondary/40 p-4 font-mono text-sm my-2">
             <div className="text-center pb-2 border-b border-border">
               <h3 className="text-lg font-bold text-text font-sans">TABLESPOT RECEIPT</h3>
               <p className="text-xs text-muted">Thank you for dining with us!</p>
@@ -1922,8 +2130,11 @@ export default function OwnerBillingPage() {
           </div>
 
           <div className="flex justify-end gap-3 pt-2">
-            <Button variant="outline" onClick={() => window.print()}>
+            <Button variant="outline" onClick={() => openReceiptPdf(activeReceiptBill)}>
               <Printer size={16} className="mr-1" /> Print
+            </Button>
+            <Button variant="secondary" onClick={downloadReceiptPdf}>
+              <FileDown size={16} className="mr-1" /> Download PDF
             </Button>
             <Button variant="primary" onClick={() => setActiveReceiptBill(null)}>
               Close

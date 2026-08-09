@@ -166,6 +166,7 @@ function Select({
             role="listbox"
             style={{
               position: "fixed",
+              zIndex: 1000,
               ...popupStyle,
               width: popupWidth,
               maxHeight: Math.min(popupStyle.maxHeight, 256),

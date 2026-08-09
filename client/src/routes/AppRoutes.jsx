@@ -161,6 +161,7 @@ function AppRoutes() {
         <Route path={ROUTES.OWNER_FOODS} element={<OwnerFoodsPage />} />
         <Route path={ROUTES.OWNER_RESERVATIONS} element={<OwnerReservationsPage />} />
         <Route path={ROUTES.OWNER_BILLING} element={<OwnerBillingPage />} />
+        <Route path={ROUTES.OWNER_BILLING_BILL} element={<OwnerBillingPage />} />
         <Route path={ROUTES.OWNER_PAYMENTS} element={<OwnerPaymentHistoryPage />} />
         <Route path={ROUTES.OWNER_REFUNDS} element={<OwnerRefundsPage />} />
         <Route path={ROUTES.OWNER_REVIEWS} element={<OwnerReviewsPage />} />
