@@ -22,6 +22,7 @@ import {
   createBill,
   convertBookingToBill,
   fetchBills,
+  fetchBillById,
   updateBill,
 } from "../../store/slices/billSlice.js";
 import { fetchBookings } from "../../store/slices/reservationSlice.js";
@@ -39,6 +40,7 @@ import ErrorState from "../../components/ui/ErrorState.jsx";
 import { formatDate } from "../../utils/formatDate.js";
 import RestaurantFilter from "../../components/owner/RestaurantFilter.jsx";
 import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
+import BillEditor from "../../components/billing/BillEditor.jsx";
 
 const WALK_IN_PAY_METHODS = [
   { value: "Cash", label: "Cash", icon: Banknote },
@@ -108,6 +110,7 @@ export default function OwnerBillingPage() {
 
   // Create Bill (Convert) Modal State
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [onlineCreateTaxPercentage, setOnlineCreateTaxPercentage] = useState("0");
   const [isWalkInModalOpen, setIsWalkInModalOpen] = useState(false);
   const [editingWalkInBill, setEditingWalkInBill] = useState(null);
   const [selectedBookingId, setSelectedBookingId] = useState("");
@@ -131,6 +134,7 @@ export default function OwnerBillingPage() {
   const [billItems, setBillItems] = useState([]);
   const [discountType, setDiscountType] = useState("amount");
   const [discountValue, setDiscountValue] = useState("");
+  const [onlineTaxPercentage, setOnlineTaxPercentage] = useState("");
   const [isItemsSubmitting, setIsItemsSubmitting] = useState(false);
   const [walkInBillItems, setWalkInBillItems] = useState([]);
   const [walkInDiscountType, setWalkInDiscountType] = useState("amount");
@@ -455,10 +459,13 @@ export default function OwnerBillingPage() {
     }
     setIsSubmitting(true);
     try {
-      await dispatch(convertBookingToBill(selectedBookingId));
+      await dispatch(convertBookingToBill(selectedBookingId, {
+        taxPercentage: Number(onlineCreateTaxPercentage) || 0,
+      }));
       toast.success("Bill created from reservation successfully!");
       setIsCreateModalOpen(false);
       setSelectedBookingId("");
+      setOnlineCreateTaxPercentage("0");
       fetchData();
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to generate bill.");
@@ -671,36 +678,55 @@ export default function OwnerBillingPage() {
   };
 
   const openManageBill = async (bill) => {
-    if (bill?.billType === "WALK_IN") {
-      setEditingWalkInBill(bill);
-      await loadWalkInBillDraft(bill);
+    let response;
+    try {
+      response = await dispatch(fetchBillById(bill._id));
+    } catch {
+      toast.error("Unable to load the complete bill details.");
+      return;
+    }
+    const detailedBill = extractBillFromResponse(response) || bill;
+
+    if (detailedBill?.billType === "WALK_IN") {
+      setEditingWalkInBill(detailedBill);
+      await loadWalkInBillDraft(detailedBill);
       setIsWalkInModalOpen(true);
       return;
     }
 
-    setManageBill(bill);
+    setManageBill(detailedBill);
 
     setBillItems(
-      (bill.orderedItems || []).map((item) => ({
+      (detailedBill.orderedItems || []).map((item) => ({
         foodId: typeof item.foodId === "object" ? item.foodId?._id : item.foodId,
         foodName: item.foodName,
         variantName: item.variantName || "Regular",
         quantity: Number(item.quantity) || 1,
       }))
     );
-    setDiscountType(bill.discount?.type || "amount");
-    setDiscountValue(bill.discount?.value ? String(bill.discount.value) : "");
+    setDiscountType(detailedBill.discount?.type || "amount");
+    setDiscountValue(detailedBill.discount?.value ? String(detailedBill.discount.value) : "");
+    setOnlineTaxPercentage(String(detailedBill.taxPercentage ?? 0));
     setSelectedFoodId("");
     setSelectedVariant("Regular");
     setSpotQuantity(1);
 
-    const restaurantId = bill.restaurantId || bill.bookingId?.restaurantId;
+    const restaurantId = detailedBill.restaurantId?._id || detailedBill.restaurantId || detailedBill.bookingId?.restaurantId?._id || detailedBill.bookingId?.restaurantId;
     if (restaurantId) {
       try {
         await dispatch(fetchFoodsByRestaurant(restaurantId, { page: 1, limit: 100 }));
       } catch {
         // Keep the current menu if the load fails.
       }
+    }
+  };
+
+  const openReceipt = async (bill) => {
+    try {
+      const response = await dispatch(fetchBillById(bill._id));
+      setActiveReceiptBill(extractBillFromResponse(response) || bill);
+    } catch {
+      toast.error("Unable to load the complete receipt.");
     }
   };
 
@@ -747,6 +773,7 @@ export default function OwnerBillingPage() {
                   type: discountType,
                   value: Number(discountValue) || 0,
                 },
+                taxPercentage: Number(onlineTaxPercentage) || 0,
               }
         )
       );
@@ -906,19 +933,19 @@ export default function OwnerBillingPage() {
                   <td className="px-5 py-4 font-mono text-xs font-semibold text-primary">
                     {bill.billCode || `#${bill._id.slice(-6)}`}
                   </td>
-                  <td className="px-5 py-4 text-xs text-muted">
-                    <Badge variant={bill.billType === "WALK_IN" ? "secondary" : "default"}>
+                  <td className="whitespace-nowrap px-5 py-4 text-xs text-muted">
+                    <Badge className="whitespace-nowrap" variant={bill.billType === "WALK_IN" ? "secondary" : "default"}>
                       {bill.billType === "WALK_IN" ? "Walk-in" : "Online"}
                     </Badge>
                   </td>
                   <td className="px-5 py-4 text-xs text-muted">
-                    {bill.restaurantId?.restaurantName || bill.restaurantId?.restaurantCode || "N/A"}
+                    {bill.restaurantId?.restaurantName || bill.restaurantId?.restaurantCode || bill.bookingId?.restaurantId?.restaurantName || bill.bookingId?.restaurantId?.restaurantCode || bill.restaurantName || "N/A"}
                   </td>
                   <td className="px-5 py-4 text-xs text-muted">
-                    {bill.tableId?.tableCode || bill.tableId?.tableNumber || bill.bookingId?.tableId?.tableCode || bill.bookingId?.tableId?.tableNumber || "N/A"}
+                    {bill.tableId?.tableCode || bill.tableId?.tableNumber || bill.bookingId?.tableId?.tableCode || bill.bookingId?.tableId?.tableNumber || bill.tableNumber || "N/A"}
                   </td>
                   <td className="px-5 py-4 text-xs text-muted">
-                    {bill.customerName || bill.bookingId?.userId?.fullName || "Walk-in / Guest"}
+                    {bill.customerName || bill.bookingId?.userId?.fullName || bill.bookingId?.customerName || bill.customer?.fullName || "Walk-in / Guest"}
                   </td>
                   <td className="px-5 py-4 font-mono text-xs text-muted">
                     {bill.billType === "WALK_IN"
@@ -938,8 +965,8 @@ export default function OwnerBillingPage() {
                       {billPayStatus(bill) || "Pending"}
                     </Badge>
                   </td>
-                  <td className="px-5 py-4 text-right">
-                    <div className="flex items-center justify-end gap-2">
+                  <td className="whitespace-nowrap px-5 py-4 text-right">
+                    <div className="flex flex-nowrap items-center justify-end gap-2">
                       <Button
                         size="sm"
                         variant="outline"
@@ -951,7 +978,7 @@ export default function OwnerBillingPage() {
                       <Button
                         size="sm"
                         variant="ghost"
-                        onClick={() => setActiveReceiptBill(bill)}
+                        onClick={() => openReceipt(bill)}
                       >
                         <Printer size={14} className="mr-1" />
                         Receipt
@@ -998,6 +1025,21 @@ export default function OwnerBillingPage() {
             advance is carried into the bill ledger.
           </p>
 
+          <div>
+            <label className="block text-sm font-medium text-text mb-1">
+              Tax Percentage (%)
+            </label>
+            <Input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              value={onlineCreateTaxPercentage}
+              onChange={(e) => setOnlineCreateTaxPercentage(e.target.value)}
+            />
+            <p className="mt-1 text-xs text-muted">Applied to the bill taxable amount; item GST rates are reference-only.</p>
+          </div>
+
           <div className="flex justify-end gap-3 pt-2">
             <Button type="button" variant="outline" onClick={() => setIsCreateModalOpen(false)}>
               Cancel
@@ -1009,7 +1051,7 @@ export default function OwnerBillingPage() {
         </form>
       </Modal>
 
-      <Modal
+      {isWalkInModalOpen && typeof window === "undefined" && <Modal
         isOpen={isWalkInModalOpen}
         onClose={closeWalkInModal}
         title={editingWalkInBill ? "Edit Walk-in Bill" : "Create Walk-in Bill"}
@@ -1486,10 +1528,10 @@ export default function OwnerBillingPage() {
             </div>
           </div>
         </form>
-      </Modal>
+      </Modal>}
 
       {/* Manage Bill Modal */}
-      {manageBill && (
+      {manageBill && typeof window === "undefined" && (
         <Modal
           isOpen={!!manageBill}
           onClose={() => setManageBill(null)}
@@ -1648,7 +1690,7 @@ export default function OwnerBillingPage() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 sm:grid-cols-3">
                   <Select
                     label="Discount type"
                     value={discountType}
@@ -1670,6 +1712,27 @@ export default function OwnerBillingPage() {
                       placeholder={discountType === "percentage" ? "e.g. 10" : "e.g. 100"}
                     />
                   </div>
+                  <div>
+                    <label className="block text-sm font-medium text-text mb-1">
+                      Tax Percentage (%)
+                    </label>
+                    <Input
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={onlineTaxPercentage}
+                      onChange={(e) => setOnlineTaxPercentage(e.target.value)}
+                      placeholder="e.g. 5"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-surface-secondary/60 p-3 text-sm">
+                  <div className="flex justify-between"><span className="text-muted">Taxable Amount</span><span className="font-medium">₹{Number(manageBill.taxableAmount || 0).toFixed(2)}</span></div>
+                  <div className="mt-1 flex justify-between"><span className="text-muted">Tax ({Number(onlineTaxPercentage) || 0}%)</span><span className="font-medium">₹{Number(manageBill.taxAmount || 0).toFixed(2)}</span></div>
+                  <div className="mt-2 flex justify-between border-t border-border pt-2 font-bold text-text"><span>Grand Total</span><span>₹{Number(manageBill.grandTotal || 0).toFixed(2)}</span></div>
+                  <p className="mt-2 text-xs text-muted">Totals are recalculated and returned by the server after saving.</p>
                 </div>
 
                 <div className="flex justify-end gap-3 pt-2">
@@ -1723,6 +1786,45 @@ export default function OwnerBillingPage() {
         </Modal>
       )}
 
+      {(isWalkInModalOpen || manageBill) && (
+        <Modal
+          isOpen={isWalkInModalOpen || !!manageBill}
+          onClose={() => { if (manageBill) setManageBill(null); else closeWalkInModal(); }}
+          title={manageBill ? `Edit Bill ${manageBill.billCode || ""}` : "Create Walk-in Bill"}
+          size="xl"
+        >
+          <BillEditor
+            bill={manageBill || editingWalkInBill}
+            billType={manageBill?.billType || editingWalkInBill?.billType || "WALK_IN"}
+            restaurants={restaurants}
+            tables={manageBill ? [] : walkInTableOptions}
+            foods={manageBill ? spotFoods : walkInFoods}
+            loading={manageBill ? foodsLoading : walkInFoodsLoading}
+            onRestaurantChange={loadWalkInContext}
+            submitting={isSubmitting}
+            onClose={() => { if (manageBill) setManageBill(null); else closeWalkInModal(); }}
+            onSubmit={async (payload) => {
+              setIsSubmitting(true);
+              try {
+                if (manageBill || editingWalkInBill) {
+                  await dispatch(updateBill((manageBill || editingWalkInBill)._id, payload));
+                  toast.success("Bill updated successfully!");
+                } else {
+                  await dispatch(createBill(payload));
+                  toast.success("Walk-in bill created!");
+                }
+                if (manageBill) setManageBill(null); else closeWalkInModal();
+                fetchData();
+              } catch (err) {
+                toast.error(err?.response?.data?.message || "Failed to save bill.");
+              } finally {
+                setIsSubmitting(false);
+              }
+            }}
+          />
+        </Modal>
+      )}
+
       {/* Printable Receipt Modal */}
       {activeReceiptBill && (
         <Modal
@@ -1741,6 +1843,10 @@ export default function OwnerBillingPage() {
               <div className="flex justify-between gap-2"><span>Restaurant:</span><span>{activeReceiptBill.restaurantId?.restaurantName || "-"}</span></div>
               <div className="flex justify-between gap-2"><span>Table No:</span><span>{activeReceiptBill.tableId?.tableNumber ?? activeReceiptBill.tableId?.tableCode ?? activeReceiptBill.bookingId?.tableId?.tableNumber ?? activeReceiptBill.bookingId?.tableId?.tableCode ?? "-"}</span></div>
               <div className="flex justify-between gap-2"><span>Booking No:</span><span>{activeReceiptBill.billType === "WALK_IN" ? "Walk-in / -" : (activeReceiptBill.bookingId?.bookingCode || "-")}</span></div>
+              <div className="flex justify-between gap-2"><span>Customer:</span><span>{activeReceiptBill.customerName || activeReceiptBill.bookingId?.userId?.fullName || "Guest"}</span></div>
+              <div className="flex justify-between gap-2"><span>Phone:</span><span>{activeReceiptBill.customerPhone || activeReceiptBill.bookingId?.userId?.phoneNumber || "-"}</span></div>
+              <div className="flex justify-between gap-2"><span>Email:</span><span>{activeReceiptBill.customerEmail || activeReceiptBill.bookingId?.userId?.email || "-"}</span></div>
+              {activeReceiptBill.billType !== "WALK_IN" && <div className="flex justify-between gap-2"><span>Booking Date:</span><span>{activeReceiptBill.bookingId?.bookingDateTime ? formatDate(new Date(activeReceiptBill.bookingId.bookingDateTime)) : "-"}</span></div>}
               <div className="flex justify-between gap-2"><span>Bill No:</span><span>{activeReceiptBill.billCode || activeReceiptBill._id}</span></div>
             </div>
 
@@ -1748,6 +1854,10 @@ export default function OwnerBillingPage() {
               <div className="flex justify-between">
                 <span>Date:</span>
                 <span>{activeReceiptBill.createdAt ? formatDate(new Date(activeReceiptBill.createdAt)) : "Today"}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Time:</span>
+                <span>{activeReceiptBill.createdAt ? new Date(activeReceiptBill.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "Now"}</span>
               </div>
               <div className="flex justify-between">
                 <span>Status:</span>
@@ -1774,7 +1884,11 @@ export default function OwnerBillingPage() {
                 <span>₹{activeReceiptBill.subTotal ?? 0}</span>
               </div>
               <div className="flex justify-between">
-                <span>Tax:</span>
+                <span>Taxable Amount:</span>
+                <span>₹{activeReceiptBill.taxableAmount ?? 0}</span>
+              </div>
+              <div className="flex justify-between">
+                <span>Tax ({activeReceiptBill.taxPercentage ?? 0}%):</span>
                 <span>₹{activeReceiptBill.taxAmount ?? 0}</span>
               </div>
               <div className="flex justify-between text-green-600">

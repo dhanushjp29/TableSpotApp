@@ -78,6 +78,7 @@ const discountSchema = z
 
 const paymentSummarySchema = z
   .object({
+    replacePayments: z.boolean().optional(),
     totalPaid: z
       .number({
         invalid_type_error: "Total paid must be a number.",
@@ -209,5 +210,11 @@ export const billIdSchema = z
 export const convertBookingToBillSchema = z
   .object({
     notes: z.string().trim().max(500).optional().default(""),
+    taxPercentage: z
+      .number({ invalid_type_error: "Tax percentage must be a number." })
+      .min(0)
+      .max(100)
+      .optional()
+      .default(0),
   })
   .strict();

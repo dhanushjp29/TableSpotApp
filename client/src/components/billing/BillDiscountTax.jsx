@@ -1,0 +1,5 @@
+import { Percent } from "lucide-react";
+import Input from "../ui/Input.jsx";
+import Select from "../ui/Select.jsx";
+export default function BillDiscountTax({ draft, onChange }) { return <section className="rounded-2xl border border-border bg-surface-secondary/40 p-4 sm:p-5"><h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-text"><Percent size={16} className="text-primary" />Discount & Tax</h3><div className="grid gap-4 sm:grid-cols-3"><Select label="Discount Type" value={draft.discountType} onChange={(event) => onChange("discountType", event.target.value)}><option value="amount">Flat amount (₹)</option><option value="percentage">Percentage (%)</option></Select><Input label="Discount Value" type="number" min="0" step="0.01" value={draft.discountValue} onChange={(event) => onChange("discountValue", event.target.value)} /><Input label="Tax Percentage (%)" type="number" min="0" max="100" step="0.01" value={draft.taxPercentage} onChange={(event) => onChange("taxPercentage", event.target.value)} /></div></section>; }
+

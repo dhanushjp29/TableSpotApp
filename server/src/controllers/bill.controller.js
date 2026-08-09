@@ -47,6 +47,7 @@ export const convert = async (req, res) => {
     bookingId: req.params.bookingId,
     generatedBy: req.user._id,
     notes: req.body?.notes || "",
+    taxPercentage: req.validatedData.taxPercentage,
   });
   res.status(201).json(new ApiResponse(201, result.message, result));
 };
