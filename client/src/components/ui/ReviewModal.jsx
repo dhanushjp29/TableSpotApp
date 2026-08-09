@@ -136,6 +136,7 @@ function ReviewForm({
           comment,
           images,
           restaurantId: targetId,
+          bookingId,
         });
 
         const readyFoodEntries = foodEntries.filter(

@@ -24,6 +24,30 @@ const formatAmount = (value) =>
     maximumFractionDigits: 2,
   })}`;
 
+const getBookingCode = async (bookingId) => {
+  if (!bookingId) return "";
+  const booking = await Booking.findById(bookingId)
+    .select("bookingCode")
+    .lean();
+  return booking?.bookingCode || "";
+};
+
+const notifyCustomerRefund = async ({ refund, title, message }) => {
+  if (!refund.customerId) return;
+  try {
+    await createNotification({
+      userId: refund.customerId,
+      title,
+      message,
+      type: "Payment",
+      linkId: refund._id,
+      linkModel: "Refund",
+    });
+  } catch (error) {
+    console.error(`Notification error on ${title.toLowerCase()}:`, error.message);
+  }
+};
+
 /**
  * Compute refund eligibility for a booking based on the restaurant's
  * cancellation policy, the booking's cancellation cutoff, and scenario.
@@ -316,6 +340,15 @@ export const processRefund = async ({
   refund.processingAt = new Date();
   refund.processedBy = processedBy || refund.ownerId;
 
+  const bookingCode = await getBookingCode(refund.bookingId);
+  const bookingSuffix = bookingCode ? ` for booking ${bookingCode}` : "";
+
+  await notifyCustomerRefund({
+    refund,
+    title: "Refund Initiated",
+    message: `A refund of ${formatAmount(refund.amount)} has been initiated${bookingSuffix}.`,
+  });
+
   if (refund.refundMethod !== REFUND_METHOD.RAZORPAY) {
     refund.refundStatus = REFUND_STATUS.REFUND_AWAITING_CUSTOMER_CONFIRMATION;
     refund.customerConfirmationRequired = true;
@@ -370,6 +403,12 @@ export const processRefund = async ({
       performedBy: processedBy,
     });
 
+    await notifyCustomerRefund({
+      refund,
+      title: "Refund Failed",
+      message: `Your refund of ${formatAmount(refund.amount)} could not be processed.`,
+    });
+
     throw new ApiError(409, refund.failureReason);
   }
 
@@ -411,6 +450,12 @@ export const processRefund = async ({
       metadata: { gatewayRefundId: gatewayRefund.id },
     });
 
+    await notifyCustomerRefund({
+      refund,
+      title: "Refund Completed",
+      message: `Your refund of ${formatAmount(refund.amount)} has been completed${bookingSuffix}.`,
+    });
+
     try {
       await unlockOwnerIfNoUnresolvedRefunds(refund.ownerId);
     } catch (error) {
@@ -432,6 +477,12 @@ export const processRefund = async ({
       refund,
       performedBy: processedBy,
       metadata: { failureReason: error.message },
+    });
+
+    await notifyCustomerRefund({
+      refund,
+      title: "Refund Failed",
+      message: `Your refund of ${formatAmount(refund.amount)} could not be processed.`,
     });
 
     throw error;
@@ -481,6 +532,15 @@ export const confirmCashRefundReceived = async ({
     refund,
     performedBy: confirmedBy,
     metadata: { confirmed: true },
+  });
+
+  const bookingCode = await getBookingCode(refund.bookingId);
+  const bookingSuffix = bookingCode ? ` for booking ${bookingCode}` : "";
+
+  await notifyCustomerRefund({
+    refund,
+    title: "Refund Completed",
+    message: `Your refund of ${formatAmount(refund.amount)} has been completed${bookingSuffix}.`,
   });
 
   try {

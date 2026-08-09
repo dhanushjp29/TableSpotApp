@@ -48,6 +48,7 @@ import BillEditor from "../../components/billing/BillEditor.jsx";
 import BillingWorkspace from "../../components/billing/BillingWorkspace.jsx";
 import InvoiceDatePicker from "../../components/common/InvoiceDatePicker.jsx";
 import { exportBillsToExcel } from "../../utils/billingExport.js";
+import { useExcelExport } from "../../hooks/useExcelExport.js";
 
 const WALK_IN_PAY_METHODS = [
   { value: "Cash", label: "Cash", icon: Banknote },
@@ -950,14 +951,12 @@ export default function OwnerBillingPage() {
     return billId.includes(search.toLowerCase());
   });
 
-  const exportVisibleBills = async () => {
-    try {
-      await exportBillsToExcel(filteredBills);
-      toast.success("Billing history exported to Excel.");
-    } catch {
-      toast.error("Unable to export billing history.");
-    }
-  };
+  const { isExporting, handleExport: exportVisibleBills } = useExcelExport({
+    data: filteredBills,
+    exportFn: exportBillsToExcel,
+    emptyMessage: "No bills available to export.",
+    successMessage: "Billing history exported to Excel.",
+  });
 
   const billingStats = {
     total: bills.length,
@@ -1075,7 +1074,7 @@ export default function OwnerBillingPage() {
         <div className="flex flex-wrap items-end gap-3">
           <div className="w-full sm:w-44"><InvoiceDatePicker label="From date" value={dateFrom} onChange={setDateFrom} /></div>
           <div className="w-full sm:w-44"><InvoiceDatePicker label="To date" value={dateTo} onChange={setDateTo} /></div>
-          <Button type="button" variant="outline" size="sm" onClick={exportVisibleBills}><FileSpreadsheet size={15} className="mr-1.5" />Excel</Button>
+          <Button type="button" variant="outline" size="sm" onClick={exportVisibleBills} isLoading={isExporting}><FileSpreadsheet size={15} className="mr-1.5" />Excel</Button>
         </div>
         </div>
         <div className="flex items-center gap-2 overflow-x-auto w-full pb-1 sm:pb-0">

@@ -94,13 +94,7 @@ const foodReviewSchema = new mongoose.Schema(
     }
 );
 
-// One review per user per food item
-foodReviewSchema.index(
-    { userId: 1, foodId: 1 },
-    { unique: true }
-);
-
-// One review per user per booking per food item (payment-first lifecycle)
+// One review per user per paid booking per food item (payment-first lifecycle)
 foodReviewSchema.index(
     { userId: 1, bookingId: 1, foodId: 1 },
     { unique: true }

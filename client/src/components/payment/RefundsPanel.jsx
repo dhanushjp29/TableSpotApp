@@ -29,6 +29,9 @@ import { formatDateTime } from "../../utils/formatDate.js";
 import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
 import RestaurantFilter from "../owner/RestaurantFilter.jsx";
 import InvoiceDatePicker from "../common/InvoiceDatePicker.jsx";
+import ExportButton from "../common/ExportButton.jsx";
+import { useExcelExport } from "../../hooks/useExcelExport.js";
+import { exportRefundsToExcel } from "../../utils/refundExport.js";
 
 const REASON_LABELS = {
   CUSTOMER_CANCELLED: "Customer cancellation",
@@ -143,6 +146,13 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
     }),
     [refunds, activeTab, dateFrom, dateTo]
   );
+
+  const { isExporting, handleExport } = useExcelExport({
+    data: filtered,
+    exportFn: exportRefundsToExcel,
+    emptyMessage: "No refunds available to export.",
+    successMessage: "Refunds exported to Excel.",
+  });
 
   const handleProcess = async (refund, method) => {
     setProcessError("");
@@ -325,6 +335,7 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
       <div className="flex flex-wrap gap-3">
         <div className="w-full sm:w-44"><InvoiceDatePicker label="From date" value={dateFrom} onChange={setDateFrom} /></div>
         <div className="w-full sm:w-44"><InvoiceDatePicker label="To date" value={dateTo} onChange={setDateTo} /></div>
+        <ExportButton isExporting={isExporting} onClick={handleExport} />
       </div>
 
       {isLoading ? (

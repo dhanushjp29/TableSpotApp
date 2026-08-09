@@ -32,6 +32,9 @@ import {
 } from "../../constants/food.js";
 import { CURRENCY, CURRENCY_OPTIONS, CURRENCY_SYMBOLS } from "../../constants/app.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
+import ExportButton from "../../components/common/ExportButton.jsx";
+import { useExcelExport } from "../../hooks/useExcelExport.js";
+import { exportFoodsToExcel } from "../../utils/foodExport.js";
 
 const WEEKDAY_VALUES = [
   "Monday",
@@ -619,6 +622,13 @@ function OwnerFoodsPage() {
       )
     : foods;
 
+  const { isExporting, handleExport } = useExcelExport({
+    data: visibleFoods,
+    exportFn: exportFoodsToExcel,
+    emptyMessage: "No food items available to export.",
+    successMessage: "Menu items exported to Excel.",
+  });
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -681,10 +691,13 @@ function OwnerFoodsPage() {
           <h1 className="text-2xl font-bold text-text">Menu Items</h1>
           <p className="mt-1 text-sm text-muted">Manage your food menu.</p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus size={16} />
-          Add Food Item
-        </Button>
+        <div className="flex items-center gap-3">
+          <ExportButton isExporting={isExporting} onClick={handleExport} />
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus size={16} />
+            Add Food Item
+          </Button>
+        </div>
       </div>
 
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

@@ -21,6 +21,9 @@ import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
 import { formatDate } from "../../utils/formatDate.js";
+import ExportButton from "../../components/common/ExportButton.jsx";
+import { useExcelExport } from "../../hooks/useExcelExport.js";
+import { exportReviewsToExcel } from "../../utils/reviewExport.js";
 
 export default function OwnerReviewsPage() {
   const user = useSelector((state) => state.auth.user);
@@ -105,10 +108,12 @@ export default function OwnerReviewsPage() {
 
   const currentList = activeTab === "restaurant" ? restaurantReviews : foodReviews;
 
-  const filteredReviews = currentList.filter((r) => {
-    if (starFilter === 0) return true;
-    return Math.round(r.rating) === starFilter;
-  });
+  const filterByStar = (list) =>
+    starFilter === 0 ? list : list.filter((r) => Math.round(r.rating) === starFilter);
+
+  const filteredRestaurantReviews = filterByStar(restaurantReviews);
+  const filteredFoodReviews = filterByStar(foodReviews);
+  const filteredReviews = filterByStar(currentList);
 
   const handleToggleReply = (reviewId) => {
     setReplyingTo((prev) => (prev === reviewId ? null : reviewId));
@@ -142,6 +147,19 @@ export default function OwnerReviewsPage() {
     currentList.length > 0
       ? (currentList.reduce((acc, r) => acc + (r.rating || 0), 0) / currentList.length).toFixed(1)
       : "0.0";
+
+  const hasReviews =
+    filteredRestaurantReviews.length > 0 || filteredFoodReviews.length > 0;
+  const { isExporting, handleExport } = useExcelExport({
+    data: hasReviews ? filteredRestaurantReviews : [],
+    exportFn: () =>
+      exportReviewsToExcel({
+        restaurantReviews: filteredRestaurantReviews,
+        foodReviews: filteredFoodReviews,
+      }),
+    emptyMessage: "No reviews available to export.",
+    successMessage: "Reviews exported to Excel.",
+  });
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
@@ -234,6 +252,7 @@ export default function OwnerReviewsPage() {
               {s === 0 ? "All" : `${s} ★`}
             </button>
           ))}
+          <ExportButton isExporting={isExporting} onClick={handleExport} />
         </div>
       </div>
 

@@ -18,8 +18,14 @@ const notificationSlice = createSlice({
       state.notifications = action.payload;
     },
     addNotification(state, action) {
-      state.notifications.unshift(action.payload);
-      if (!action.payload.isRead) {
+      const notification = action.payload;
+      if (!notification) return;
+      const exists = state.notifications.some(
+        (n) => String(n._id) === String(notification._id)
+      );
+      if (exists) return;
+      state.notifications.unshift(notification);
+      if (!notification.isRead) {
         state.unreadCount += 1;
       }
     },
@@ -30,20 +36,16 @@ const notificationSlice = createSlice({
       state.meta = action.payload;
     },
     markAllRead(state) {
-      state.notifications = state.notifications.map((n) => ({
-        ...n,
-        isRead: true,
-        readAt: new Date().toISOString(),
-      }));
+      state.notifications = [];
       state.unreadCount = 0;
     },
     markAsRead(state, action) {
-      const notification = state.notifications.find(
-        (n) => String(n._id) === String(action.payload)
+      const id = String(action.payload);
+      const before = state.notifications.length;
+      state.notifications = state.notifications.filter(
+        (n) => String(n._id) !== id
       );
-      if (notification && !notification.isRead) {
-        notification.isRead = true;
-        notification.readAt = new Date().toISOString();
+      if (state.notifications.length < before) {
         state.unreadCount = Math.max(0, state.unreadCount - 1);
       }
     },
@@ -150,7 +152,7 @@ export const markAsReadNotification =
       return response;
     } catch (error) {
       dispatch(
-        setError(error.response?.data?.message || "Failed to mark notification as read.")
+        setError(error.response?.data?.message || "Failed to delete notification.")
       );
       throw error;
     } finally {
@@ -167,7 +169,7 @@ export const markAllAsRead = () => async (dispatch) => {
     return response;
   } catch (error) {
     dispatch(
-      setError(error.response?.data?.message || "Failed to mark all notifications as read.")
+      setError(error.response?.data?.message || "Failed to clear notifications.")
     );
     throw error;
   } finally {

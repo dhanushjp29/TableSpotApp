@@ -3,10 +3,14 @@ import mongoose from "mongoose";
 import Restaurant from "../models/Restaurant.js";
 import Bill from "../models/Bill.js";
 import Payment from "../models/Payment.js";
+import Refund from "../models/Refund.js";
 import User from "../models/User.js";
 import * as razorpayService from "../services/razorpay.service.js";
 import { addBillPayment } from "../services/bill.service.js";
-import { handlePaymentCaptured } from "../services/payment.service.js";
+import {
+  handlePaymentCaptured,
+  notifyPaymentFailedCustomer,
+} from "../services/payment.service.js";
 import {
   validateAndResolveOrderedFoods,
   validateBookingDraft,
@@ -109,6 +113,38 @@ const buildSummary = (transactions) => {
     },
   };
 };
+
+const REFUND_METHOD_LABELS = {
+  CASH: "Cash",
+  UPI: "UPI",
+  CARD: "Card",
+  NET_BANKING: "Net Banking",
+  WALLET: "Wallet",
+  RAZORPAY: "Online",
+};
+
+const REFUND_STATUS_TRANSACTION_STATUS = {
+  REFUNDED: "Success",
+  REFUND_FAILED: "Failed",
+};
+
+const refundToTransaction = (refund) => ({
+  type: "refund",
+  source: "refund",
+  refundId: refund._id,
+  refundCode: refund.refundCode,
+  purpose: "Refund",
+  amount: roundAmount(refund.amount),
+  method: REFUND_METHOD_LABELS[refund.refundMethod] || refund.refundMethod || "Refund",
+  status: REFUND_STATUS_TRANSACTION_STATUS[refund.refundStatus] || "Pending",
+  transactionId: refund.transactionId || refund.gatewayRefundId || null,
+  bookingCode: refund.bookingId?.bookingCode || null,
+  bookingId: refund.bookingId?._id || refund.bookingId,
+  restaurantName: refund.restaurantId?.restaurantName || null,
+  restaurantCode: refund.restaurantId?.restaurantCode || null,
+  date: refund.completedAt || refund.createdAt,
+  notes: refund.remarks || "",
+});
 
 /**
  * Initiate a Razorpay payment order for booking
@@ -556,8 +592,16 @@ export const verifyPayment = asyncHandler(async (req, res) => {
         });
     } catch (error) {
         // Mark Payment status as Failed on validation crash
+        const wasFailed =
+            paymentRecord.paymentStatus === PAYMENT_TRANSACTION_STATUS.FAILED;
         paymentRecord.paymentStatus = PAYMENT_TRANSACTION_STATUS.FAILED;
         await paymentRecord.save();
+
+        // Notify once — only when this marks the first transition to FAILED,
+        // so the webhook's payment.failed event cannot double-notify.
+        if (!wasFailed) {
+            await notifyPaymentFailedCustomer({ paymentRecord });
+        }
         throw error;
     }
 
@@ -611,9 +655,11 @@ export const getHistory = asyncHandler(async (req, res) => {
 
     let paymentQuery = {};
     let billQuery = { isDeleted: false };
+    let refundQuery = {};
 
     if (req.user.role === USER_ROLE.CUSTOMER) {
         paymentQuery.customerId = req.user._id;
+        refundQuery.customerId = req.user._id;
 
         const userBookings = await Booking.find({
             userId: req.user._id,
@@ -639,9 +685,15 @@ export const getHistory = asyncHandler(async (req, res) => {
             restaurantId: { $in: ownedRestaurantIds },
         };
 
+        refundQuery = {
+            ownerId: req.user._id,
+            restaurantId: { $in: ownedRestaurantIds },
+        };
+
         if (restaurantId) {
             await assertRestaurantOwnedByUser(req, restaurantId);
             paymentQuery.restaurantId = restaurantId;
+            refundQuery.restaurantId = restaurantId;
             const scopedBookings = await Booking.find({
                 restaurantId,
                 isDeleted: false,
@@ -670,9 +722,10 @@ export const getHistory = asyncHandler(async (req, res) => {
         }
         paymentQuery.bookingId = bookingId;
         billQuery.bookingId = bookingId;
+        refundQuery.bookingId = bookingId;
     }
 
-    const [onlinePayments, bills] = await Promise.all([
+    const [onlinePayments, bills, refunds] = await Promise.all([
         Payment.find(paymentQuery)
             .populate("bookingId", "bookingCode bookingDateTime")
             .populate("restaurantId", "restaurantCode restaurantName")
@@ -687,6 +740,11 @@ export const getHistory = asyncHandler(async (req, res) => {
                     select: "restaurantCode restaurantName",
                 },
             })
+            .sort({ createdAt: -1 })
+            .lean(),
+        Refund.find(refundQuery)
+            .populate("bookingId", "bookingCode bookingDateTime")
+            .populate("restaurantId", "restaurantCode restaurantName")
             .sort({ createdAt: -1 })
             .lean(),
     ]);
@@ -758,6 +816,11 @@ export const getHistory = asyncHandler(async (req, res) => {
                 notes: entry.notes || "",
             });
         });
+    }
+
+    // Refund transactions (debits) so the history shows money out as well as in
+    for (const refund of refunds) {
+        transactions.push(refundToTransaction(refund));
     }
 
     transactions.sort((a, b) => new Date(b.date) - new Date(a.date));

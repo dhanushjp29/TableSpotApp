@@ -7,9 +7,27 @@ import User from "../models/User.js";
 import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
 
+import { createNotification } from "./notification.service.js";
+
 import { BILL_STATUS, BOOKING_STATUS, CODE_PREFIX } from "../utils/constants.js";
 
-const findEligibleBooking = async (userId, restaurantId, bookingId = null) => {
+const getReviewedBookingIds = async (userId, restaurantId) => {
+    const reviews = await RestaurantReview.find({
+        userId,
+        restaurantId,
+        bookingId: { $ne: null },
+        isDeleted: false,
+    }).select("bookingId");
+
+    return new Set(reviews.map((review) => String(review.bookingId)));
+};
+
+const findEligibleBooking = async (
+    userId,
+    restaurantId,
+    bookingId = null,
+    reviewedBookingIds = new Set()
+) => {
     // A customer becomes eligible to review only once the restaurant has
     // collected payment and finalized (marked PAID) the bill for their own
     // booking. A merely GENERATED bill is not enough, and another customer's
@@ -25,10 +43,14 @@ const findEligibleBooking = async (userId, restaurantId, bookingId = null) => {
         bookingQuery._id = bookingId;
     }
 
-    const bookings = await Booking.find(bookingQuery)
+    const bookings = (await Booking.find(bookingQuery)
         .sort({ bookingDateTime: -1 })
         .select("_id bookingCode bookingDateTime")
-        .lean();
+        .lean())
+        // Skip bookings that already have a restaurant review, so a customer
+        // can review each new paid visit rather than being stuck forever on
+        // the first one.
+        .filter((b) => !reviewedBookingIds.has(String(b._id)));
 
     if (bookings.length === 0) {
         return null;
@@ -65,8 +87,18 @@ const findEligibleBooking = async (userId, restaurantId, bookingId = null) => {
     };
 };
 
-export const assertEligibleBooking = async (userId, restaurantId) => {
-    const booking = await findEligibleBooking(userId, restaurantId);
+export const assertEligibleBooking = async (
+    userId,
+    restaurantId,
+    bookingId = null
+) => {
+    const reviewedBookingIds = await getReviewedBookingIds(userId, restaurantId);
+    const booking = await findEligibleBooking(
+        userId,
+        restaurantId,
+        bookingId,
+        reviewedBookingIds
+    );
 
     if (!booking) {
         throw new ApiError(
@@ -127,7 +159,7 @@ export const createReview = async ({
     images = [],
     status = "Published",
 }) => {
-    const user = await User.findById(userId).select("_id isActive isDeleted");
+    const user = await User.findById(userId).select("_id fullName isActive isDeleted");
 
     if (!user || !user.isActive || user.isDeleted) {
         throw new ApiError(404, "User not found.");
@@ -139,20 +171,25 @@ export const createReview = async ({
         throw new ApiError(404, "Restaurant not found.");
     }
 
+    const eligibleBooking = await assertEligibleBooking(
+        userId,
+        restaurantId,
+        bookingId
+    );
+
     const existingReview = await RestaurantReview.findOne({
         userId,
         restaurantId,
+        bookingId: eligibleBooking._id,
         isDeleted: false,
     });
 
     if (existingReview) {
         throw new ApiError(
             409,
-            "You have already reviewed this restaurant."
+            "You have already reviewed this restaurant for this visit."
         );
     }
-
-    const eligibleBooking = await assertEligibleBooking(userId, restaurantId);
 
     const reviewCode = await generateCode(
         RestaurantReview,
@@ -176,6 +213,21 @@ export const createReview = async ({
         await recalculateRestaurantRating(restaurant._id);
     }
 
+    if (restaurant.ownerId) {
+        try {
+            await createNotification({
+                userId: restaurant.ownerId,
+                title: "New Restaurant Review",
+                message: `${user.fullName} reviewed your restaurant ${restaurant.restaurantName}.`,
+                type: "Restaurant Review",
+                linkId: review._id,
+                linkModel: "RestaurantReview",
+            });
+        } catch (error) {
+            console.error("Notification error on restaurant review creation:", error.message);
+        }
+    }
+
     return {
         review: await RestaurantReview.findById(review._id)
             .populate("userId", "userCode fullName email profileImage")
@@ -189,6 +241,8 @@ export const updateReview = async ({
     updates = {},
 }) => {
     const review = await getReviewOrThrow(reviewId);
+
+    const previousOwnerReply = review.ownerReply || "";
 
     if (updates.rating !== undefined) {
         review.rating = updates.rating;
@@ -222,6 +276,28 @@ export const updateReview = async ({
     await review.save();
 
     await recalculateRestaurantRating(review.restaurantId);
+
+    if (
+        review.ownerReply &&
+        review.ownerReply !== previousOwnerReply &&
+        review.userId
+    ) {
+        try {
+            const restaurant = await Restaurant.findById(review.restaurantId)
+                .select("restaurantName")
+                .lean();
+            await createNotification({
+                userId: review.userId,
+                title: "Restaurant Owner Replied",
+                message: `${restaurant?.restaurantName || "The restaurant"} replied to your restaurant review.`,
+                type: "Restaurant Review",
+                linkId: review._id,
+                linkModel: "RestaurantReview",
+            });
+        } catch (error) {
+            console.error("Notification error on restaurant review reply:", error.message);
+        }
+    }
 
     return {
         review: await RestaurantReview.findById(review._id)
@@ -358,7 +434,13 @@ export const getReviews = async ({
 };
 
 export const getEligibility = async ({ userId, restaurantId, bookingId = null }) => {
-    const booking = await findEligibleBooking(userId, restaurantId, bookingId);
+    const reviewedBookingIds = await getReviewedBookingIds(userId, restaurantId);
+    const booking = await findEligibleBooking(
+        userId,
+        restaurantId,
+        bookingId,
+        reviewedBookingIds
+    );
 
     return {
         canReview: Boolean(booking),

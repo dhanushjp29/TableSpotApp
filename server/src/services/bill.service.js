@@ -32,6 +32,11 @@ const roundAmount = (value) => Math.round(Number(value || 0) * 100) / 100;
 const BILL_EDIT_WINDOW_HOURS = 24;
 const WALK_IN_BILL_TYPE = "WALK_IN";
 
+const formatAmount = (value) =>
+  `₹${roundAmount(value).toLocaleString("en-IN", {
+    maximumFractionDigits: 2,
+  })}`;
+
 const normalizeDiscountType = (type) => {
   const normalized = String(type || "").toLowerCase();
   return normalized === "percentage" ? DISCOUNT_TYPE.PERCENTAGE : DISCOUNT_TYPE.AMOUNT;
@@ -1031,6 +1036,7 @@ export const addBillPayment = async ({
   transactionId = "",
   notes = "",
   paidAt = new Date(),
+  source = "owner",
 }) => {
   const bill = await getBillOrThrow(billId);
   assertBillEditableWithinWindow(bill);
@@ -1103,6 +1109,30 @@ export const addBillPayment = async ({
       });
     } catch (error) {
       console.error("Excess refund creation error on bill payment:", error.message);
+    }
+  }
+
+  // Owner-recorded payments (walk-in / additional / spot) notify the
+  // restaurant owner. Online Razorpay payments flow through this function
+  // with source "online" and skip this notification — the owner is already
+  // notified via the "Payment Received" event in payment.service.js.
+  if (source === "owner") {
+    try {
+      const restaurant = await Restaurant.findById(bill.restaurantId)
+        .select("ownerId")
+        .lean();
+      if (restaurant?.ownerId) {
+        await createNotification({
+          userId: restaurant.ownerId,
+          title: "Additional/Spot Payment Received",
+          message: `${formatAmount(paymentAmount)} additional payment received for bill ${bill.billCode}.`,
+          type: "Payment",
+          linkId: bill._id,
+          linkModel: "Bill",
+        });
+      }
+    } catch (error) {
+      console.error("Notification error on additional bill payment:", error.message);
     }
   }
 

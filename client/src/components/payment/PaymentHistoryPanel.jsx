@@ -28,6 +28,9 @@ import EmptyState from "../ui/EmptyState.jsx";
 import { formatDateTime } from "../../utils/formatDate.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
 import InvoiceDatePicker from "../common/InvoiceDatePicker.jsx";
+import ExportButton from "../common/ExportButton.jsx";
+import { useExcelExport } from "../../hooks/useExcelExport.js";
+import { exportPaymentsToExcel } from "../../utils/paymentExport.js";
 
 const PURPOSE_ICONS = {
   "Booking Advance": CreditCard,
@@ -259,6 +262,14 @@ function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
   }, [transactions, search, purpose, method, status, dateFrom, dateTo]);
 
   const hasFilters = search || purpose || method || status || dateFrom || dateTo;
+
+  const { isExporting, handleExport } = useExcelExport({
+    data: filteredTransactions,
+    exportFn: exportPaymentsToExcel,
+    emptyMessage: "No transactions available to export.",
+    successMessage: "Payment history exported to Excel.",
+  });
+
   const moneyInLabel =
     role === "owner" ? "Net Collected" : "Net Spent";
 
@@ -382,6 +393,7 @@ function PaymentHistoryPanel({ role = "customer", title, subtitle }) {
         />
         <div className="w-full sm:w-40"><InvoiceDatePicker label="From date" value={dateFrom} onChange={setDateFrom} /></div>
         <div className="w-full sm:w-40"><InvoiceDatePicker label="To date" value={dateTo} onChange={setDateTo} /></div>
+        <ExportButton isExporting={isExporting} onClick={handleExport} />
       </div>
 
       {/* Transaction list */}

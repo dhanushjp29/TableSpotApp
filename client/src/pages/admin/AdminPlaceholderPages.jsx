@@ -51,6 +51,9 @@ import ErrorState from "../../components/ui/ErrorState.jsx";
 import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import { ROUTES } from "../../routes/routeConstants.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
+import ExportButton from "../../components/common/ExportButton.jsx";
+import { useExcelExport } from "../../hooks/useExcelExport.js";
+import { exportRestaurantsToExcel } from "../../utils/restaurantExport.js";
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement);
 
@@ -648,6 +651,13 @@ export function AdminRestaurantsPage() {
     return r.restaurantName?.toLowerCase().includes(q) || r.city?.toLowerCase().includes(q);
   });
 
+  const { isExporting, handleExport } = useExcelExport({
+    data: filteredRestaurants,
+    exportFn: exportRestaurantsToExcel,
+    emptyMessage: "No restaurants available to export.",
+    successMessage: "Restaurants exported to Excel.",
+  });
+
   return (
     <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
       <div>
@@ -655,15 +665,18 @@ export function AdminRestaurantsPage() {
         <p className="text-sm text-muted">Review, verify, and approve restaurant listings on TableSpot</p>
       </div>
 
-      <div className="relative">
-        <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-        <input
-          type="text"
-          placeholder="Search by restaurant name or city..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="input-field pl-10 w-full"
-        />
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="relative flex-1">
+          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+          <input
+            type="text"
+            placeholder="Search by restaurant name or city..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input-field pl-10 w-full"
+          />
+        </div>
+        <ExportButton isExporting={isExporting} onClick={handleExport} />
       </div>
 
       {isLoading ? (

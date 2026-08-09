@@ -7,11 +7,17 @@ import AppRoutes from "./routes/AppRoutes.jsx";
 import ErrorBoundary from "./components/common/ErrorBoundary.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
 import { initializeAuth } from "./store/slices/authSlice.js";
+import useLiveNotifications from "./hooks/useLiveNotifications.js";
 
 function RouteAwareErrorBoundary({ children }) {
   const location = useLocation();
 
   return <ErrorBoundary resetKey={location.pathname}>{children}</ErrorBoundary>;
+}
+
+function LiveNotificationBridge() {
+  useLiveNotifications();
+  return null;
 }
 
 function App() {
@@ -28,6 +34,7 @@ function App() {
         <RouteAwareErrorBoundary>
           <AppRoutes />
         </RouteAwareErrorBoundary>
+        <LiveNotificationBridge />
         <Toaster
           position="top-right"
           containerStyle={{ top: 72 }}

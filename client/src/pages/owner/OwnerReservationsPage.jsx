@@ -41,6 +41,9 @@ import { formatCurrency } from "../../utils/formatCurrency.js";
 import RestaurantFilter from "../../components/owner/RestaurantFilter.jsx";
 import InvoiceDatePicker from "../../components/common/InvoiceDatePicker.jsx";
 import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
+import ExportButton from "../../components/common/ExportButton.jsx";
+import { useExcelExport } from "../../hooks/useExcelExport.js";
+import { exportReservationsToExcel } from "../../utils/reservationExport.js";
 
 const REFUND_BADGE = {
   REFUND_PENDING: { label: "Refund pending", variant: "warning" },
@@ -150,7 +153,7 @@ export default function OwnerReservationsPage() {
     if (!booking?.refundId) return;
 
     try {
-      await dispatch(fetchRefundById(booking.refundId));
+      await dispatch(fetchRefundById(booking.refundId?._id || booking.refundId));
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to load refund details.");
     }
@@ -190,7 +193,7 @@ export default function OwnerReservationsPage() {
 
     try {
       if (type === "refund") {
-        await dispatch(processRefund(booking.refundId, refundMethod));
+        await dispatch(processRefund(booking.refundId?._id || booking.refundId, refundMethod));
         toast.success(
           refundMethod === "Cash"
             ? "Refund marked as issued in cash."
@@ -239,6 +242,13 @@ export default function OwnerReservationsPage() {
     completed: visibleBookings.filter((b) => b.bookingStatus === "Completed").length,
     refunds: visibleBookings.filter((b) => !!b.refundId).length,
   };
+
+  const { isExporting, handleExport: exportReservations } = useExcelExport({
+    data: filteredBookings,
+    exportFn: exportReservationsToExcel,
+    emptyMessage: "No reservations available to export.",
+    successMessage: "Reservations exported to Excel.",
+  });
 
   const canConvert = (b) =>
     b.bookingStatus === "Confirmed" &&
@@ -320,6 +330,7 @@ export default function OwnerReservationsPage() {
               {st}
             </button>
           ))}
+          <ExportButton isExporting={isExporting} onClick={exportReservations} />
         </div>
       </div>
 

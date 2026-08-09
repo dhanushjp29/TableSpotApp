@@ -1,5 +1,6 @@
 import FoodReview from "../models/FoodReview.js";
 import Food from "../models/food.js";
+import Restaurant from "../models/Restaurant.js";
 import Booking from "../models/Booking.js";
 import Bill from "../models/Bill.js";
 import User from "../models/User.js";
@@ -9,7 +10,25 @@ import generateCode from "../utils/generateCode.js";
 
 import { BILL_STATUS, BOOKING_STATUS, CODE_PREFIX } from "../utils/constants.js";
 
-const findEligibleBooking = async (userId, restaurantId, bookingId = null) => {
+import { createNotification } from "./notification.service.js";
+
+const getReviewedFoodBookingIds = async (userId, foodId) => {
+    const reviews = await FoodReview.find({
+        userId,
+        foodId,
+        bookingId: { $ne: null },
+        isDeleted: false,
+    }).select("bookingId");
+
+    return new Set(reviews.map((review) => String(review.bookingId)));
+};
+
+const findEligibleBooking = async (
+    userId,
+    restaurantId,
+    bookingId = null,
+    reviewedBookingIds = new Set()
+) => {
     // A customer becomes eligible to review only once the restaurant has
     // collected payment and finalized (marked PAID) the bill for their own
     // booking. A merely GENERATED bill is not enough, and another customer's
@@ -25,10 +44,13 @@ const findEligibleBooking = async (userId, restaurantId, bookingId = null) => {
         bookingQuery._id = bookingId;
     }
 
-    const bookings = await Booking.find(bookingQuery)
+    const bookings = (await Booking.find(bookingQuery)
         .sort({ bookingDateTime: -1 })
         .select("_id bookingCode bookingDateTime")
-        .lean();
+        .lean())
+        // Skip bookings that already have a review for this food item, so a
+        // customer can re-review the dish on each new paid visit.
+        .filter((b) => !reviewedBookingIds.has(String(b._id)));
 
     if (bookings.length === 0) {
         return null;
@@ -65,8 +87,21 @@ const findEligibleBooking = async (userId, restaurantId, bookingId = null) => {
     };
 };
 
-const assertEligibleBooking = async (userId, restaurantId, bookingId = null) => {
-    const booking = await findEligibleBooking(userId, restaurantId, bookingId);
+const assertEligibleBooking = async (
+    userId,
+    restaurantId,
+    bookingId = null,
+    foodId = null
+) => {
+    const reviewedBookingIds = foodId
+        ? await getReviewedFoodBookingIds(userId, foodId)
+        : new Set();
+    const booking = await findEligibleBooking(
+        userId,
+        restaurantId,
+        bookingId,
+        reviewedBookingIds
+    );
 
     if (!booking) {
         throw new ApiError(
@@ -128,7 +163,7 @@ export const createReview = async ({
     images = [],
     status = "Published",
 }) => {
-    const user = await User.findById(userId).select("_id isActive isDeleted");
+    const user = await User.findById(userId).select("_id fullName isActive isDeleted");
 
     if (!user || !user.isActive || user.isDeleted) {
         throw new ApiError(404, "User not found.");
@@ -147,24 +182,26 @@ export const createReview = async ({
         );
     }
 
+    const eligibleBooking = await assertEligibleBooking(
+        userId,
+        restaurantId,
+        bookingId,
+        foodId
+    );
+
     const existingReview = await FoodReview.findOne({
         userId,
         foodId,
+        bookingId: eligibleBooking._id,
         isDeleted: false,
     });
 
     if (existingReview) {
         throw new ApiError(
             409,
-            "You have already reviewed this food item."
+            "You have already reviewed this food item for this visit."
         );
     }
-
-    const eligibleBooking = await assertEligibleBooking(
-        userId,
-        restaurantId,
-        bookingId
-    );
 
     // Only allow reviewing foods that were actually ordered on the user's
     // paid bill for this restaurant.
@@ -202,6 +239,25 @@ export const createReview = async ({
         await recalculateFoodRating(food._id);
     }
 
+    const restaurant = await Restaurant.findById(food.restaurantId)
+        .select("ownerId restaurantName")
+        .lean();
+
+    if (restaurant?.ownerId) {
+        try {
+            await createNotification({
+                userId: restaurant.ownerId,
+                title: "New Food Review",
+                message: `${user.fullName} reviewed your food item ${food.foodName}.`,
+                type: "Food Review",
+                linkId: review._id,
+                linkModel: "FoodReview",
+            });
+        } catch (error) {
+            console.error("Notification error on food review creation:", error.message);
+        }
+    }
+
     return {
         review: await FoodReview.findById(review._id)
             .populate("userId", "userCode fullName email profileImage")
@@ -216,6 +272,8 @@ export const updateReview = async ({
     updates = {},
 }) => {
     const review = await getReviewOrThrow(reviewId);
+
+    const previousOwnerReply = review.ownerReply || "";
 
     if (updates.rating !== undefined) {
         review.rating = updates.rating;
@@ -249,6 +307,33 @@ export const updateReview = async ({
     await review.save();
 
     await recalculateFoodRating(review.foodId);
+
+    if (
+        review.ownerReply &&
+        review.ownerReply !== previousOwnerReply &&
+        review.userId
+    ) {
+        try {
+            const [restaurant, food] = await Promise.all([
+                Restaurant.findById(review.restaurantId)
+                    .select("restaurantName")
+                    .lean(),
+                Food.findById(review.foodId)
+                    .select("foodName")
+                    .lean(),
+            ]);
+            await createNotification({
+                userId: review.userId,
+                title: "Restaurant Replied to Your Food Review",
+                message: `${restaurant?.restaurantName || "The restaurant"} replied to your review of ${food?.foodName || "your food item"}.`,
+                type: "Food Review",
+                linkId: review._id,
+                linkModel: "FoodReview",
+            });
+        } catch (error) {
+            console.error("Notification error on food review reply:", error.message);
+        }
+    }
 
     return {
         review: await FoodReview.findById(review._id)

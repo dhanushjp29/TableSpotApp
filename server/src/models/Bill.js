@@ -107,8 +107,6 @@ const billSchema = new mongoose.Schema(
       type: mongoose.Schema.Types.ObjectId,
       ref: "Booking",
       default: null,
-      unique: true,
-      sparse: true,
     },
 
     billType: {

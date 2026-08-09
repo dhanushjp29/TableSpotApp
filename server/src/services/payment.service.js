@@ -1,8 +1,10 @@
 import Booking from "../models/Booking.js";
+import Bill from "../models/Bill.js";
 import Payment from "../models/Payment.js";
 import { addBillPayment } from "./bill.service.js";
 import { createBookingFromPayment } from "./booking.service.js";
 import { createAuditLog } from "./auditLog.service.js";
+import { createNotification } from "./notification.service.js";
 import {
   BOOKING_STATUS,
   PAYMENT_METHOD,
@@ -12,6 +14,72 @@ import {
 import { getIO } from "../sockets/socket.handler.js";
 
 const roundAmount = (value) => Math.round(Number(value || 0) * 100) / 100;
+
+const formatAmount = (value) =>
+  `₹${roundAmount(value).toLocaleString("en-IN", {
+    maximumFractionDigits: 2,
+  })}`;
+
+/**
+ * Resolve the human-friendly reference label and the notification link target
+ * for a payment record. Bill payments link to the Bill; booking payments link
+ * to the Booking. Returns an empty label/link when neither exists (e.g. a
+ * failed payment-first order that never produced a booking).
+ */
+const resolvePaymentReference = async ({ paymentRecord, booking }) => {
+  if (paymentRecord.billId) {
+    const bill = await Bill.findById(paymentRecord.billId)
+      .select("billCode")
+      .lean();
+    if (bill) {
+      return {
+        label: `bill ${bill.billCode}`,
+        linkId: bill._id,
+        linkModel: "Bill",
+      };
+    }
+  }
+
+  if (booking) {
+    return {
+      label: `booking ${booking.bookingCode}`,
+      linkId: booking._id,
+      linkModel: "Booking",
+    };
+  }
+
+  return { label: "", linkId: null, linkModel: "" };
+};
+
+/**
+ * Notify the customer that a payment failed. Safe to call from the webhook
+ * handler and from frontend signature verification — callers must guard on
+ * the payment's previous status so the event is notified exactly once.
+ */
+export const notifyPaymentFailedCustomer = async ({ paymentRecord }) => {
+  if (!paymentRecord?.customerId) return;
+
+  try {
+    const booking = paymentRecord.bookingId
+      ? await Booking.findById(paymentRecord.bookingId)
+      : null;
+    const reference = await resolvePaymentReference({
+      paymentRecord,
+      booking,
+    });
+    const referenceSuffix = reference?.label ? ` for ${reference.label}` : "";
+    await createNotification({
+      userId: paymentRecord.customerId,
+      title: "Payment Failed",
+      message: `Your payment of ${formatAmount(paymentRecord.amount)}${referenceSuffix} could not be completed.`,
+      type: "Payment",
+      linkId: reference?.linkId || null,
+      linkModel: reference?.linkModel || "",
+    });
+  } catch (error) {
+    console.error("Notification error on payment failed:", error.message);
+  }
+};
 
 /**
  * Map a Razorpay payment method code to the app's payment method enum.
@@ -136,6 +204,7 @@ export const handlePaymentCaptured = async ({
           notes:
             transactionNotes ||
             `Paid via Razorpay. Order ID: ${razorpayOrderId}`,
+          source: "online",
         });
       } catch (error) {
         console.error(
@@ -160,6 +229,51 @@ export const handlePaymentCaptured = async ({
     }
   }
 
+  // Notify the customer ("Payment Successful") and the owner ("Payment
+  // Received"). This branch only runs on the first capture of this payment;
+  // handlePaymentCaptured returns early with { duplicate: true } for any
+  // re-delivery, so the webhook and frontend verification cannot double-notify.
+  if (paymentRecord.customerId || paymentRecord.ownerId) {
+    let reference = null;
+    try {
+      reference = await resolvePaymentReference({ paymentRecord, booking });
+    } catch (error) {
+      console.error("Notification reference error on payment success:", error.message);
+    }
+
+    const referenceSuffix = reference?.label ? ` for ${reference.label}` : "";
+
+    if (paymentRecord.customerId) {
+      try {
+        await createNotification({
+          userId: paymentRecord.customerId,
+          title: "Payment Successful",
+          message: `Your payment of ${formatAmount(paymentRecord.amount)}${referenceSuffix} was successful.`,
+          type: "Payment",
+          linkId: reference?.linkId || null,
+          linkModel: reference?.linkModel || "",
+        });
+      } catch (error) {
+        console.error("Notification error on payment success:", error.message);
+      }
+    }
+
+    if (paymentRecord.ownerId) {
+      try {
+        await createNotification({
+          userId: paymentRecord.ownerId,
+          title: "Payment Received",
+          message: `${formatAmount(paymentRecord.amount)} payment received${referenceSuffix}.`,
+          type: "Payment",
+          linkId: reference?.linkId || null,
+          linkModel: reference?.linkModel || "",
+        });
+      } catch (error) {
+        console.error("Notification error on payment received:", error.message);
+      }
+    }
+  }
+
   return { duplicate: false, paymentRecord };
 };
 
@@ -174,6 +288,9 @@ export const handlePaymentFailed = async ({ razorpayOrderId, razorpayPaymentId =
   if (paymentRecord.paymentStatus === PAYMENT_TRANSACTION_STATUS.CAPTURED) {
     return paymentRecord;
   }
+
+  const wasFailed =
+    paymentRecord.paymentStatus === PAYMENT_TRANSACTION_STATUS.FAILED;
 
   paymentRecord.razorpayPaymentId = razorpayPaymentId || paymentRecord.razorpayPaymentId;
   paymentRecord.paymentStatus = PAYMENT_TRANSACTION_STATUS.FAILED;
@@ -205,6 +322,13 @@ export const handlePaymentFailed = async ({ razorpayOrderId, razorpayPaymentId =
     });
   } catch (error) {
     console.error("Audit log error on payment failed:", error.message);
+  }
+
+  // Notify the customer about the failed payment. Idempotent: only the first
+  // transition into the FAILED state triggers a notification, so webhook
+  // retries and the frontend verification path cannot double-notify.
+  if (!wasFailed) {
+    await notifyPaymentFailedCustomer({ paymentRecord });
   }
 
   return paymentRecord;

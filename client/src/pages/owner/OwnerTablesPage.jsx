@@ -40,6 +40,9 @@ import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import TableShape from "../../components/restaurant/TableShape.jsx";
 import { formatDate, formatTime } from "../../utils/formatDate.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
+import ExportButton from "../../components/common/ExportButton.jsx";
+import { useExcelExport } from "../../hooks/useExcelExport.js";
+import { exportTablesToExcel } from "../../utils/tableExport.js";
 import {
   TABLE_LOCATION_VALUES,
   TABLE_SHAPE,
@@ -1239,6 +1242,13 @@ function OwnerTablesPage() {
       )
     : tables;
 
+  const { isExporting, handleExport } = useExcelExport({
+    data: visibleTables,
+    exportFn: exportTablesToExcel,
+    emptyMessage: "No tables available to export.",
+    successMessage: "Tables exported to Excel.",
+  });
+
   const handleDelete = async () => {
     if (!deleteTarget) return;
     setDeleting(true);
@@ -1302,10 +1312,13 @@ function OwnerTablesPage() {
             Manage your restaurant tables, shapes and seats.
           </p>
         </div>
-        <Button onClick={() => setShowCreate(true)}>
-          <Plus size={16} />
-          Add Table
-        </Button>
+        <div className="flex items-center gap-3">
+          <ExportButton isExporting={isExporting} onClick={handleExport} />
+          <Button onClick={() => setShowCreate(true)}>
+            <Plus size={16} />
+            Add Table
+          </Button>
+        </div>
       </div>
 
       <div className="mb-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">

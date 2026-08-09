@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { Bell, BellRing, CheckCheck, HandCoins, MessageSquareWarning } from "lucide-react";
 import { useDispatch, useSelector } from "react-redux";
+import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
 
 import {
@@ -11,6 +12,10 @@ import {
   markAsReadNotification,
 } from "../../store/slices/notificationSlice.js";
 import { confirmRefundReceipt, disputeRefund, fetchRefundById } from "../../store/slices/refundSlice.js";
+import { restaurantReviewApi, foodReviewApi } from "../../api/review.api.js";
+import { ROUTES } from "../../routes/routeConstants.js";
+import { USER_ROLE } from "../../constants/roles.js";
+import { useAuth } from "../../hooks/useAuth.js";
 import Card from "../../components/ui/Card.jsx";
 import Button from "../../components/ui/Button.jsx";
 import Badge from "../../components/ui/Badge.jsx";
@@ -53,6 +58,8 @@ const notifyLayout = () => {
 
 function NotificationsPage() {
   const dispatch = useDispatch();
+  const navigate = useNavigate();
+  const { role } = useAuth();
   const notifications = useSelector((state) => state.notification.notifications);
   const meta = useSelector((state) => state.notification.meta) || {
     page: 1,
@@ -119,24 +126,91 @@ function NotificationsPage() {
     };
   }, [dispatch, notifications]);
 
-  const handleMarkRead = async (notification) => {
-    if (notification.isRead) return;
-
+  const deleteNotification = async (notification) => {
     try {
       await dispatch(markAsReadNotification(notification._id));
       notifyLayout();
-    } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to update notification.");
+    } catch {
+      // Notification may already be deleted; treat as cleared.
     }
+  };
+
+  const navigateFromNotification = async (notification) => {
+    const { linkId, linkModel } = notification;
+
+    try {
+      if (linkModel === "RestaurantReview") {
+        if (role === USER_ROLE.OWNER) {
+          navigate(ROUTES.OWNER_REVIEWS);
+          return;
+        }
+        const res = await restaurantReviewApi.getById(linkId);
+        const review = res?.data?.review;
+        const restaurantId = review?.restaurantId?._id || review?.restaurantId;
+        if (restaurantId) navigate(`/restaurants/${restaurantId}`);
+        return;
+      }
+
+      if (linkModel === "FoodReview") {
+        if (role === USER_ROLE.OWNER) {
+          navigate(ROUTES.OWNER_REVIEWS);
+          return;
+        }
+        const res = await foodReviewApi.getById(linkId);
+        const review = res?.data?.review;
+        const foodId = review?.foodId?._id || review?.foodId;
+        if (foodId) navigate(`/foods/${foodId}`);
+        return;
+      }
+
+      if (linkModel === "Booking") {
+        navigate(
+          role === USER_ROLE.OWNER
+            ? ROUTES.OWNER_RESERVATIONS
+            : `/customer/bookings/${linkId}`
+        );
+        return;
+      }
+
+      if (linkModel === "Bill") {
+        navigate(
+          role === USER_ROLE.OWNER
+            ? `/owner/billing/${linkId}`
+            : ROUTES.CUSTOMER_PAYMENTS
+        );
+        return;
+      }
+
+      if (linkModel === "Restaurant") {
+        if (role === USER_ROLE.OWNER) {
+          navigate(`/owner/restaurant/${linkId}`);
+        } else if (role === USER_ROLE.ADMIN) {
+          navigate(ROUTES.ADMIN_RESTAURANTS);
+        } else {
+          navigate(`/restaurants/${linkId}`);
+        }
+      }
+    } catch {
+      // Best-effort navigation; a broken link should not break the page.
+    }
+  };
+
+  const handleOpenNotification = async (notification) => {
+    if (notification.linkModel === "Refund") {
+      return;
+    }
+
+    await deleteNotification(notification);
+    await navigateFromNotification(notification);
   };
 
   const handleMarkAllRead = async () => {
     try {
       await dispatch(markAllAsRead());
       notifyLayout();
-      toast.success("All notifications marked as read.");
+      toast.success("All notifications cleared.");
     } catch (err) {
-      toast.error(err?.response?.data?.message || "Failed to mark notifications as read.");
+      toast.error(err?.response?.data?.message || "Failed to clear notifications.");
     }
   };
 
@@ -147,10 +221,7 @@ function NotificationsPage() {
       await dispatch(confirmRefundReceipt(notification.linkId));
       setRefundStatuses((prev) => ({ ...prev, [notification._id]: "REFUNDED" }));
       toast.success("Refund receipt confirmed. Thank you!");
-      if (!notification.isRead) {
-        await dispatch(markAsReadNotification(notification._id));
-        notifyLayout();
-      }
+      await deleteNotification(notification);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to confirm refund.");
     } finally {
@@ -173,6 +244,7 @@ function NotificationsPage() {
       await dispatch(disputeRefund(notification.linkId, trimmed));
       setRefundStatuses((prev) => ({ ...prev, [notification._id]: "REFUND_DISPUTED" }));
       toast.success("Refund disputed. The restaurant has been notified.");
+      await deleteNotification(notification);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Failed to dispute refund.");
     } finally {
@@ -274,7 +346,7 @@ function NotificationsPage() {
           title={filter === "unread" ? "No unread notifications" : "No notifications yet"}
           description={
             filter === "unread"
-              ? "You have read all your notifications."
+              ? "You are all caught up. New notifications will appear here as they arrive."
               : "Notifications about bookings, approvals and reviews will appear here."
           }
         />
@@ -287,7 +359,7 @@ function NotificationsPage() {
                 className={`p-4 flex items-start gap-4 transition-colors cursor-pointer ${
                   notification.isRead ? "hover:bg-gray-50" : "bg-primary/[0.03] hover:bg-primary/[0.06]"
                 }`}
-                onClick={() => handleMarkRead(notification)}
+                onClick={() => handleOpenNotification(notification)}
               >
                 <div
                   className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${

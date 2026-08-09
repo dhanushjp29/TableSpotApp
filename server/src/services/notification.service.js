@@ -94,11 +94,10 @@ export const getUnreadCount = async ({ userId }) => {
 };
 
 export const markNotificationAsRead = async ({ userId, notificationId }) => {
-    const notification = await Notification.findOneAndUpdate(
-        { _id: notificationId, userId },
-        { isRead: true, readAt: new Date() },
-        { new: true }
-    );
+    const notification = await Notification.findOneAndDelete({
+        _id: notificationId,
+        userId,
+    });
 
     if (!notification) {
         throw new ApiError(404, "Notification not found.");
@@ -108,10 +107,7 @@ export const markNotificationAsRead = async ({ userId, notificationId }) => {
 };
 
 export const markAllNotificationsAsRead = async ({ userId }) => {
-    await Notification.updateMany(
-        { userId, isRead: false },
-        { isRead: true, readAt: new Date() }
-    );
+    const { deletedCount } = await Notification.deleteMany({ userId });
 
-    return { message: "All notifications marked as read." };
+    return { message: "All notifications cleared.", deletedCount };
 };

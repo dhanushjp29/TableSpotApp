@@ -88,13 +88,7 @@ const restaurantReviewSchema = new mongoose.Schema(
     }
 );
 
-// One review per user per restaurant
-restaurantReviewSchema.index(
-    { userId: 1, restaurantId: 1 },
-    { unique: true }
-);
-
-// One review per user per booking per restaurant (payment-first lifecycle)
+// One review per user per paid booking per restaurant (payment-first lifecycle)
 restaurantReviewSchema.index(
     { userId: 1, bookingId: 1, restaurantId: 1 },
     { unique: true }
