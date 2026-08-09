@@ -205,7 +205,7 @@ function ReviewForm({
               ? "Share your experience..."
               : "How was this dish?"
           }
-          className="input-field w-full rounded-lg border border-gray-200 p-3 text-sm focus:border-primary focus:outline-none"
+          className="input-field w-full rounded-lg border border-gray-200 bg-white p-3 text-sm text-text focus:border-primary focus:outline-none dark:border-white/10 dark:bg-[#11151b] dark:text-slate-100"
         />
       </div>
 
@@ -225,7 +225,7 @@ function ReviewForm({
             <img
               src={imagePreview}
               alt="Review preview"
-              className="h-24 w-24 rounded-lg object-cover border border-gray-200"
+              className="h-24 w-24 rounded-lg object-cover border border-gray-200 dark:border-white/10"
             />
             <button
               type="button"
@@ -240,7 +240,7 @@ function ReviewForm({
           <button
             type="button"
             onClick={() => fileInputRef.current?.click()}
-            className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 text-muted transition-colors hover:border-primary hover:text-primary"
+            className="flex h-24 w-24 flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-gray-300 text-muted transition-colors hover:border-primary hover:text-primary dark:border-white/15"
           >
             <ImagePlus size={22} />
             <span className="text-[10px] font-medium">Add photo</span>
@@ -263,9 +263,9 @@ function ReviewForm({
             {foodEntries.map((entry, index) => (
               <div
                 key={entry.foodId}
-                className="rounded-lg border border-gray-100 bg-gray-50/60 p-3"
+                className="rounded-lg border border-gray-100 bg-gray-50/60 p-3 dark:border-white/10 dark:bg-[#1d222b]"
               >
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-text">
                     {entry.foodName}
                   </span>
@@ -282,7 +282,7 @@ function ReviewForm({
                       updateFoodEntry(index, { comment: e.target.value })
                     }
                     placeholder="How was this dish?"
-                    className="mt-2 w-full rounded-lg border border-gray-200 p-2 text-sm focus:border-primary focus:outline-none"
+                    className="mt-2 w-full rounded-lg border border-gray-200 bg-white p-2 text-sm text-text focus:border-primary focus:outline-none dark:border-white/10 dark:bg-[#11151b] dark:text-slate-100"
                   />
                 )}
               </div>

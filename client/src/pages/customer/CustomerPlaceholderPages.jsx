@@ -11,6 +11,7 @@ import {
   Mail,
   Eye,
   CalendarPlus,
+  Receipt,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -40,6 +41,9 @@ import EmptyState from "../../components/ui/EmptyState.jsx";
 import ReviewModal from "../../components/ui/ReviewModal.jsx";
 import RestaurantCard from "../../components/restaurant/RestaurantCard.jsx";
 import FoodCard from "../../components/food/FoodCard.jsx";
+import BillReceiptView from "../../components/billing/BillReceiptView.jsx";
+import Modal from "../../components/ui/Modal.jsx";
+import InvoiceDatePicker from "../../components/common/InvoiceDatePicker.jsx";
 import { formatDate, formatTime } from "../../utils/formatDate.js";
 
 export function CustomerBookingsPage() {
@@ -50,6 +54,8 @@ export function CustomerBookingsPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
   const [filterStatus, setFilterStatus] = useState("ALL");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
   const [reviewModalState, setReviewModalState] = useState({
     isOpen: false,
     restaurantId: null,
@@ -57,6 +63,7 @@ export function CustomerBookingsPage() {
     foods: [],
     bookingId: null,
   });
+  const [receiptModal, setReceiptModal] = useState({ isOpen: false, bill: null });
 
   const reloadBookings = async () => {
     try {
@@ -116,8 +123,17 @@ export function CustomerBookingsPage() {
   };
 
   const filteredBookings = bookings.filter((b) => {
-    if (filterStatus === "ALL") return true;
-    return b.bookingStatus === filterStatus;
+    if (filterStatus !== "ALL" && b.bookingStatus !== filterStatus) return false;
+    const bookingDate = b.bookingDateTime ? new Date(b.bookingDateTime) : null;
+    if (dateFrom && bookingDate) {
+      const from = new Date(`${dateFrom}T00:00:00`);
+      if (bookingDate < from) return false;
+    }
+    if (dateTo && bookingDate) {
+      const to = new Date(`${dateTo}T23:59:59`);
+      if (bookingDate > to) return false;
+    }
+    return true;
   });
 
   if (isLoading) {
@@ -178,6 +194,24 @@ export function CustomerBookingsPage() {
               {status}
             </button>
           ))}
+        </div>
+
+        {/* Date filters */}
+        <div className="flex flex-wrap items-end gap-3">
+          <div className="w-full sm:w-44"><InvoiceDatePicker label="From date" value={dateFrom} onChange={setDateFrom} /></div>
+          <div className="w-full sm:w-44"><InvoiceDatePicker label="To date" value={dateTo} onChange={setDateTo} /></div>
+          {(dateFrom || dateTo) && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setDateFrom("");
+                setDateTo("");
+              }}
+            >
+              Clear dates
+            </Button>
+          )}
         </div>
       </div>
 
@@ -255,6 +289,20 @@ export function CustomerBookingsPage() {
                 <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
                   <span className="text-xs font-mono text-muted">{booking.bookingCode || `Ref: ${booking._id}`}</span>
                   <div className="flex items-center gap-2">
+                    {booking.bookingStatus === "Completed" &&
+                      booking.billId &&
+                      typeof booking.billId === "object" && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() =>
+                            setReceiptModal({ isOpen: true, bill: booking.billId })
+                          }
+                        >
+                          <Receipt size={14} className="mr-1" />
+                          View Receipt
+                        </Button>
+                      )}
                     <Button
                       variant="outline"
                       size="sm"
@@ -328,6 +376,15 @@ export function CustomerBookingsPage() {
         bookingId={reviewModalState.bookingId}
         onSuccess={reloadBookings}
       />
+
+      <Modal
+        isOpen={receiptModal.isOpen}
+        onClose={() => setReceiptModal({ isOpen: false, bill: null })}
+        title="Bill Receipt"
+        size="xl"
+      >
+        {receiptModal.bill && <BillReceiptView bill={receiptModal.bill} />}
+      </Modal>
     </div>
   );
 }

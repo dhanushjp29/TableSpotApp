@@ -40,7 +40,7 @@ import Select from "../../components/ui/Select.jsx";
 import { SkeletonCard } from "../../components/ui/Skeleton.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
-import { formatDate } from "../../utils/formatDate.js";
+import { formatDate, formatDateTime } from "../../utils/formatDate.js";
 import RestaurantFilter from "../../components/owner/RestaurantFilter.jsx";
 import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
 import { ROUTES } from "../../routes/routeConstants.js";
@@ -775,7 +775,9 @@ export default function OwnerBillingPage() {
   }, [routeBillId, bills]);
 
   const createReceiptPdfBlob = async (receiptBill = activeReceiptBill) => {
-    const element = document.getElementById("receipt-pdf-area");
+    const element =
+      document.getElementById("receipt-pdf-area") ||
+      document.getElementById("receipt-print-area-print");
     if (!element || !receiptBill) throw new Error("Receipt is not ready");
     const renderElement = element.cloneNode(true);
     renderElement.removeAttribute("id");
@@ -2040,7 +2042,7 @@ export default function OwnerBillingPage() {
           onClose={() => setActiveReceiptBill(null)}
           title={`Invoice Receipt ${activeReceiptBill.billCode || `#${activeReceiptBill._id.slice(-6)}`}`}
         >
-          <div id="receipt-print-area" className="space-y-4 rounded-2xl border border-dashed border-border bg-surface-secondary/40 p-4 font-mono text-sm my-2">
+          <div id="receipt-pdf-area" className="space-y-4 rounded-2xl border border-dashed border-border bg-surface-secondary/40 p-4 font-mono text-sm my-2">
             <div className="text-center pb-2 border-b border-border">
               <h3 className="text-lg font-bold text-text font-sans">TABLESPOT RECEIPT</h3>
               <p className="text-xs text-muted">Thank you for dining with us!</p>
@@ -2049,12 +2051,12 @@ export default function OwnerBillingPage() {
             <div className="space-y-1 text-xs border-b border-border pb-2">
               <div className="flex justify-between gap-2"><span>Bill Type:</span><span>{activeReceiptBill.billType === "WALK_IN" ? "Walk-in" : "Online Booking"}</span></div>
               <div className="flex justify-between gap-2"><span>Restaurant:</span><span>{activeReceiptBill.restaurantId?.restaurantName || "-"}</span></div>
-              <div className="flex justify-between gap-2"><span>Table No:</span><span>{activeReceiptBill.tableId?.tableNumber ?? activeReceiptBill.tableId?.tableCode ?? activeReceiptBill.bookingId?.tableId?.tableNumber ?? activeReceiptBill.bookingId?.tableId?.tableCode ?? "-"}</span></div>
-              <div className="flex justify-between gap-2"><span>Booking No:</span><span>{activeReceiptBill.billType === "WALK_IN" ? "Walk-in / -" : (activeReceiptBill.bookingId?.bookingCode || "-")}</span></div>
               <div className="flex justify-between gap-2"><span>Customer:</span><span>{activeReceiptBill.customerName || activeReceiptBill.bookingId?.userId?.fullName || "Guest"}</span></div>
-              <div className="flex justify-between gap-2"><span>Phone:</span><span>{activeReceiptBill.customerPhone || activeReceiptBill.bookingId?.userId?.phoneNumber || "-"}</span></div>
               <div className="flex justify-between gap-2"><span>Email:</span><span>{activeReceiptBill.customerEmail || activeReceiptBill.bookingId?.userId?.email || "-"}</span></div>
-              {activeReceiptBill.billType !== "WALK_IN" && <div className="flex justify-between gap-2"><span>Booking Date:</span><span>{activeReceiptBill.bookingId?.bookingDateTime ? formatDate(new Date(activeReceiptBill.bookingId.bookingDateTime)) : "-"}</span></div>}
+              <div className="flex justify-between gap-2"><span>Booking number:</span><span>{activeReceiptBill.billType === "WALK_IN" ? "Walk-in / -" : (activeReceiptBill.bookingId?.bookingCode || "-")}</span></div>
+              <div className="flex justify-between gap-2"><span>Phone:</span><span>{activeReceiptBill.customerPhone || activeReceiptBill.bookingId?.userId?.phoneNumber || "-"}</span></div>
+              <div className="flex justify-between gap-2"><span>Table:</span><span>{activeReceiptBill.tableId?.tableCode ?? activeReceiptBill.tableId?.tableNumber ?? activeReceiptBill.bookingId?.tableId?.tableCode ?? activeReceiptBill.bookingId?.tableId?.tableNumber ?? "-"}</span></div>
+              {activeReceiptBill.billType !== "WALK_IN" && <div className="flex justify-between gap-2"><span>Booking date/time:</span><span>{activeReceiptBill.bookingId?.bookingDateTime ? formatDateTime(new Date(activeReceiptBill.bookingId.bookingDateTime)) : "-"}</span></div>}
               <div className="flex justify-between gap-2"><span>Bill No:</span><span>{activeReceiptBill.billCode || activeReceiptBill._id}</span></div>
             </div>
 

@@ -42,6 +42,43 @@ import {
   USER_ROLE,
 } from "../utils/constants.js";
 
+const BILL_ID_POPULATE = {
+  path: "billId",
+  populate: [
+    {
+      path: "bookingId",
+      populate: [
+        {
+          path: "userId",
+          select: "userCode fullName email phoneNumber role profileImage",
+        },
+        {
+          path: "restaurantId",
+          select:
+            "restaurantCode restaurantName slug city state country coverImage gstin averageRating",
+        },
+        {
+          path: "tableId",
+          select: "tableCode tableNumber tableName tableLabel",
+        },
+      ],
+    },
+    {
+      path: "restaurantId",
+      select:
+        "restaurantCode restaurantName slug city state country coverImage gstin averageRating",
+    },
+    {
+      path: "tableId",
+      select: "tableCode tableNumber tableName tableLabel capacity",
+    },
+    {
+      path: "generatedBy",
+      select: "userCode fullName email phoneNumber role profileImage",
+    },
+  ],
+};
+
 const BOOKED_STATUSES = [
   BOOKING_STATUS.PENDING,
   BOOKING_STATUS.CONFIRMED,
@@ -1772,7 +1809,7 @@ export const getBookingById = async ({
     .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
     .populate("preOrderedFoods.foodId", "foodCode foodName coverImage")
     .populate("refundId", "refundCode refundStatus refundMethod amount")
-    .populate("billId");
+    .populate(BILL_ID_POPULATE);
 
   if (!booking || booking.isDeleted) {
     throw new ApiError(404, "Booking not found.");
@@ -1845,7 +1882,7 @@ export const getBookings = async ({
       .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
       .populate("preOrderedFoods.foodId", "foodCode foodName coverImage")
       .populate("refundId", "refundCode refundStatus refundMethod amount")
-      .populate("billId"),
+      .populate(BILL_ID_POPULATE),
     Booking.countDocuments(query),
   ]);
 
