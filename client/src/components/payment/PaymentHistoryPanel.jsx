@@ -31,6 +31,14 @@ import InvoiceDatePicker from "../common/InvoiceDatePicker.jsx";
 import ExportButton from "../common/ExportButton.jsx";
 import { useExcelExport } from "../../hooks/useExcelExport.js";
 import { exportPaymentsToExcel } from "../../utils/paymentExport.js";
+import PdfDownloadButton from "../pdf/PdfDownloadButton.jsx";
+import PaymentPdf from "../pdf/PaymentPdf.jsx";
+import RefundPdf from "../pdf/RefundPdf.jsx";
+import {
+  fetchPaymentReceiptData,
+  paymentReceiptFilename,
+  refundReceiptFilename,
+} from "../../utils/pdf/pdfData.js";
 
 const PURPOSE_ICONS = {
   "Booking Advance": CreditCard,
@@ -182,6 +190,25 @@ function TransactionRow({ transaction, role }) {
           <StatusIcon size={12} aria-hidden="true" />
           {transaction.status}
         </span>
+        <PdfDownloadButton
+          variant="ghost"
+          size="sm"
+          className="text-primary"
+          label="PDF"
+          loadingLabel="..."
+          successMessage={
+            isRefund ? "Refund receipt PDF downloaded." : "Payment receipt PDF downloaded."
+          }
+          filename={isRefund ? refundReceiptFilename : paymentReceiptFilename}
+          fetchData={() => fetchPaymentReceiptData(transaction)}
+          renderDocument={({ transaction: t, booking, bill, refund }) =>
+            isRefund ? (
+              <RefundPdf refund={refund} booking={booking} bill={bill} view={role} />
+            ) : (
+              <PaymentPdf transaction={t} booking={booking} bill={bill} view={role} />
+            )
+          }
+        />
       </div>
     </li>
   );

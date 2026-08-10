@@ -728,7 +728,7 @@ export const getHistory = asyncHandler(async (req, res) => {
     const [onlinePayments, bills, refunds] = await Promise.all([
         Payment.find(paymentQuery)
             .populate("bookingId", "bookingCode bookingDateTime")
-            .populate("restaurantId", "restaurantCode restaurantName")
+            .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating address pincode phoneNumber email")
             .sort({ createdAt: -1 })
             .lean(),
         Bill.find(billQuery)
@@ -744,7 +744,7 @@ export const getHistory = asyncHandler(async (req, res) => {
             .lean(),
         Refund.find(refundQuery)
             .populate("bookingId", "bookingCode bookingDateTime")
-            .populate("restaurantId", "restaurantCode restaurantName")
+            .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating address pincode phoneNumber email")
             .sort({ createdAt: -1 })
             .lean(),
     ]);

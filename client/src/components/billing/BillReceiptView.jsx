@@ -3,6 +3,7 @@ import { useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import { Download, Receipt, Sparkles } from "lucide-react";
 import { formatDate, formatDateTime } from "../../utils/formatDate.js";
+import { renderPdfBlob, downloadBlob } from "../../utils/pdf/pdfGenerator.js";
 import BillReceiptPrint from "./BillReceiptPrint.jsx";
 import Button from "../ui/Button.jsx";
 
@@ -22,45 +23,10 @@ export default function BillReceiptView({ bill, id = "receipt-print-area" }) {
     if (!element) return;
     setDownloading(true);
     try {
-      const renderElement = element.cloneNode(true);
-      renderElement.removeAttribute("id");
-      renderElement.style.width = "100%";
-      const renderWrapper = document.createElement("div");
-      renderWrapper.style.position = "absolute";
-      renderWrapper.style.left = "-10000px";
-      renderWrapper.style.top = "0";
-      renderWrapper.style.width = "794px";
-      renderWrapper.style.pointerEvents = "none";
-      renderWrapper.appendChild(renderElement);
-      document.body.appendChild(renderWrapper);
-      const module = await import("html2pdf.js");
-      const html2pdf = module.default?.default || module.default || module;
-      try {
-        const blob = await html2pdf()
-          .set({
-            margin: [8, 8, 8, 8],
-            filename: `${bill?.billCode || "tablespot-receipt"}.pdf`,
-            image: { type: "jpeg", quality: 0.98 },
-            backgroundColor: "#ffffff",
-            html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff" },
-            jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-            pagebreak: { mode: ["css", "legacy"], avoid: ["tr"] },
-          })
-          .from(renderElement)
-          .toPdf()
-          .output("blob");
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${bill?.billCode || "tablespot-receipt"}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
-        toast.success("Receipt PDF downloaded.");
-      } finally {
-        renderWrapper.remove();
-      }
+      const filename = `${bill?.billCode || "tablespot-receipt"}.pdf`;
+      const blob = await renderPdfBlob({ element, filename });
+      downloadBlob(blob, filename);
+      toast.success("Receipt PDF downloaded.");
     } catch {
       toast.error("Unable to generate the receipt PDF.");
     } finally {

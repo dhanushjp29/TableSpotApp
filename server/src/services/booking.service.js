@@ -55,7 +55,7 @@ const BILL_ID_POPULATE = {
         {
           path: "restaurantId",
           select:
-            "restaurantCode restaurantName slug city state country coverImage gstin averageRating",
+            "restaurantCode restaurantName slug city state country coverImage gstin averageRating address pincode phoneNumber email",
         },
         {
           path: "tableId",
@@ -846,7 +846,7 @@ export const createBooking = async ({
     });
     const populated = await Booking.findById(booking._id)
       .populate("userId", "userCode fullName email phoneNumber role profileImage")
-      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating")
+      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating address pincode phoneNumber email")
       .populate("tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
       .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor");
     io.to(`restaurant_${restaurant._id}`)
@@ -897,7 +897,7 @@ export const createBooking = async ({
   return {
     booking: await Booking.findById(booking._id)
       .populate("userId", "userCode fullName email phoneNumber role profileImage")
-      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating")
+      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating address pincode phoneNumber email")
       .populate("tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
       .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
       .populate("billId"),
@@ -1140,7 +1140,7 @@ export const updateBooking = async ({
   return {
     booking: await Booking.findById(booking._id)
       .populate("userId", "userCode fullName email phoneNumber role profileImage")
-      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating")
+      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating address pincode phoneNumber email")
       .populate("tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
       .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
       .populate("billId"),
@@ -1237,7 +1237,7 @@ export const updateBookingStatus = async ({
 
   const updatedBooking = await Booking.findById(booking._id)
     .populate("userId", "userCode fullName email phoneNumber role profileImage")
-    .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating")
+    .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating address pincode phoneNumber email")
     .populate("tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
     .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
     .populate("billId");
@@ -1625,7 +1625,7 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
     });
     const populated = await Booking.findById(booking._id)
       .populate("userId", "userCode fullName email phoneNumber role profileImage")
-      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating")
+      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating address pincode phoneNumber email")
       .populate("tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
       .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor");
     io.to(`restaurant_${restaurant._id}`)
@@ -1804,7 +1804,7 @@ export const getBookingById = async ({
 }) => {
   const booking = await Booking.findById(bookingId)
     .populate("userId", "userCode fullName email phoneNumber role profileImage")
-    .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating")
+    .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating address pincode phoneNumber email")
     .populate("tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
     .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
     .populate("preOrderedFoods.foodId", "foodCode foodName coverImage")
@@ -1877,7 +1877,7 @@ export const getBookings = async ({
       .skip(skip)
       .limit(pageSize)
       .populate("userId", "userCode fullName email phoneNumber role profileImage")
-      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating")
+      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating address pincode phoneNumber email")
       .populate("tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
       .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
       .populate("preOrderedFoods.foodId", "foodCode foodName coverImage")

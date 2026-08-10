@@ -32,6 +32,12 @@ import InvoiceDatePicker from "../common/InvoiceDatePicker.jsx";
 import ExportButton from "../common/ExportButton.jsx";
 import { useExcelExport } from "../../hooks/useExcelExport.js";
 import { exportRefundsToExcel } from "../../utils/refundExport.js";
+import PdfDownloadButton from "../pdf/PdfDownloadButton.jsx";
+import RefundPdf from "../pdf/RefundPdf.jsx";
+import {
+  fetchRefundReceiptData,
+  refundReceiptFilename,
+} from "../../utils/pdf/pdfData.js";
 
 const REASON_LABELS = {
   CUSTOMER_CANCELLED: "Customer cancellation",
@@ -408,6 +414,16 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
                   </div>
 
                   <div className="flex flex-wrap items-center gap-2 border-t border-border/70 px-5 py-4 lg:border-l lg:border-t-0 lg:px-4 lg:py-5">
+                    <PdfDownloadButton
+                      size="sm"
+                      variant="outline"
+                      successMessage="Refund receipt PDF downloaded."
+                      filename={refundReceiptFilename}
+                      fetchData={() => fetchRefundReceiptData(refund._id, refund)}
+                      renderDocument={({ refund: r, booking, bill }) => (
+                        <RefundPdf refund={r} booking={booking} bill={bill} view={role} />
+                      )}
+                    />
                     {renderActions(refund)}
                   </div>
                 </div>

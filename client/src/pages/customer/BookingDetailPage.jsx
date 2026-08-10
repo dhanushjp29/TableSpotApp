@@ -40,6 +40,9 @@ import EmptyState from "../../components/ui/EmptyState.jsx";
 import { formatDate, formatTime } from "../../utils/formatDate.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
 import { SEAT_SELECTION_MODE } from "../../constants/table.js";
+import PdfDownloadButton from "../../components/pdf/PdfDownloadButton.jsx";
+import BookingPdf from "../../components/pdf/BookingPdf.jsx";
+import { bookingReceiptFilename } from "../../utils/pdf/pdfData.js";
 
 const STATUS_VARIANT = {
   Pending: "warning",
@@ -311,6 +314,16 @@ function BookingDetailPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <PdfDownloadButton
+            size="sm"
+            variant="outline"
+            successMessage="Booking confirmation PDF downloaded."
+            filename={bookingReceiptFilename}
+            fetchData={async () => ({ booking })}
+            renderDocument={({ booking: b }) => (
+              <BookingPdf booking={b} view="customer" />
+            )}
+          />
           <Badge variant="primary">
             {booking.bookingCode || booking._id?.slice(-6) || "N/A"}
           </Badge>

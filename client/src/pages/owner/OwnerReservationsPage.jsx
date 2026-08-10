@@ -44,6 +44,9 @@ import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
 import ExportButton from "../../components/common/ExportButton.jsx";
 import { useExcelExport } from "../../hooks/useExcelExport.js";
 import { exportReservationsToExcel } from "../../utils/reservationExport.js";
+import PdfDownloadButton from "../../components/pdf/PdfDownloadButton.jsx";
+import BookingPdf from "../../components/pdf/BookingPdf.jsx";
+import { bookingReceiptFilename } from "../../utils/pdf/pdfData.js";
 
 const REFUND_BADGE = {
   REFUND_PENDING: { label: "Refund pending", variant: "warning" },
@@ -452,6 +455,17 @@ export default function OwnerReservationsPage() {
 
                   {/* Actions */}
                   <div className="flex flex-wrap items-center gap-2 pt-2 lg:pt-0 border-t lg:border-t-0 border-border">
+                    <PdfDownloadButton
+                      size="sm"
+                      variant="outline"
+                      successMessage="Booking confirmation PDF downloaded."
+                      filename={bookingReceiptFilename}
+                      fetchData={async () => ({ booking: b })}
+                      renderDocument={({ booking }) => (
+                        <BookingPdf booking={booking} view="owner" />
+                      )}
+                    />
+
                     <Button
                       size="sm"
                       variant="outline"

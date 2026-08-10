@@ -49,6 +49,7 @@ import BillingWorkspace from "../../components/billing/BillingWorkspace.jsx";
 import InvoiceDatePicker from "../../components/common/InvoiceDatePicker.jsx";
 import { exportBillsToExcel } from "../../utils/billingExport.js";
 import { useExcelExport } from "../../hooks/useExcelExport.js";
+import { renderPdfBlob } from "../../utils/pdf/pdfGenerator.js";
 
 const WALK_IN_PAY_METHODS = [
   { value: "Cash", label: "Cash", icon: Banknote },
@@ -780,36 +781,10 @@ export default function OwnerBillingPage() {
       document.getElementById("receipt-pdf-area") ||
       document.getElementById("receipt-print-area-print");
     if (!element || !receiptBill) throw new Error("Receipt is not ready");
-    const renderElement = element.cloneNode(true);
-    renderElement.removeAttribute("id");
-    renderElement.style.width = "100%";
-    const renderWrapper = document.createElement("div");
-    renderWrapper.style.position = "absolute";
-    renderWrapper.style.left = "-10000px";
-    renderWrapper.style.top = "0";
-    renderWrapper.style.width = "794px";
-    renderWrapper.style.pointerEvents = "none";
-    renderWrapper.appendChild(renderElement);
-    document.body.appendChild(renderWrapper);
-    const module = await import("html2pdf.js");
-    const html2pdf = module.default?.default || module.default || module;
-    try {
-      return await html2pdf()
-        .set({
-          margin: [8, 8, 8, 8],
-          filename: `${receiptBill.billCode || "tablespot-receipt"}.pdf`,
-          image: { type: "jpeg", quality: 0.98 },
-          backgroundColor: "#ffffff",
-          html2canvas: { scale: 2, useCORS: true, logging: false, backgroundColor: "#ffffff" },
-          jsPDF: { unit: "mm", format: "a4", orientation: "portrait" },
-          pagebreak: { mode: ["css", "legacy"], avoid: ["tr"] },
-        })
-        .from(renderElement)
-        .toPdf()
-        .output("blob");
-    } finally {
-      renderWrapper.remove();
-    }
+    return renderPdfBlob({
+      element,
+      filename: `${receiptBill.billCode || "tablespot-receipt"}.pdf`,
+    });
   };
 
   const downloadReceiptPdf = async (receiptBill = activeReceiptBill) => {

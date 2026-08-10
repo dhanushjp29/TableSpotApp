@@ -176,9 +176,17 @@ const emitRefundUpdate = (refund) => {
 
 export const getRefundById = async ({ refundId }) => {
   const refund = await Refund.findById(refundId)
-    .populate("bookingId", "bookingCode bookingDateTime bookingStatus tableId")
+    .populate({
+      path: "bookingId",
+      select: "bookingCode bookingDateTime bookingStatus bookingType tableId numberOfGuests totalAmount advanceAmount",
+      populate: {
+        path: "tableId",
+        select: "tableCode tableNumber tableName tableLabel",
+      },
+    })
     .populate("customerId", "userCode fullName email phoneNumber profileImage")
-    .populate("ownerId", "userCode fullName email profileImage");
+    .populate("ownerId", "userCode fullName email profileImage")
+    .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating address pincode phoneNumber email");
 
   if (!refund || refund.isDeleted) {
     throw new ApiError(404, "Refund record not found.");
@@ -258,10 +266,17 @@ export const listRefunds = async ({
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(pageSize)
-      .populate("bookingId", "bookingCode bookingDateTime bookingStatus")
+      .populate({
+        path: "bookingId",
+        select: "bookingCode bookingDateTime bookingStatus bookingType tableId numberOfGuests totalAmount advanceAmount",
+        populate: {
+          path: "tableId",
+          select: "tableCode tableNumber tableName tableLabel",
+        },
+      })
       .populate("customerId", "userCode fullName email phoneNumber profileImage")
       .populate("ownerId", "userCode fullName email profileImage")
-      .populate("restaurantId", "restaurantCode restaurantName"),
+      .populate("restaurantId", "restaurantCode restaurantName slug city state country coverImage averageRating address pincode phoneNumber email"),
     Refund.countDocuments(query),
   ]);
 
