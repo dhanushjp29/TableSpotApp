@@ -24,6 +24,8 @@ export const ROUTES = {
   CUSTOMER_NOTIFICATIONS: "/customer/notifications",
   CUSTOMER_PAYMENTS: "/customer/payments",
   CUSTOMER_REFUNDS: "/customer/refunds",
+  CUSTOMER_OFFERS: "/customer/offers",
+  CUSTOMER_OFFER_DETAILS: "/customer/offers/:offerId",
   BOOKING: "/restaurants/:restaurantId/book",
   BOOKING_CONFIRMATION: "/booking/:bookingId/confirmation",
 
@@ -39,6 +41,8 @@ export const ROUTES = {
   OWNER_BILLING_BILL: "/owner/billing/:billId",
   OWNER_REVIEWS: "/owner/reviews",
   OWNER_REPORTS: "/owner/reports",
+  OWNER_OFFERS: "/owner/offers",
+  OWNER_OFFER_DETAILS: "/owner/offers/:offerId",
   OWNER_NOTIFICATIONS: "/owner/notifications",
   OWNER_PROFILE: "/owner/profile",
   OWNER_PAYMENTS: "/owner/payments",

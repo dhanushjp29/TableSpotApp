@@ -52,6 +52,21 @@ export const convert = async (req, res) => {
   res.status(201).json(new ApiResponse(201, result.message, result));
 };
 
+export const consumeOffer = async (req, res) => {
+  assertBillWriteAccess(req);
+  await assertBillOwnerAccess(req, { restaurantId: req.validatedData.restaurantId });
+
+  const result = await billService.consumeOfferForBill({
+    restaurantId: req.validatedData.restaurantId,
+    offerId: req.validatedData.offerId || null,
+    offerCode: req.validatedData.offerCode || "",
+    customerEmail: req.validatedData.customerEmail || "",
+    bookingId: req.validatedData.bookingId || null,
+    performedBy: req.user._id,
+  });
+  res.status(200).json(new ApiResponse(200, result.message, result));
+};
+
 export const update = async (req, res) => {
   assertBillWriteAccess(req);
   const { billId } = req.params;

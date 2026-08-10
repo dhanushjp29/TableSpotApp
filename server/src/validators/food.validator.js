@@ -59,7 +59,14 @@ const foodCoreSchema = z
     spiceLevel: z.enum(FOOD_SPICE_LEVEL_VALUES).optional(),
     hasVariants: z.boolean().optional(),
     currency: z.enum(CURRENCY_VALUES).optional(),
-    gstRate: z.enum(GST_SLAB_VALUES).optional(),
+    // GST_SLAB_VALUES are numbers. Zod v4's z.enum() only supports string
+    // enums, so a numeric allow-list is enforced via refine instead.
+    gstRate: z
+      .number({ invalid_type_error: "GST rate must be a number." })
+      .refine((value) => GST_SLAB_VALUES.includes(value), {
+        message: `Invalid GST rate. Allowed values: ${GST_SLAB_VALUES.join(", ")}.`,
+      })
+      .optional(),
     variants: z.array(variantSchema).optional(),
     preparationTime: z
       .number({

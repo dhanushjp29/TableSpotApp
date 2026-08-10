@@ -38,7 +38,10 @@ export default function BookingPdf({ booking, view = "owner" }) {
   const bookingDateTime = booking?.bookingDateTime
     ? new Date(booking.bookingDateTime)
     : null;
-  const orderedItems = booking?.preOrderedFoods || [];
+  const bill = typeof booking?.billId === "object" ? booking.billId : null;
+  const orderedItems = bill?.orderedItems?.length
+    ? bill.orderedItems
+    : booking?.preOrderedFoods || [];
   const orderedTotal = orderedItems.reduce(
     (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0),
     0
@@ -46,6 +49,11 @@ export default function BookingPdf({ booking, view = "owner" }) {
   const refund =
     typeof booking?.refundId === "object" ? booking.refundId : null;
   const totalAmount = Number(booking?.totalAmount || 0);
+  const offer = booking?.offerId && typeof booking.offerId === "object"
+    ? booking.offerId
+    : bill?.offer?.offerCode
+      ? bill.offer
+      : null;
 
   return (
     <PdfRoot>
@@ -124,14 +132,14 @@ export default function BookingPdf({ booking, view = "owner" }) {
                   key: "price",
                   label: "Unit price",
                   align: "right",
-                  render: (item) => money(item.price),
+                  render: (item) => money(item.unitPrice ?? item.price),
                 },
                 {
                   key: "amount",
                   label: "Amount",
                   align: "right",
                   bold: true,
-                  render: (item) => money(item.price * item.quantity),
+                  render: (item) => money(item.totalPrice ?? Number(item.price || item.unitPrice || 0) * Number(item.quantity || 0)),
                 },
               ]}
               rows={orderedItems}
@@ -139,6 +147,45 @@ export default function BookingPdf({ booking, view = "owner" }) {
             />
           </PdfSection>
         )}
+
+        {offer && (
+          <PdfSection title="Offer">
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 28px" }}>
+              <PdfKeyValueRow label="Offer code" value={dash(offer.offerCode)} />
+              <PdfKeyValueRow label="Offer title" value={dash(offer.title)} />
+              <PdfKeyValueRow label="Discount" value={`${offer.discountType || ""} ${offer.discountValue ?? ""}`} />
+              <PdfKeyValueRow label="Discount amount" value={money(bill?.offer?.discountAmount || 0)} />
+              <PdfKeyValueRow label="Offer status" value={dash(booking?.offerRecipient?.status)} />
+            </div>
+          </PdfSection>
+        )}
+
+        <PdfSection title="Payment and bill">
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 28px" }}>
+            <PdfKeyValueRow label="Advance required" value={money(booking?.advanceAmount)} />
+            <PdfKeyValueRow label="Booking payment status" value={dash(booking?.paymentStatus)} />
+            <PdfKeyValueRow label="Bill number" value={dash(bill?.billCode)} />
+            <PdfKeyValueRow label="Bill status" value={dash(bill?.billStatus)} />
+            <PdfKeyValueRow label="Bill subtotal" value={money(bill?.subTotal)} />
+            <PdfKeyValueRow label="Bill discount" value={money(bill?.discount?.value)} />
+            <PdfKeyValueRow label="Taxable amount" value={money(bill?.taxableAmount)} />
+            <PdfKeyValueRow label="Tax" value={money(bill?.taxAmount)} />
+            <PdfKeyValueRow label="Service charge" value={money(bill?.serviceCharge)} />
+            <PdfKeyValueRow label="Grand total" value={money(bill?.grandTotal || totalAmount)} />
+            <PdfKeyValueRow label="Total paid" value={money(bill?.payment?.totalPaid)} />
+            <PdfKeyValueRow label="Balance due" value={money(bill?.payment?.balanceDue)} />
+          </div>
+          {bill?.payment?.payments?.length > 0 && (
+            <PdfTable
+              columns={[
+                { key: "method", label: "Payment", render: (item) => item.paymentMethod || "Payment" },
+                { key: "transaction", label: "Transaction", render: (item) => item.transactionId || "—" },
+                { key: "amount", label: "Amount", align: "right", render: (item) => money(item.amount) },
+              ]}
+              rows={bill.payment.payments}
+            />
+          )}
+        </PdfSection>
 
         <div style={{ marginTop: 20 }}>
           <PdfSummaryBox>

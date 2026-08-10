@@ -33,6 +33,12 @@ export const userApi = {
     return response.data;
   },
 
+  // Owner
+  async getOwnerCustomers(params = {}) {
+    const response = await apiClient.get("/users/customers", { params });
+    return response.data;
+  },
+
   // Admin
   async getAll(params = {}) {
     const response = await apiClient.get("/users", { params });

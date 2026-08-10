@@ -29,6 +29,8 @@ import BookingConfirmationPage from "../pages/customer/BookingConfirmationPage.j
 import BookingDetailPage from "../pages/customer/BookingDetailPage.jsx";
 import CustomerPaymentHistoryPage from "../pages/customer/CustomerPaymentHistoryPage.jsx";
 import CustomerRefundsPage from "../pages/customer/CustomerRefundsPage.jsx";
+import CustomerOffersPage from "../pages/customer/CustomerOffersPage.jsx";
+import CustomerOfferDetailsPage from "../pages/customer/CustomerOfferDetailsPage.jsx";
 import {
   CustomerBookingsPage,
   CustomerFavoritesPage,
@@ -43,6 +45,8 @@ import OwnerTablesPage from "../pages/owner/OwnerTablesPage.jsx";
 import OwnerFoodsPage from "../pages/owner/OwnerFoodsPage.jsx";
 import OwnerReservationsPage from "../pages/owner/OwnerReservationsPage.jsx";
 import OwnerBillingPage from "../pages/owner/OwnerBillingPage.jsx";
+import OwnerOffersPage from "../pages/owner/OwnerOffersPage.jsx";
+import OwnerOfferDetailsPage from "../pages/owner/OwnerOfferDetailsPage.jsx";
 import OwnerPaymentHistoryPage from "../pages/owner/OwnerPaymentHistoryPage.jsx";
 import OwnerRefundsPage from "../pages/owner/OwnerRefundsPage.jsx";
 import OwnerReviewsPage from "../pages/owner/OwnerReviewsPage.jsx";
@@ -137,6 +141,8 @@ function AppRoutes() {
         <Route path={ROUTES.CUSTOMER_FAVORITES} element={<CustomerFavoritesPage />} />
         <Route path={ROUTES.CUSTOMER_PAYMENTS} element={<CustomerPaymentHistoryPage />} />
         <Route path={ROUTES.CUSTOMER_REFUNDS} element={<CustomerRefundsPage />} />
+        <Route path={ROUTES.CUSTOMER_OFFERS} element={<CustomerOffersPage />} />
+        <Route path={ROUTES.CUSTOMER_OFFER_DETAILS} element={<CustomerOfferDetailsPage />} />
         <Route path={ROUTES.CUSTOMER_PROFILE} element={<ProfilePage />} />
         <Route path={ROUTES.CUSTOMER_CHANGE_PASSWORD} element={<ChangePasswordPage />} />
         <Route path={ROUTES.CUSTOMER_NOTIFICATIONS} element={<NotificationsPage />} />
@@ -164,6 +170,8 @@ function AppRoutes() {
         <Route path={ROUTES.OWNER_BILLING_BILL} element={<OwnerBillingPage />} />
         <Route path={ROUTES.OWNER_PAYMENTS} element={<OwnerPaymentHistoryPage />} />
         <Route path={ROUTES.OWNER_REFUNDS} element={<OwnerRefundsPage />} />
+        <Route path={ROUTES.OWNER_OFFERS} element={<OwnerOffersPage />} />
+        <Route path={ROUTES.OWNER_OFFER_DETAILS} element={<OwnerOfferDetailsPage />} />
         <Route path={ROUTES.OWNER_REVIEWS} element={<OwnerReviewsPage />} />
         <Route path={ROUTES.OWNER_REPORTS} element={<OwnerReportsPage />} />
         <Route path={ROUTES.OWNER_NOTIFICATIONS} element={<NotificationsPage />} />

@@ -1,11 +1,11 @@
-import { useEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 export function usePopupPosition(open, popupWidth = 280, popupHeight = 320) {
   const triggerRef = useRef(null);
   const popupRef = useRef(null);
   const [style, setStyle] = useState({ top: 0, left: 0, maxHeight: popupHeight });
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!open) return;
 
     const compute = () => {
@@ -20,13 +20,15 @@ export function usePopupPosition(open, popupWidth = 280, popupHeight = 320) {
 
       const below = vh - (rect.bottom + 4);
       if (below >= 120 || rect.top < 120) {
-        setStyle({ top: rect.bottom + 4, left, maxHeight: Math.max(80, below - 4) });
+      const next = { top: rect.bottom + 4, left, maxHeight: Math.max(80, below - 4) };
+      setStyle((current) => current.top === next.top && current.left === next.left && current.maxHeight === next.maxHeight ? current : next);
         return;
       }
 
       const spaceAbove = rect.top - 8;
       const maxHeight = Math.min(popupHeight, spaceAbove);
-      setStyle({ top: rect.top - maxHeight - 4, left, maxHeight });
+      const next = { top: rect.top - maxHeight - 4, left, maxHeight };
+      setStyle((current) => current.top === next.top && current.left === next.left && current.maxHeight === next.maxHeight ? current : next);
     };
 
     compute();

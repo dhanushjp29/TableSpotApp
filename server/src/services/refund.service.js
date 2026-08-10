@@ -5,6 +5,7 @@ import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
 import { createAuditLog } from "./auditLog.service.js";
 import { createNotification } from "./notification.service.js";
+import { sendRefundEventEmail } from "./businessEmail.service.js";
 import { createRefundForPayment } from "./razorpay.service.js";
 import { unlockOwnerIfNoUnresolvedRefunds } from "./ownerRestriction.service.js";
 import { getIO } from "../sockets/socket.handler.js";
@@ -238,6 +239,7 @@ export const createRefund = async ({
   });
 
   await syncBookingRefundStatus(refund);
+  void sendRefundEventEmail({ refundId: refund._id, event: "initiated" }).catch((error) => console.error("Refund initiated email error:", error.message));
 
   return refund;
 };
@@ -378,6 +380,8 @@ export const processRefund = async ({
       performedBy: processedBy,
     });
 
+    void sendRefundEventEmail({ refundId: refund._id, event: "processed" }).catch((error) => console.error("Refund processed email error:", error.message));
+
     try {
       await createNotification({
         userId: refund.customerId,
@@ -470,6 +474,8 @@ export const processRefund = async ({
       title: "Refund Completed",
       message: `Your refund of ${formatAmount(refund.amount)} has been completed${bookingSuffix}.`,
     });
+
+    void sendRefundEventEmail({ refundId: refund._id, event: "processed" }).catch((error) => console.error("Refund processed email error:", error.message));
 
     try {
       await unlockOwnerIfNoUnresolvedRefunds(refund.ownerId);
@@ -571,6 +577,8 @@ export const confirmCashRefundReceived = async ({
     console.error("Notification error on refund confirmation:", error.message);
   }
 
+  void sendRefundEventEmail({ refundId: refund._id, event: "confirmed" }).catch((error) => console.error("Refund confirmation email error:", error.message));
+
   try {
     await unlockOwnerIfNoUnresolvedRefunds(refund.ownerId);
   } catch (error) {
@@ -638,6 +646,8 @@ export const disputeRefund = async ({ refundId, confirmedBy, disputeReason = "" 
   } catch (error) {
     console.error("Notification error on refund dispute:", error.message);
   }
+
+  void sendRefundEventEmail({ refundId: refund._id, event: "disputed" }).catch((error) => console.error("Refund dispute email error:", error.message));
 
   return refund;
 };

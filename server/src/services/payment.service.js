@@ -5,6 +5,7 @@ import { addBillPayment } from "./bill.service.js";
 import { createBookingFromPayment } from "./booking.service.js";
 import { createAuditLog } from "./auditLog.service.js";
 import { createNotification } from "./notification.service.js";
+import { sendPaymentEventEmail } from "./businessEmail.service.js";
 import {
   BOOKING_STATUS,
   PAYMENT_METHOD,
@@ -274,6 +275,8 @@ export const handlePaymentCaptured = async ({
     }
   }
 
+  void sendPaymentEventEmail({ paymentId: paymentRecord._id, event: "successful" }).catch((error) => console.error("Payment success email error:", error.message));
+
   return { duplicate: false, paymentRecord };
 };
 
@@ -329,6 +332,7 @@ export const handlePaymentFailed = async ({ razorpayOrderId, razorpayPaymentId =
   // retries and the frontend verification path cannot double-notify.
   if (!wasFailed) {
     await notifyPaymentFailedCustomer({ paymentRecord });
+    void sendPaymentEventEmail({ paymentId: paymentRecord._id, event: "failed" }).catch((error) => console.error("Payment failure email error:", error.message));
   }
 
   return paymentRecord;

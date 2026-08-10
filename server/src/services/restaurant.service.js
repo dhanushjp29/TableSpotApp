@@ -8,6 +8,8 @@ import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
 import generateSlug from "../utils/generateSlug.js";
 import { createNotification } from "./notification.service.js";
+import { sendRestaurantVerificationEmail } from "./businessEmail.service.js";
+import { getRestaurantActiveOffers } from "./offer.service.js";
 import {
     deriveTableLabel,
     generateSeats,
@@ -531,6 +533,7 @@ export const verifyRestaurant = async ({
         error.message
       );
     }
+    void sendRestaurantVerificationEmail({ restaurant, approved: isApproved }).catch((error) => console.error("Restaurant verification email error:", error.message));
   }
 
   return {
@@ -607,8 +610,11 @@ export const getRestaurantById = async ({
     throw new ApiError(404, "Restaurant not found.");
   }
 
+  const { offers } = await getRestaurantActiveOffers({ restaurantId });
+
   return {
     restaurant,
+    offers,
   };
 };
 
@@ -623,8 +629,13 @@ export const getRestaurantBySlug = async ({
     throw new ApiError(404, "Restaurant not found.");
   }
 
+  const { offers } = await getRestaurantActiveOffers({
+    restaurantId: restaurant._id,
+  });
+
   return {
     restaurant,
+    offers,
   };
 };
 

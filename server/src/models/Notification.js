@@ -51,6 +51,7 @@ const notificationSchema = new mongoose.Schema(
             enum: [
                 "Booking",
                 "Bill",
+                "Offer",
                 "Restaurant",
                 "RestaurantReview",
                 "FoodReview",

@@ -170,6 +170,57 @@ const billSchema = new mongoose.Schema(
       },
     },
 
+    // Immutable snapshot of the coupon/offer applied to this bill. `discount`
+    // above always holds the MANUAL discount; the offer discount lives here so
+    // offer and manual discounts never overwrite each other.
+    offer: {
+      offerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Offer",
+        default: null,
+      },
+
+      offerCode: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      title: {
+        type: String,
+        default: "",
+        trim: true,
+      },
+
+      discountType: {
+        type: String,
+        enum: ["Amount", "Percentage"],
+        default: "",
+      },
+
+      discountValue: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      discountAmount: {
+        type: Number,
+        default: 0,
+        min: 0,
+      },
+
+      isStackable: {
+        type: Boolean,
+        default: false,
+      },
+
+      appliedAt: {
+        type: Date,
+        default: null,
+      },
+    },
+
     taxAmount: {
       type: Number,
       default: 0,
@@ -345,6 +396,8 @@ billSchema.index({ restaurantId: 1, billStatus: 1, createdAt: -1 });
 billSchema.index({ generatedBy: 1, createdAt: -1 });
 
 billSchema.index({ "payment.paymentStatus": 1, billStatus: 1 });
+
+billSchema.index({ "offer.offerId": 1, billStatus: 1 });
 
 const Bill = mongoose.model("Bill", billSchema);
 

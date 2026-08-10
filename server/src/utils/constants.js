@@ -301,6 +301,54 @@ export const DISCOUNT_TYPE_VALUES = [
 ];
 
 // ===============================
+// Offer / Coupon
+// ===============================
+
+export const OFFER_TARGETING = {
+  ALL: "ALL",
+  SELECTED: "SELECTED",
+  SEGMENT: "SEGMENT",
+};
+
+export const OFFER_TARGETING_VALUES = [
+  OFFER_TARGETING.ALL,
+  OFFER_TARGETING.SELECTED,
+  OFFER_TARGETING.SEGMENT,
+];
+
+// An offer can only be redeemed by the customer while its validity window is
+// open AND it isActive is true. `isActive` is the owner's manual pause switch.
+export const OFFER_RECIPIENT_STATUS = {
+  AVAILABLE: "AVAILABLE",
+  CLAIMED: "CLAIMED",
+  RESERVED: "RESERVED",
+  USED: "USED",
+  EXPIRED: "EXPIRED",
+};
+
+export const OFFER_RECIPIENT_STATUS_VALUES = [
+  OFFER_RECIPIENT_STATUS.AVAILABLE,
+  OFFER_RECIPIENT_STATUS.CLAIMED,
+  OFFER_RECIPIENT_STATUS.RESERVED,
+  OFFER_RECIPIENT_STATUS.USED,
+  OFFER_RECIPIENT_STATUS.EXPIRED,
+];
+
+export const OFFER_USAGE_SOURCE = {
+  ONLINE: "ONLINE",
+  WALK_IN: "WALK_IN",
+};
+
+export const OFFER_USAGE_SOURCE_VALUES = [
+  OFFER_USAGE_SOURCE.ONLINE,
+  OFFER_USAGE_SOURCE.WALK_IN,
+];
+
+// How long before validityEnd a claimed/available offer triggers an
+// "expiring soon" reminder notification.
+export const OFFER_EXPIRY_REMINDER_DAYS = 1;
+
+// ===============================
 // Food
 // ===============================
 

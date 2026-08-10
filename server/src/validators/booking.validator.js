@@ -86,6 +86,7 @@ const bookingCoreSchema = z
     specialRequest: z.string().trim().max(500).optional().default(""),
     preOrderedFoods: z.array(preOrderedFoodSchema).default([]),
     billId: mongoIdSchema.optional().nullable(),
+    offerId: mongoIdSchema.optional().nullable(),
     completedAt: z.coerce.date().optional().nullable(),
     cancelledAt: z.coerce.date().optional().nullable(),
     cancellationReason: z.string().trim().max(500).optional().default(""),

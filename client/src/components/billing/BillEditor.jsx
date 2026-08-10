@@ -1,12 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
+import { computeOfferDiscount } from "../../constants/offer.js";
 import BillInformation from "./BillInformation.jsx";
 import BillItems from "./BillItems.jsx";
 import BillDiscountTax from "./BillDiscountTax.jsx";
+import BillOfferSection from "./BillOfferSection.jsx";
 import BillPayments from "./BillPayments.jsx";
 import BillSummary from "./BillSummary.jsx";
 
 const emptyDraft = {
   restaurantId: "", tableId: "", customerName: "", customerPhone: "", customerEmail: "",
+  offerCode: "",
   items: [], discountType: "amount", discountValue: "", taxPercentage: "0", notes: "",
   payments: [],
 };
@@ -20,8 +23,11 @@ export default function BillEditor({
   tables = [],
   foods = [],
   loading = false,
+  offers = [],
   onRestaurantChange,
   onSubmit,
+  onApplyOffer,
+  applying = false,
 }) {
   const isOnline = billType === "ONLINE";
   const [draft, setDraft] = useState(emptyDraft);
@@ -45,6 +51,7 @@ export default function BillEditor({
       customerName: bill?.customerName || booking.userId?.fullName || "",
       customerPhone: bill?.customerPhone || booking.userId?.phoneNumber || "",
       customerEmail: bill?.customerEmail || booking.userId?.email || "",
+      offerCode: bill?.offer?.offerCode || "",
       items: (bill?.orderedItems || []).map((item) => ({
         foodId: idOf(item.foodId), foodName: item.foodName, variantName: item.variantName || "Regular",
         quantity: Number(item.quantity) || 1, unitPrice: Number(item.unitPrice || 0), totalPrice: Number(item.totalPrice || 0),
@@ -80,7 +87,17 @@ export default function BillEditor({
   const totalPaid = allPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0);
   const subtotal = useMemo(() => draft.items.reduce((sum, item) => sum + Number(item.totalPrice || (item.unitPrice || 0) * (item.quantity || 0)), 0), [draft.items]);
   const discount = draft.discountType === "percentage" ? Math.min(subtotal, subtotal * (Number(draft.discountValue) || 0) / 100) : Math.min(subtotal, Number(draft.discountValue) || 0);
-  const taxable = Math.max(0, subtotal - discount);
+  const matchedOffer = offers.find(
+    (offer) => String(offer.offerCode || "").toUpperCase() === String(draft.offerCode || "").trim().toUpperCase()
+  );
+  const offerDiscount =
+    Number(bill?.offerDiscountAmount || 0) > 0
+      ? Number(bill.offerDiscountAmount)
+      : draft.offerCode
+        ? Math.min(computeOfferDiscount(matchedOffer, subtotal), Math.max(0, subtotal - discount))
+        : 0;
+  const offerLabel = bill?.offer?.offerCode || String(draft.offerCode || "").trim().toUpperCase() || "";
+  const taxable = Math.max(0, subtotal - discount - offerDiscount);
   const tax = taxable * (Number(draft.taxPercentage) || 0) / 100;
   const grandTotal = taxable + tax + Number(bill?.serviceCharge || 0) + Number(bill?.deliveryCharge || 0);
 
@@ -99,6 +116,10 @@ export default function BillEditor({
       orderedItems: draft.items.map(({ foodId, foodName, variantName, quantity }) => ({ foodId, foodName, variantName, quantity })),
       discount: { type: draft.discountType, value: Number(draft.discountValue) || 0 },
       taxPercentage: Number(draft.taxPercentage) || 0, notes: draft.notes,
+      offer:
+        billType === "WALK_IN" && draft.offerCode
+          ? { offerCode: String(draft.offerCode).trim().toUpperCase(), customerEmail: draft.customerEmail }
+          : undefined,
       payment: {
         replacePayments: Boolean(bill),
         payments: allPayments.map((payment) => ({
@@ -114,8 +135,18 @@ export default function BillEditor({
       <BillInformation bill={bill} billType={billType} draft={draft} restaurants={restaurants} tables={tables} editable={!isOnline} onChange={update} onRestaurantChange={onRestaurantChange} />
       <BillItems items={draft.items} taxPercentage={draft.taxPercentage} foods={foods} loading={loading} selectedFoodId={selectedFoodId} selectedVariant={selectedVariant} quantity={quantity} onFoodChange={(value) => { setSelectedFoodId(value); setSelectedVariant(foods.find((food) => food._id === value)?.variants?.[0]?.variantName || ""); }} onVariantChange={setSelectedVariant} onQuantityChange={setQuantity} onAdd={addItem} onChange={(items) => update("items", items)} />
       <BillDiscountTax draft={draft} onChange={update} />
+      <BillOfferSection
+        bill={bill}
+        draft={draft}
+        offers={offers}
+        subtotal={subtotal}
+        editable={!isOnline}
+        onChange={update}
+        onApplyOffer={onApplyOffer}
+        applying={applying}
+      />
       <BillPayments payments={paymentEntries} existingPaymentCount={existingPaymentCount} paymentMethod={paymentMethod} amount={paymentAmount} reference={paymentReference} notes={paymentNotes} onPaymentChange={(index, field, value) => setPaymentEntries((current) => current.map((payment, paymentIndex) => paymentIndex === index ? { ...payment, [field]: value } : payment))} onMethodChange={setPaymentMethod} onAmountChange={setPaymentAmount} onReferenceChange={setPaymentReference} onNotesChange={setPaymentNotes} onAdd={addPayment} onRemove={(index) => setPaymentEntries((current) => current.filter((_, itemIndex) => itemIndex !== index))} />
-      <BillSummary subtotal={subtotal} discount={discount} taxableAmount={taxable} tax={tax} taxPercentage={draft.taxPercentage} serviceCharge={bill?.serviceCharge || 0} deliveryCharge={bill?.deliveryCharge || 0} grandTotal={grandTotal} totalPaid={totalPaid} balanceDue={Math.max(0, grandTotal - totalPaid)} />
+      <BillSummary subtotal={subtotal} discount={discount} offerDiscount={offerDiscount} offerLabel={offerLabel} taxableAmount={taxable} tax={tax} taxPercentage={draft.taxPercentage} serviceCharge={bill?.serviceCharge || 0} deliveryCharge={bill?.deliveryCharge || 0} grandTotal={grandTotal} totalPaid={totalPaid} balanceDue={Math.max(0, grandTotal - totalPaid)} />
     </form>
   );
 }

@@ -20,6 +20,17 @@ export const getAll = async (req, res) => {
     res.status(200).json(new ApiResponse(200, "Users retrieved.", result));
 };
 
+export const getOwnerCustomers = async (req, res) => {
+    const result = await userService.getOwnerCustomers({
+        ownerId: req.user._id,
+        restaurantId: req.query.restaurantId || null,
+        search: req.query.search || "",
+        page: req.query.page,
+        limit: req.query.limit,
+    });
+    res.status(200).json(new ApiResponse(200, "Customers retrieved.", result));
+};
+
 export const toggleActive = async (req, res) => {
     const { userId } = req.params;
     const { isActive } = req.body || {};

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Clock, ChevronDown } from "lucide-react";
 
 import { usePopupPosition } from "./usePopupPosition.js";
@@ -68,13 +69,13 @@ function TimePicker({
   useEffect(() => {
     if (!open) return;
     const handle = (e) => {
-      if (rootRef.current && !rootRef.current.contains(e.target)) {
+      if (!rootRef.current?.contains(e.target) && !popupRef.current?.contains(e.target)) {
         setOpen(false);
       }
     };
     document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
+  }, [open, popupRef]);
 
   const openPopup = () => {
     if (disabled) return;
@@ -213,12 +214,12 @@ function TimePicker({
         />
       </button>
 
-      {open && (
+      {open && createPortal(
         <div
           ref={popupRef}
           role="dialog"
           style={{ position: "fixed", ...popupStyle, width: 252 }}
-          className="dropdown-popup z-50 max-h-[80vh] overflow-y-auto p-3"
+          className="dropdown-popup z-[1000] max-h-[80vh] overflow-y-auto p-3 !animate-none"
         >
           <div className="mb-2 flex items-center justify-between gap-2">
             <button
@@ -321,7 +322,8 @@ function TimePicker({
               ))}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {error && (

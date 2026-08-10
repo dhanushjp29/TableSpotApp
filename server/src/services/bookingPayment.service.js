@@ -30,11 +30,16 @@ export const getEffectiveBookingPaymentPolicy = (restaurant) => {
  * - PAY_ON_SPOT            -> 0
  * - PAY_TO_BOOK / FIXED    -> min(fixedAmount, maximumAmount)  (<= Rs.200)
  * - PAY_TO_BOOK / PERCENT  -> min(round(total * pct / 100), maximumAmount)
- * - PAY_TO_BOOK / FULL     -> full pre-order total
+ * - PAY_TO_BOOK / FULL     -> full pre-order total, reduced by an applied
+ *                             offer discount (the discount only ever affects
+ *                             a FULL pre-payment; partial advances are a % /
+ *                             flat amount of the undiscounted total and the
+ *                             offer applies at bill time).
  */
 export const calculateRequiredBookingPayment = ({
   restaurant,
   totalAmount,
+  discountAmount = 0,
 }) => {
   if (!restaurant) {
     throw new ApiError(500, "Restaurant context is required to compute booking payment.");
@@ -42,6 +47,7 @@ export const calculateRequiredBookingPayment = ({
 
   const policy = getEffectiveBookingPaymentPolicy(restaurant);
   const total = roundAmount(Number(totalAmount) || 0);
+  const discount = roundAmount(Math.max(0, Number(discountAmount) || 0));
 
   if (policy.type === BOOKING_PAYMENT_POLICY.PAY_ON_SPOT) {
     return 0;
@@ -60,7 +66,7 @@ export const calculateRequiredBookingPayment = ({
         policy.maximumAmount
       );
     case BOOKING_PAYMENT_TYPE.FULL_PREORDER:
-      return total;
+      return Math.max(roundAmount(total - discount), 0);
     default:
       return 0;
   }

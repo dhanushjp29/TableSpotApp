@@ -108,6 +108,39 @@ const paymentSummarySchema = z
   })
   .strict();
 
+// Offer to apply at bill creation (walk-in bills). An offer claimed online is
+// attached to the booking and applied automatically — it must not be sent here.
+const offerInputSchema = z
+  .object({
+    offerId: mongoIdSchema.optional(),
+    offerCode: z.string().trim().min(1).max(30).optional(),
+    customerEmail: z
+      .string()
+      .trim()
+      .email()
+      .optional()
+      .or(z.literal(""))
+      .default(""),
+  })
+  .strict();
+
+// Consume a claimed/global offer manually (walk-in redemption without a bill).
+export const consumeOfferSchema = z
+  .object({
+    restaurantId: mongoIdSchema,
+    offerId: mongoIdSchema.optional(),
+    offerCode: z.string().trim().min(1).max(30).optional(),
+    customerEmail: z
+      .string()
+      .trim()
+      .email()
+      .optional()
+      .or(z.literal(""))
+      .default(""),
+    bookingId: mongoIdSchema.optional(),
+  })
+  .strict();
+
 const billCoreSchema = z
   .object({
     bookingId: mongoIdSchema.optional(),
@@ -125,6 +158,7 @@ const billCoreSchema = z
       .min(0)
       .optional(),
     discount: discountSchema.optional(),
+    offer: offerInputSchema.optional(),
     taxAmount: z
       .number({
         invalid_type_error: "Tax amount must be a number.",

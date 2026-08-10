@@ -27,6 +27,13 @@ router.patch(
   asyncHandler(userController.toggleMyBookingRestriction)
 );
 
+// Owner: search customers of the owner's own restaurants (offer targeting)
+router.get(
+  "/customers",
+  authorize(USER_ROLE.OWNER),
+  asyncHandler(userController.getOwnerCustomers)
+);
+
 // Admin management
 router.use(authorize(USER_ROLE.ADMIN));
 

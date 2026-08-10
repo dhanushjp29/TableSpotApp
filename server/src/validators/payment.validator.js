@@ -55,6 +55,7 @@ const bookingDraftSchema = z
             .min(1, "Number of guests must be at least 1."),
         specialRequest: z.string().trim().max(500).optional().default(""),
         preOrderedFoods: z.array(bookingDraftFoodSchema).optional().default([]),
+        offerId: mongoIdSchema.optional().nullable(),
     })
     .strict();
 

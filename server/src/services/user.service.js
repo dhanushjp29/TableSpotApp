@@ -1,6 +1,7 @@
 import Food from "../models/food.js";
 import User from "../models/User.js";
 import Restaurant from "../models/Restaurant.js";
+import Booking from "../models/Booking.js";
 
 import ApiError from "../utils/ApiError.js";
 import {
@@ -111,6 +112,80 @@ export const getUsers = async ({
         User.find(query)
             .select("-password")
             .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(pageSize),
+        User.countDocuments(query),
+    ]);
+
+    return {
+        users,
+        meta: {
+            page: pageNumber,
+            limit: pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize) || 1,
+        },
+    };
+};
+
+// Owner-scoped customer search: only customers who have booked at the owner's
+// own restaurants. Used by the offer builder for SELECTED targeting.
+export const getOwnerCustomers = async ({
+    ownerId,
+    restaurantId = null,
+    search = "",
+    page = 1,
+    limit = 10,
+}) => {
+    const restaurantQuery = { ownerId, isDeleted: false };
+    if (restaurantId) restaurantQuery._id = restaurantId;
+
+    const restaurants = await Restaurant.find(restaurantQuery).select("_id");
+
+    if (restaurantId && restaurants.length === 0) {
+        throw new ApiError(403, "This restaurant does not belong to you.");
+    }
+
+    const pageNumber = Math.max(Number(page) || 1, 1);
+    const pageSize = Math.min(Math.max(Number(limit) || 10, 1), 100);
+    const skip = (pageNumber - 1) * pageSize;
+
+    if (restaurants.length === 0) {
+        return {
+            users: [],
+            meta: { page: pageNumber, limit: pageSize, total: 0, totalPages: 1 },
+        };
+    }
+
+    const restaurantIds = restaurants.map((r) => r._id);
+
+    const customerUserIds = await Booking.distinct("userId", {
+        restaurantId: { $in: restaurantIds },
+        isDeleted: false,
+    });
+
+    const query = {
+        _id: { $in: customerUserIds },
+        role: USER_ROLE.CUSTOMER,
+        isActive: true,
+        isDeleted: false,
+    };
+
+    if (search) {
+        const searchRegex = new RegExp(search.trim(), "i");
+        query.$or = [
+            { fullName: searchRegex },
+            { email: searchRegex },
+            { phoneNumber: searchRegex },
+        ];
+    }
+
+    const [users, total] = await Promise.all([
+        User.find(query)
+            .select(
+                "_id userCode fullName email phoneNumber profileImage isEmailVerified totalBookings lastBookingAt"
+            )
+            .sort({ lastBookingAt: -1 })
             .skip(skip)
             .limit(pageSize),
         User.countDocuments(query),

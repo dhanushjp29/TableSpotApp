@@ -62,6 +62,14 @@ const bookingDraftSchema = new mongoose.Schema(
             trim: true,
         },
 
+        // Offer claimed at booking time. Kept on the draft so the offer is not
+        // lost when the booking is materialized after the payment captures.
+        offerId: {
+            type: mongoose.Schema.Types.ObjectId,
+            ref: "Offer",
+            default: null,
+        },
+
         preOrderedFoods: {
             type: [
                 new mongoose.Schema(

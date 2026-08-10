@@ -31,6 +31,7 @@ import {
 import { fetchBookings } from "../../store/slices/reservationSlice.js";
 import { fetchFoodsByRestaurant } from "../../store/slices/foodSlice.js";
 import { fetchTablesByRestaurant } from "../../store/slices/tableSlice.js";
+import { fetchOffers, consumeOfferForBill } from "../../store/slices/offerSlice.js";
 import Card from "../../components/ui/Card.jsx";
 import Badge from "../../components/ui/Badge.jsx";
 import Button from "../../components/ui/Button.jsx";
@@ -109,6 +110,7 @@ export default function OwnerBillingPage() {
   const user = useSelector((state) => state.auth.user);
   const restaurants = useSelector((state) => state.restaurant.restaurants);
   const restaurantsLoading = useSelector((state) => state.restaurant.isLoading);
+const offers = useSelector((state) => state.offer.offers);
   const { foods: spotFoods, isLoading: foodsLoading } = useSelector(
     (state) => state.food
   );
@@ -128,6 +130,7 @@ export default function OwnerBillingPage() {
   const [editingWalkInBill, setEditingWalkInBill] = useState(null);
   const [selectedBookingId, setSelectedBookingId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+const [isApplyingOffer, setIsApplyingOffer] = useState(false);
   const [walkInRestaurantId, setWalkInRestaurantId] = useState("");
   const [walkInTableId, setWalkInTableId] = useState("");
   const [walkInCustomerName, setWalkInCustomerName] = useState("");
@@ -180,6 +183,7 @@ export default function OwnerBillingPage() {
       dispatch(fetchRestaurants({ ownerId: user?.id, isActive: true })),
       dispatch(fetchBills({ limit: 100, ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}) })),
       dispatch(fetchBookings({ limit: 100, ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}) })),
+      dispatch(fetchOffers({ limit: 200 })),
     ]).catch(() => {});
   };
 
@@ -204,6 +208,7 @@ export default function OwnerBillingPage() {
     const [tablesRes, foodsRes] = await Promise.allSettled([
       dispatch(fetchTablesByRestaurant(restaurantId, { limit: 100 })),
       dispatch(fetchFoodsByRestaurant(restaurantId, { page: 1, limit: 100 })),
+      dispatch(fetchOffers({ limit: 200 })),
     ]);
     setWalkInTableOptions(tablesRes.status === "fulfilled" ? (tablesRes.value?.data?.tables || []) : []);
     setWalkInFoods(foodsRes.status === "fulfilled" ? (foodsRes.value?.data?.foods || []) : []);
@@ -957,9 +962,49 @@ export default function OwnerBillingPage() {
     }
   };
 
+  const applyOfferToWalkInBill = async ({ offerCode, customerEmail = "" }) => {
+    const billToApply = activeBillView?.bill;
+    const restaurantId =
+      billToApply?.restaurantId?._id ||
+      billToApply?.restaurantId ||
+      billToApply?.bookingId?.restaurantId?._id ||
+      billToApply?.bookingId?.restaurantId ||
+      walkInRestaurantId;
+    if (!restaurantId) {
+      toast.error("Select a restaurant for the bill first.");
+      return;
+    }
+    setIsApplyingOffer(true);
+    try {
+      const response = await dispatch(consumeOfferForBill({ restaurantId, offerCode, customerEmail }));
+      const updatedBill = extractBillFromResponse(response);
+      toast.success("Offer applied to the bill.");
+      await fetchData();
+      if (updatedBill) {
+        setActiveBillView({ bill: updatedBill, initialTab: "editor" });
+      } else {
+        const detailResponse = await dispatch(fetchBillById(billToApply._id));
+        const detailedBill = extractBillFromResponse(detailResponse) || billToApply;
+        setActiveBillView({ bill: detailedBill, initialTab: "editor" });
+      }
+    } catch (error) {
+      toast.error(error?.response?.data?.message || error?.message || "Failed to apply the offer to the bill.");
+    } finally {
+      setIsApplyingOffer(false);
+    }
+  };
+
   if (activeBillView) {
     const workspaceBill = activeBillView.bill;
     const workspaceIsWalkIn = workspaceBill?.billType === "WALK_IN" || !workspaceBill;
+    const workspaceRestaurantId =
+      workspaceBill?.restaurantId?._id ||
+      workspaceBill?.restaurantId ||
+      workspaceBill?.bookingId?.restaurantId?._id ||
+      workspaceBill?.bookingId?.restaurantId;
+    const workspaceOffers = offers.filter(
+      (offer) => String(offer.restaurantId?._id || offer.restaurantId) === String(workspaceRestaurantId)
+    );
     return <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
       <BillingWorkspace
         bill={workspaceBill}
@@ -972,6 +1017,9 @@ export default function OwnerBillingPage() {
         foods={workspaceIsWalkIn ? walkInFoods : spotFoods}
         loading={workspaceIsWalkIn ? walkInFoodsLoading : foodsLoading}
         submitting={isSubmitting}
+        offers={workspaceOffers}
+        applying={isApplyingOffer}
+        onApplyOffer={applyOfferToWalkInBill}
         onCreateOnline={createOnlineBill}
         key={`${workspaceBill?._id || "new"}-${activeBillView.initialTab}`}
         onBack={() => { setActiveBillView(null); setActiveReceiptBill(null); setManageBill(null); setEditingWalkInBill(null); setIsWalkInModalOpen(false); navigate(ROUTES.OWNER_BILLING); }}

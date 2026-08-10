@@ -12,6 +12,7 @@ import app from "./app.js";
 import connectDatabase from "./config/database.js";
 import { initSocket } from "./sockets/socket.handler.js";
 import { startDeadlineCron } from "./services/deadlineCron.service.js";
+import { startOfferCron } from "./services/offerCron.service.js";
 import { startTableStatusScheduler } from "./services/tableStatusScheduler.service.js";
 
 const PORT = process.env.PORT || 5000;
@@ -30,6 +31,9 @@ const startServer = async () => {
 
         // Revert owner-set table status timers back to Available on expiry
         startTableStatusScheduler();
+
+        // Offer expiring-soon reminders + expire stale active recipients
+        startOfferCron();
 
         const activeServer = server.listen(PORT, () => {
             console.log(`Server is running on port ${PORT}`);

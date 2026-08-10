@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo } from "react";
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useDispatch, useSelector } from "react-redux";
-import { useForm, useWatch } from "react-hook-form";
+import { Controller, useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import toast from "react-hot-toast";
-import { Calendar, Clock, Users, UtensilsCrossed, CreditCard } from "lucide-react";
+import { Clock, Users, UtensilsCrossed, CreditCard, Ticket } from "lucide-react";
 
 import { tableApi } from "../../api/table.api.js";
 import { bookingApi } from "../../api/booking.api.js";
@@ -13,6 +13,8 @@ import {
   fetchRestaurantById,
 } from "../../store/slices/restaurantSlice.js";
 import { fetchFoodsByRestaurant } from "../../store/slices/foodSlice.js";
+import { fetchAvailableOffers } from "../../store/slices/offerSlice.js";
+import { computeOfferDiscount } from "../../constants/offer.js";
 
 import { useAuth } from "../../hooks/useAuth.js";
 import { useBookingAdvancePayment } from "../../hooks/useBookingAdvancePayment.js";
@@ -20,8 +22,9 @@ import TableSelector from "../../components/restaurant/TableSelector.jsx";
 import PreOrderFoods from "../../components/restaurant/PreOrderFoods.jsx";
 import Button from "../../components/ui/Button.jsx";
 import Input from "../../components/ui/Input.jsx";
-import DatePicker from "../../components/ui/DatePicker.jsx";
+import InvoiceDatePicker from "../../components/common/InvoiceDatePicker.jsx";
 import TimePicker from "../../components/ui/TimePicker.jsx";
+import OfferCard from "../../components/offer/OfferCard.jsx";
 import Badge from "../../components/ui/Badge.jsx";
 import Card from "../../components/ui/Card.jsx";
 import { SkeletonText } from "../../components/ui/Skeleton.jsx";
@@ -55,12 +58,15 @@ function BookingPage() {
   const allFoods = useSelector((state) => state.food.foods);
   const foodsLoading = useSelector((state) => state.food.isLoading);
   const foodsError = useSelector((state) => state.food.error);
+  const availableOffers = useSelector((state) => state.offer.availableOffers);
+  const offersLoading = useSelector((state) => state.offer.isLoading);
   const [availability, setAvailability] = useState([]);
   const [isAvailabilityLoading, setIsAvailabilityLoading] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [seatSelections, setSeatSelections] = useState({});
   const [fullTableSelections, setFullTableSelections] = useState({});
   const [preOrder, setPreOrder] = useState({});
+  const [selectedOfferId, setSelectedOfferId] = useState("");
 
   const foods = useMemo(
     () =>
@@ -90,6 +96,13 @@ function BookingPage() {
   useEffect(() => {
     dispatch(fetchRestaurantById(restaurantId)).catch(() => {});
     dispatch(fetchFoodsByRestaurant(restaurantId)).catch(() => {});
+  }, [dispatch, restaurantId]);
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    dispatch(
+      fetchAvailableOffers({ restaurantId, page: 1, limit: 50 })
+    ).catch(() => {});
   }, [dispatch, restaurantId]);
 
   useEffect(() => {
@@ -176,27 +189,56 @@ function BookingPage() {
     }
     return `An advance of ${formatCurrency(bookingPolicy.fixedAmount)} is charged to confirm your booking.`;
   })();
+  const preOrderTotal = useMemo(
+    () =>
+      Object.entries(preOrder).reduce((sum, [key, quantity]) => {
+        const idx = key.indexOf("::");
+        const foodId = key.slice(0, idx);
+        const variantName = key.slice(idx + 2);
+        const food = foods.find((f) => String(f._id) === foodId);
+        const variant =
+          food?.variants?.find(
+            (v) => String(v.variantName).toLowerCase() === variantName.toLowerCase()
+          ) || food?.variants?.[0];
+        const price = variant?.offerPrice > 0 ? variant.offerPrice : variant?.price || 0;
+        return sum + price * quantity;
+      }, 0),
+    [foods, preOrder]
+  );
+
+  const eligibleOffers = useMemo(() => {
+    // Keep all server-eligible offers visible. A minimum-order requirement
+    // should explain why an offer cannot be selected, not hide the offer.
+    return availableOffers;
+  }, [availableOffers]);
+  const offerPages = useMemo(
+    () => Array.from({ length: Math.ceil(eligibleOffers.length / 4) }, (_, index) =>
+      eligibleOffers.slice(index * 4, index * 4 + 4)
+    ),
+    [eligibleOffers]
+  );
+
   const summary = useMemo(() => {
-    const preOrderTotal = Object.entries(preOrder).reduce((sum, [key, quantity]) => {
-      const idx = key.indexOf("::");
-      const foodId = key.slice(0, idx);
-      const variantName = key.slice(idx + 2);
-      const food = foods.find((f) => String(f._id) === foodId);
-      const variant =
-        food?.variants?.find(
-          (v) => String(v.variantName).toLowerCase() === variantName.toLowerCase()
-        ) || food?.variants?.[0];
-      const price = variant?.offerPrice > 0 ? variant.offerPrice : variant?.price || 0;
-      return sum + price * quantity;
-    }, 0);
+    const selectedOffer = availableOffers.find(
+      (offer) => String(offer._id) === String(selectedOfferId)
+    );
+    const offerDiscount = selectedOffer
+      ? computeOfferDiscount(selectedOffer, preOrderTotal)
+      : 0;
     const advance = bookingPolicy.type === "PAY_TO_BOOK" ? preOrderTotal : 0;
+    const totalNow =
+      bookingPolicy.type === "PAY_TO_BOOK" &&
+      bookingPolicy.paymentType === "FULL_PREORDER"
+        ? Math.max(advance - offerDiscount, 0)
+        : advance;
     return {
       preOrderTotal,
+      offerDiscount,
       advance,
-      totalNow: advance,
+      totalNow,
       remaining: bookingPolicy.type === "PAY_TO_BOOK" ? 0 : 0,
     };
-  }, [bookingPolicy.type, foods, preOrder]);
+  }, [bookingPolicy.type, bookingPolicy.paymentType, preOrderTotal, availableOffers, selectedOfferId]);
 
   const onSubmit = async (data) => {
     if (!hasSelection) {
@@ -212,6 +254,18 @@ function BookingPage() {
     if (reservedSeatCount < data.numberOfGuests) {
       toast.error(
         "The selected tables do not have enough seats for your guests."
+      );
+      return;
+    }
+    const selectedOffer = availableOffers.find(
+      (offer) => String(offer._id) === String(selectedOfferId)
+    );
+    if (
+      selectedOffer &&
+      Number(selectedOffer.minOrderAmount || 0) > preOrderTotal
+    ) {
+      toast.error(
+        `This offer requires a minimum order of ${formatCurrency(selectedOffer.minOrderAmount)}.`
       );
       return;
     }
@@ -272,6 +326,7 @@ function BookingPage() {
             numberOfGuests: data.numberOfGuests,
             specialRequest: data.specialRequest || "",
             preOrderedFoods,
+            offerId: selectedOfferId || null,
           },
           prefill: {
             name: user?.fullName,
@@ -302,6 +357,7 @@ function BookingPage() {
         specialRequest: data.specialRequest,
         bookingType: "Online",
         preOrderedFoods,
+        offerId: selectedOfferId || null,
       });
       createdBooking = response.data?.booking || response.data || {};
       const bookingId = createdBooking._id;
@@ -402,22 +458,35 @@ function BookingPage() {
             <span className="text-xs font-medium text-muted">Required</span>
           </div>
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-            <DatePicker
-              label="Date"
-              hint="Available from today onward."
-              value={bookingDate}
-              min={getLocalDateString()}
-              error={errors.bookingDate?.message}
-              icon={<Calendar size={16} />}
-              {...register("bookingDate")}
+            <Controller
+              name="bookingDate"
+              control={control}
+              render={({ field, fieldState }) => (
+                <InvoiceDatePicker
+                  label="Date"
+                  hint="Available from today onward."
+                  value={field.value}
+                  onChange={field.onChange}
+                  min={getLocalDateString()}
+                  error={fieldState.error?.message}
+                />
+              )}
             />
-            <TimePicker
-              label="Time"
-              hint="Pick the time for your reservation."
-              value={bookingTime}
-              error={errors.bookingTime?.message}
-              icon={<Clock size={16} />}
-              {...register("bookingTime")}
+            <Controller
+              name="bookingTime"
+              control={control}
+              render={({ field, fieldState }) => (
+                <TimePicker
+                  label="Time"
+                  hint="Pick the time for your reservation."
+                  value={field.value}
+                  onChange={field.onChange}
+                  name={field.name}
+                  ref={field.ref}
+                  error={fieldState.error?.message}
+                  icon={<Clock size={16} />}
+                />
+              )}
             />
             <Input
               label="Guests"
@@ -507,6 +576,108 @@ function BookingPage() {
           </Card>
         )}
         <Card className="p-6">
+          <div className="flex items-center gap-2">
+            <Ticket size={20} className="text-primary" />
+            <h2 className="text-lg font-semibold text-text">
+              Available Offers (Optional)
+            </h2>
+          </div>
+          <p className="mt-1 text-xs text-muted">
+            Pick one of your eligible offers. For full pre-payment it reduces
+            the amount charged now; otherwise it applies when the bill is
+            settled.
+          </p>
+          {offersLoading && eligibleOffers.length === 0 ? (
+            <p className="mt-4 text-sm text-muted">Loading offers...</p>
+          ) : eligibleOffers.length === 0 ? (
+            <p className="mt-4 rounded-xl border border-border bg-surface-secondary/60 px-3 py-2 text-xs text-muted">
+              No offers are available for this restaurant right now. Pre-order
+              above to unlock offers with a minimum order.
+            </p>
+          ) : (
+            <div className="mt-4 overflow-x-auto pb-2 snap-x snap-mandatory">
+              <div className="flex gap-4">
+                {offerPages.map((page, pageIndex) => (
+                  <div key={pageIndex} className="grid w-[min(100%,42rem)] min-w-[calc(100vw-3rem)] shrink-0 grid-cols-2 grid-rows-2 gap-3 snap-start sm:min-w-0">
+                    {page.map((offer) => {
+                      const selected = String(offer._id) === String(selectedOfferId);
+                      const minOrder = Number(offer.minOrderAmount || 0);
+                      const minOrderMet = minOrder <= 0 || preOrderTotal >= minOrder;
+                      return (
+                        <OfferCard
+                          key={offer._id}
+                          item={offer}
+                          compact
+                          status=""
+                          selected={selected}
+                          onSelect={() => {
+                            if (!minOrderMet) {
+                              toast.error(`Pre-order at least ${formatCurrency(minOrder)} to use this offer.`);
+                              return;
+                            }
+                            setSelectedOfferId(selected ? "" : String(offer._id));
+                          }}
+                        />
+                      );
+                    })}
+                  </div>
+                ))}
+              </div>
+            {/* legacy offer layout removed
+              {eligibleOffers.map((offer) => {
+                const selected = String(offer._id) === String(selectedOfferId);
+                const minOrder = Number(offer.minOrderAmount || 0);
+                const minOrderMet = minOrder <= 0 || preOrderTotal >= minOrder;
+                return (
+                  <button
+                    key={offer._id}
+                    type="button"
+                    onClick={() =>
+                      minOrderMet
+                        ? setSelectedOfferId(selected ? "" : String(offer._id))
+                        : toast.error(
+                            `Pre-order at least ${formatCurrency(minOrder)} to use this offer.`
+                          )
+                    }
+                    className={`flex w-full items-start justify-between gap-3 rounded-2xl border px-4 py-3 text-left transition ${
+                      selected
+                        ? "border-primary bg-primary/5 ring-1 ring-primary"
+                        : "border-border bg-surface hover:border-primary/50 dark:bg-surface-secondary/70"
+                    }`}
+                  >
+                    <span className="flex-1">
+                      <span className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-md bg-primary/10 px-2 py-0.5 font-mono text-xs font-bold text-primary">
+                          {formatOfferDiscount(offer)}
+                        </span>
+                        <span className="text-sm font-semibold text-text">
+                          {offer.title || "Special offer"}
+                        </span>
+                      </span>
+                      <span className="mt-1 block text-xs text-muted">
+                        {offer.offerCode}
+                        {minOrder > 0
+                          ? ` · Min order ${formatCurrency(minOrder)}`
+                          : ""}
+                      </span>
+                    </span>
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full border ${
+                        selected ? "border-primary bg-primary" : "border-border"
+                      }`}
+                    >
+                      {selected && (
+                        <span className="h-1.5 w-1.5 rounded-full bg-white" />
+                      )}
+                    </span>
+                  </button>
+                );
+              })}
+            */}
+            </div>
+          )}
+        </Card>
+        <Card className="p-6">
           <div className="flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-text">Special Request</h2>
             <span className="text-xs font-medium text-muted">Optional • 500 chars</span>
@@ -529,6 +700,14 @@ function BookingPage() {
                 <span className="text-muted">Pre-order total</span>
                 <span className="font-semibold text-text">{formatCurrency(summary.preOrderTotal)}</span>
               </div>
+              {summary.offerDiscount > 0 && (
+                <div className="flex justify-between gap-4">
+                  <span className="text-muted">Offer discount</span>
+                  <span className="font-semibold text-success">
+                    -{formatCurrency(summary.offerDiscount)}
+                  </span>
+                </div>
+              )}
               <div className="flex justify-between gap-4">
                 <span className="text-muted">Pay now</span>
                 <span className="font-semibold text-text">{bookingPolicy.type === "PAY_TO_BOOK" ? formatCurrency(summary.totalNow) : "No online payment"}</span>

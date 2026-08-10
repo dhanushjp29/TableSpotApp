@@ -530,6 +530,30 @@
   }
 }
 
+.scratch-offer-surface {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 12px 24px rgba(142, 0, 0, 0.18);
+}
+.scratch-offer-surface::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(120deg, transparent 20%, rgba(255,255,255,0.12) 50%, transparent 80%);
+  background-size: 220% 100%;
+  animation: scratch-glint 3.8s ease-in-out infinite;
+}
+.scratch-offer-icons {
+  color: rgba(255,255,255,0.62);
+}
+.scratch-offer-icons svg {
+  position: absolute;
+  filter: drop-shadow(0 2px 3px rgba(92, 0, 0, 0.24));
+}
+@keyframes scratch-glint {
+  0%, 38% { background-position: 180% 0; }
+  65%, 100% { background-position: -40% 0; }
+}
+
 /* ---- Leaflet Maps ---- */
 .tablespot-pin {
   width: 24px;

@@ -11,6 +11,7 @@ import foodReducer from "./slices/foodSlice.js";
 import reviewReducer from "./slices/reviewSlice.js";
 import refundReducer from "./slices/refundSlice.js";
 import paymentReducer from "./slices/paymentSlice.js";
+import offerReducer from "./slices/offerSlice.js";
 
 export const store = configureStore({
   reducer: {
@@ -26,5 +27,6 @@ export const store = configureStore({
     review: reviewReducer,
     refund: refundReducer,
     payment: paymentReducer,
+    offer: offerReducer,
   },
 });

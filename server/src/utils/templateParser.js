@@ -17,9 +17,14 @@ export const compileTemplate = (templateName, variables = {}) => {
         const templatePath = path.join(TEMPLATES_DIR, `${templateName}.html`);
         let html = fs.readFileSync(templatePath, 'utf8');
 
+        html = html.replace(/{{>\s*([\w-]+)\s*}}/g, (_, partialName) => {
+            const partialPath = path.join(TEMPLATES_DIR, `${partialName}.html`);
+            return fs.readFileSync(partialPath, 'utf8');
+        });
+
         for (const [key, value] of Object.entries(variables)) {
             const regex = new RegExp(`{{${key}}}`, 'g');
-            html = html.replace(regex, value);
+            html = html.replace(regex, String(value ?? ''));
         }
 
         return html;

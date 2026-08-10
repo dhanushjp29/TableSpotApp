@@ -4,26 +4,34 @@ import Food from "../models/food.js";
 import Restaurant from "../models/Restaurant.js";
 import RestaurantTable from "../models/RestaurantTable.js";
 import User from "../models/User.js";
+import OfferRecipient from "../models/OfferRecipient.js";
 
+import { getIO } from "../sockets/socket.handler.js";
 import ApiError from "../utils/ApiError.js";
 import generateCode from "../utils/generateCode.js";
-import { getIO } from "../sockets/socket.handler.js";
-import { createNotification } from "./notification.service.js";
-import {
-  calculateCancellationCutoffAt,
-  calculateRequiredBookingPayment,
-} from "./bookingPayment.service.js";
-import {
-  calculateRefundEligibility,
-  createRefund,
-} from "./refund.service.js";
 import { createAuditLog } from "./auditLog.service.js";
-import { recomputeBookingTableStatus } from "./bookingWindow.service.js";
 import {
   acquireBookingHolds,
   findActiveHoldByToken,
   releaseBookingHolds,
 } from "./bookingHold.service.js";
+import {
+  calculateCancellationCutoffAt,
+  calculateRequiredBookingPayment,
+} from "./bookingPayment.service.js";
+import { recomputeBookingTableStatus } from "./bookingWindow.service.js";
+import { createNotification } from "./notification.service.js";
+import { sendBookingEventEmail } from "./businessEmail.service.js";
+import {
+  attachBookingToClaimedOffer,
+  computeOfferDiscount,
+  releaseClaimedOfferForBooking,
+  validateClaimedOfferForBooking,
+} from "./offer.service.js";
+import {
+  calculateRefundEligibility,
+  createRefund,
+} from "./refund.service.js";
 
 import {
   BOOKING_STATUS,
@@ -526,11 +534,11 @@ const markTablesReservedAndNotify = async (tables) => {
           ...(entry.seatSelectionMode === SEAT_SELECTION_MODE.INDIVIDUAL_SEATS
             ? {}
             : {
-                $set: {
-                  statusSource: "booking",
-                  statusScheduledUntil: null,
-                },
-              }),
+              $set: {
+                statusSource: "booking",
+                statusScheduledUntil: null,
+              },
+            }),
         },
         { new: true }
       ).then((doc) => {
@@ -632,6 +640,7 @@ export const createBooking = async ({
   specialRequest = "",
   preOrderedFoods = [],
   billId = null,
+  offerId = null,
   applyBookingPaymentPolicy = true,
 }) => {
   if (!userId) {
@@ -716,6 +725,29 @@ export const createBooking = async ({
   // A client-supplied totalAmount is never trusted.
   totalAmount = calculateOrderedFoodsTotal(orderedFoods);
 
+  // A claimed offer is validated against this restaurant + customer and its
+  // slot is reserved (CLAIMED) here, then consumed when the bill is created.
+  // A FULL pre-payment is charged on the discounted amount; a partial advance
+  // is a % / flat amount of the undiscounted total (the offer then applies at
+  // bill time).
+  let claimedOfferId = null;
+  let offerDiscount = 0;
+  if (offerId) {
+    const validatedOffer = await validateClaimedOfferForBooking({
+      offerId,
+      restaurantId: restaurant._id,
+      customerId: userId,
+      subTotal: totalAmount,
+    });
+    claimedOfferId = validatedOffer?.offerId || null;
+    if (validatedOffer) {
+      offerDiscount = computeOfferDiscount({
+        offer: validatedOffer,
+        subTotal: totalAmount,
+      });
+    }
+  }
+
   // Advance is always computed server-side from the restaurant policy.
   // Client-supplied amounts are never trusted. Walk-ins are always
   // pay-at-spot and skip the policy gating.
@@ -723,6 +755,7 @@ export const createBooking = async ({
     advanceAmount = calculateRequiredBookingPayment({
       restaurant,
       totalAmount,
+      discountAmount: claimedOfferId ? offerDiscount : 0,
     });
   } else {
     advanceAmount = 0;
@@ -802,8 +835,17 @@ export const createBooking = async ({
       specialRequest,
       preOrderedFoods: orderedFoods,
       billId,
+      offerId: claimedOfferId,
       cancellationCutoffAt,
     });
+
+    if (claimedOfferId) {
+      await attachBookingToClaimedOffer({
+        offerId: claimedOfferId,
+        userId,
+        bookingId: booking._id,
+      });
+    }
 
     // Keep the legacy availability re-check as a safety net, but the lock is
     // the atomic gate that stops the race.
@@ -871,6 +913,7 @@ export const createBooking = async ({
       console.error("Notification error on booking creation:", error.message);
     }
   }
+  void sendBookingEventEmail({ bookingId: booking._id, event: "created" }).catch((error) => console.error("Booking email error:", error.message));
 
   try {
     await createAuditLog({
@@ -960,14 +1003,14 @@ export const updateBooking = async ({
       updates.tables && updates.tables.length > 0
         ? updates.tables
         : [
-            {
-              tableId: updates.tableId || booking.tableId,
-              seatIds:
-                updates.seatIds !== undefined
-                  ? updates.seatIds
-                  : booking.seatIds || [],
-            },
-          ];
+          {
+            tableId: updates.tableId || booking.tableId,
+            seatIds:
+              updates.seatIds !== undefined
+                ? updates.seatIds
+                : booking.seatIds || [],
+          },
+        ];
 
     resolvedSeats = await resolveTableSelections({
       restaurantId: booking.restaurantId,
@@ -985,13 +1028,13 @@ export const updateBooking = async ({
         booking.tables && booking.tables.length
           ? booking.tables
           : [
-              {
-                tableId: booking.tableId,
-                seatSelectionMode: booking.bookingMode,
-                seatIds: booking.seatIds || [],
-                seatLabels: booking.seatLabels || [],
-              },
-            ],
+            {
+              tableId: booking.tableId,
+              seatSelectionMode: booking.bookingMode,
+              seatIds: booking.seatIds || [],
+              seatLabels: booking.seatLabels || [],
+            },
+          ],
       seatIds: booking.seatIds || [],
       seatLabels: booking.seatLabels || [],
       bookingMode: booking.bookingMode,
@@ -1268,6 +1311,11 @@ export const updateBookingStatus = async ({
     console.error("Notification error on booking status update:", error.message);
   }
 
+  if ([BOOKING_STATUS.CONFIRMED, BOOKING_STATUS.CANCELLED, BOOKING_STATUS.COMPLETED].includes(bookingStatus)) {
+    const emailEvent = bookingStatus === BOOKING_STATUS.CONFIRMED ? "confirmed" : bookingStatus === BOOKING_STATUS.CANCELLED ? "cancelled" : "completed";
+    void sendBookingEventEmail({ bookingId: booking._id, event: emailEvent }).catch((error) => console.error("Booking status email error:", error.message));
+  }
+
   return {
     booking: updatedBooking,
     message: "Booking status updated successfully.",
@@ -1313,6 +1361,18 @@ export const cancelBooking = async ({
     performedBy: cancelledBy,
     performedByRole: role,
   });
+
+  if (booking.offerId && booking.userId) {
+    try {
+      await releaseClaimedOfferForBooking({
+        offerId: booking.offerId,
+        userId: booking.userId,
+        bookingId: booking._id,
+      });
+    } catch (error) {
+      console.error("Offer release failed on booking cancellation:", error.message);
+    }
+  }
 
   if (eligibility.eligible && eligibility.refundAmount > 0) {
     const refund = await createRefund({
@@ -1537,6 +1597,25 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
   const totalAmount = calculateOrderedFoodsTotal(orderedFoods);
   const advanceAmount = roundAmount(paymentRecord.amount || 0);
 
+  // A claimed offer is carried through the payment snapshot and validated
+  // when the booking is materialized from the payment.
+  let claimedOfferId = null;
+  if (bookingData.offerId) {
+    try {
+      const validatedOffer = await validateClaimedOfferForBooking({
+        offerId: bookingData.offerId,
+        restaurantId: restaurant._id,
+        customerId: userId,
+      });
+      claimedOfferId = validatedOffer?.offerId || null;
+    } catch (error) {
+      // The offer may have sold out while the customer paid. The booking is
+      // still created — only the discount is skipped.
+      console.error("Offer skipped on booking from payment:", error.message);
+      claimedOfferId = null;
+    }
+  }
+
   const paymentStatus =
     advanceAmount >= totalAmount
       ? PAYMENT_STATUS.PAID
@@ -1576,9 +1655,18 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
     specialRequest: String(bookingData.specialRequest || "").trim(),
     preOrderedFoods: orderedFoods,
     billId: null,
+    offerId: claimedOfferId,
     sourcePaymentId: paymentRecord._id,
     cancellationCutoffAt,
   });
+
+  if (claimedOfferId) {
+    await attachBookingToClaimedOffer({
+      offerId: claimedOfferId,
+      userId,
+      bookingId: booking._id,
+    });
+  }
 
   // Race-condition guard: re-check the window after insert. If another
   // booking claimed these seats between our check and insert, roll back.
@@ -1649,6 +1737,7 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
       console.error("Notification error on payment-first booking:", error.message);
     }
   }
+  void sendBookingEventEmail({ bookingId: booking._id, event: "created" }).catch((error) => console.error("Payment-first booking email error:", error.message));
 
   try {
     await createAuditLog({
@@ -1808,6 +1897,8 @@ export const getBookingById = async ({
     .populate("tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
     .populate("tables.tableId", "tableCode tableNumber tableName tableLabel shape seatSelectionMode capacity minimumCapacity seats status tableType tableLocation floor")
     .populate("preOrderedFoods.foodId", "foodCode foodName coverImage")
+    .populate("offerId", "offerCode title discountType discountValue minOrderAmount maxDiscountAmount validityStart validityEnd isStackable")
+    .populate("sourcePaymentId", "paymentStatus paymentMethod amount transactionId razorpayPaymentId createdAt capturedAt paidAt")
     .populate("refundId", "refundCode refundStatus refundMethod amount")
     .populate(BILL_ID_POPULATE);
 
@@ -1815,9 +1906,17 @@ export const getBookingById = async ({
     throw new ApiError(404, "Booking not found.");
   }
 
-  return {
-    booking,
-  };
+  const offerRecipient = booking.offerId
+    ? await OfferRecipient.findOne({
+        offerId: booking.offerId._id,
+        userId: booking.userId?._id || booking.userId,
+        bookingId,
+      })
+        .select("status claimedAt usedAt expiredAt bookingId billId discountAmount usageSource")
+        .lean()
+    : null;
+
+  return { booking, offerRecipient };
 };
 
 export const getBookings = async ({

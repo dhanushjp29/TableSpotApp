@@ -12,8 +12,14 @@ import generateCode from "../utils/generateCode.js";
 import { createAuditLog } from "./auditLog.service.js";
 import { createRefund, syncBookingRefundStatus } from "./refund.service.js";
 import { createNotification } from "./notification.service.js";
+import { sendBillEventEmail } from "./businessEmail.service.js";
 import { updateBookingStatus } from "./booking.service.js";
 import { getIO } from "../sockets/socket.handler.js";
+import {
+  applyOfferToBill,
+  buildOfferSnapshot,
+  resolveOfferForBill,
+} from "./offer.service.js";
 
 import {
   BILL_STATUS,
@@ -21,6 +27,7 @@ import {
   CODE_PREFIX,
   DISCOUNT_TYPE,
   getGstRateForCategory,
+  OFFER_USAGE_SOURCE,
   ORDER_SOURCE,
   PAYMENT_METHOD,
   PAYMENT_STATUS,
@@ -424,6 +431,8 @@ const finalizeBillAndCompleteBooking = async ({
     }
   }
 
+  void sendBillEventEmail({ billId: bill._id, event: "settled" }).catch((error) => console.error("Bill settlement email error:", error.message));
+
   emitBillSocket({ bill, booking });
 
   return bill;
@@ -480,6 +489,7 @@ const buildTaxBreakup = ({ orderedItems, taxableAmount }) => {
 const buildBillTotals = ({
   orderedItems,
   discount,
+  offer = null,
   taxPercentage = 0,
   serviceCharge = 0,
   deliveryCharge = 0,
@@ -491,8 +501,16 @@ const buildBillTotals = ({
     value: Number(discount?.value || 0),
   };
   const discountAmount = calculateDiscountAmount(normalizedDiscount, subTotal);
+  // The offer discount is an immutable snapshot on the bill. It is computed
+  // once at apply time and never re-derived here.
+  const offerDiscountAmount = roundAmount(
+    Math.min(
+      Number(offer?.discountAmount || 0),
+      Math.max(0, subTotal - discountAmount)
+    )
+  );
   const taxableAmount = roundAmount(
-    Math.max(0, subTotal - discountAmount)
+    Math.max(0, subTotal - discountAmount - offerDiscountAmount)
   );
   // Tax is always a bill-level decision. Item gstRate values are retained as
   // historical/reference data only and must never affect invoice totals.
@@ -525,6 +543,7 @@ const buildBillTotals = ({
     orderedItems,
     subTotal,
     discount: normalizedDiscount,
+    offerDiscountAmount,
     taxableAmount,
     gstRate: normalizedTaxPercentage > 0 ? normalizedTaxPercentage : gstRate,
     taxPercentage: normalizedTaxPercentage,
@@ -534,6 +553,224 @@ const buildBillTotals = ({
     deliveryCharge: delivery,
     grandTotal,
     payment: paymentSummary,
+  };
+};
+
+/**
+ * Recompute every money field on a bill from its current items/discounts.
+ * Used to roll a bill back to a no-offer state if the atomic offer-usage slot
+ * could not be consumed.
+ */
+const recomputeBillTotals = async (bill) => {
+  const totals = buildBillTotals({
+    orderedItems: bill.orderedItems,
+    discount: bill.discount,
+    offer: bill.offer,
+    taxPercentage: bill.taxPercentage,
+    serviceCharge: bill.serviceCharge,
+    deliveryCharge: bill.deliveryCharge,
+    payment: bill.payment || {},
+  });
+
+  bill.orderedItems = totals.orderedItems;
+  bill.subTotal = totals.subTotal;
+  bill.discount = totals.discount;
+  bill.taxableAmount = totals.taxableAmount;
+  bill.taxPercentage = totals.taxPercentage;
+  bill.gstRate = totals.gstRate;
+  bill.taxBreakup = totals.taxBreakup;
+  bill.taxAmount = totals.taxAmount;
+  bill.serviceCharge = totals.serviceCharge;
+  bill.deliveryCharge = totals.deliveryCharge;
+  bill.grandTotal = totals.grandTotal;
+  bill.payment = totals.payment;
+
+  return totals;
+};
+
+/**
+ * Resolve + snapshot an offer onto a bill. Returns the resolution needed to
+ * mark the recipient USED, or null when there is nothing to apply.
+ * ONLINE usage (booking-attached offers) is applied automatically by
+ * createBill; manual application is walk-in only.
+ */
+const resolveBillOffer = async ({
+  bill,
+  booking,
+  restaurantId,
+  offerInput = {},
+  subTotal,
+  isWalkIn = false,
+}) => {
+  const hasOfferInput = Boolean(offerInput.offerId || offerInput.offerCode);
+
+  if (bill.offer?.offerId) {
+    if (!hasOfferInput) {
+      return { pendingApply: null, offer: null };
+    }
+    const sameOffer =
+      (offerInput.offerCode &&
+        String(offerInput.offerCode).trim().toUpperCase() === bill.offer.offerCode) ||
+      (offerInput.offerId && String(offerInput.offerId) === String(bill.offer.offerId));
+
+    if (sameOffer) {
+      return { pendingApply: null, offer: null };
+    }
+    throw new ApiError(409, "This bill already has an offer applied and it cannot be changed.");
+  }
+
+  if (!hasOfferInput) {
+    if (bill.offer?.offerId) {
+      throw new ApiError(409, "An applied offer cannot be removed from a bill.");
+    }
+    return { pendingApply: null, offer: null };
+  }
+
+  if (!isWalkIn || booking) {
+    throw new ApiError(
+      409,
+      "Offers on online bookings are applied automatically from the booking."
+    );
+  }
+
+  const resolved = await resolveOfferForBill({
+    restaurantId,
+    offerId: offerInput.offerId || null,
+    offerCode: offerInput.offerCode || null,
+    customerEmail: offerInput.customerEmail || bill.customerEmail,
+    subTotal,
+    usageSource: OFFER_USAGE_SOURCE.WALK_IN,
+  });
+
+  if (!resolved.offer.isStackable) {
+    bill.discount = { type: DISCOUNT_TYPE.AMOUNT, value: 0 };
+  }
+
+  bill.offer = buildOfferSnapshot({
+    offer: resolved.offer,
+    discountAmount: resolved.discountAmount,
+  });
+
+  return {
+    pendingApply: {
+      offer: resolved.offer,
+      customerId: resolved.customerId,
+      email: resolved.email,
+      discountAmount: resolved.discountAmount,
+      usageSource: OFFER_USAGE_SOURCE.WALK_IN,
+    },
+    offer: resolved.offer,
+  };
+};
+
+/**
+ * Consume the usage slot for a resolved offer and roll the bill back to its
+ * no-offer state if the slot could not be consumed.
+ */
+const consumeBillOffer = async ({ bill, pendingApply, booking, isWalkIn }) => {
+  if (!pendingApply) return;
+
+  try {
+    await applyOfferToBill({
+      bill,
+      offer: pendingApply.offer,
+      customerId: pendingApply.customerId,
+      email: pendingApply.email,
+      discountAmount: pendingApply.discountAmount,
+      usageSource: pendingApply.usageSource || OFFER_USAGE_SOURCE.WALK_IN,
+      bookingId: booking?._id || null,
+    });
+  } catch (error) {
+    bill.offer = null;
+    await recomputeBillTotals(bill);
+    await bill.save();
+
+    if (isWalkIn) {
+      throw error;
+    }
+    console.error("Online offer skipped on bill apply:", error.message);
+  }
+};
+
+/**
+ * Manually redeem an offer against an existing bill (walk-in flow where the
+ * offer was not attached at bill creation). Applies the offer snapshot and
+ * consumes the recipient's usage slot; the bill is rolled back to its
+ * no-offer state if the slot cannot be consumed.
+ */
+export const consumeOfferForBill = async ({
+  restaurantId,
+  offerId = null,
+  offerCode = "",
+  customerEmail = "",
+  bookingId = null,
+  performedBy,
+}) => {
+  if (!performedBy) {
+    throw new ApiError(400, "Performed by user is required.");
+  }
+  if (!offerId && !String(offerCode || "").trim()) {
+    throw new ApiError(400, "Offer code or offer id is required.");
+  }
+
+  let bill;
+  if (bookingId) {
+    const booking = await getBookingOrThrow(bookingId);
+    bill = booking.billId
+      ? await Bill.findById(booking.billId).select("+offer")
+      : null;
+    if (!bill) {
+      throw new ApiError(404, "No bill exists for the given booking.");
+    }
+    if (String(bill.restaurantId) !== String(restaurantId)) {
+      throw new ApiError(403, "The booking does not belong to this restaurant.");
+    }
+  } else {
+    bill = await Bill.findOne({
+      restaurantId,
+      billType: WALK_IN_BILL_TYPE,
+      billStatus: { $ne: BILL_STATUS.PAID },
+      isActive: true,
+    })
+      .sort({ createdAt: -1 })
+      .select("+offer");
+    if (!bill) {
+      throw new ApiError(404, "No open walk-in bill found to apply the offer to.");
+    }
+  }
+
+  if (bill.billStatus === BILL_STATUS.PAID) {
+    throw new ApiError(409, "A settled bill cannot be modified.");
+  }
+
+  const booking = bill.bookingId
+    ? await Booking.findById(bill.bookingId).select("_id userId restaurantId")
+    : null;
+
+  const subTotal = calculateSubTotal(bill.orderedItems);
+
+  const resolved = await resolveBillOffer({
+    bill,
+    booking,
+    restaurantId,
+    offerInput: { offerId, offerCode, customerEmail },
+    subTotal,
+    isWalkIn: true,
+  });
+
+  await consumeBillOffer({
+    bill,
+    pendingApply: resolved.pendingApply,
+    booking,
+    isWalkIn: true,
+  });
+
+  await recomputeBillTotals(bill);
+  await bill.save();
+
+  return {
+    message: "Offer applied to the bill successfully.",
+    bill: bill.toObject(),
   };
 };
 
@@ -548,6 +785,7 @@ export const createBill = async ({
   taxPercentage = 0,
   orderedItems = [],
   discount = null,
+  offer = null,
   serviceCharge = 0,
   deliveryCharge = 0,
   notes = "",
@@ -654,9 +892,51 @@ export const createBill = async ({
     CODE_PREFIX.BILL
   );
 
+  const subTotal = calculateSubTotal(resolvedItems);
+
+  // Resolve the offer to apply. Online bills inherit the offer the customer
+  // claimed at booking time; walk-in bills accept an explicit offer code.
+  // An invalid/expired/sold-out offer never fails the bill — it is simply not
+  // applied and the recipient stays claimable for a future visit.
+  let offerResolution = null;
+
+  if (booking?.offerId) {
+    try {
+      offerResolution = await resolveOfferForBill({
+        restaurantId: billRestaurantId,
+      offerId: booking.offerId,
+      customerId: booking.userId,
+      bookingId: booking._id,
+      subTotal,
+        usageSource: OFFER_USAGE_SOURCE.ONLINE,
+      });
+    } catch (error) {
+      console.error("Online offer skipped on bill create:", error.message);
+      offerResolution = null;
+    }
+  } else if (isWalkIn && offer && (offer.offerId || offer.offerCode)) {
+    offerResolution = await resolveOfferForBill({
+      restaurantId: billRestaurantId,
+      offerId: offer.offerId || null,
+      offerCode: offer.offerCode || null,
+      customerEmail: offer.customerEmail || walkInCustomerEmail,
+      subTotal,
+      usageSource: OFFER_USAGE_SOURCE.WALK_IN,
+    });
+  }
+
+  // A non-stackable offer takes precedence and clears the manual discount.
+  let effectiveDiscount = discount;
+  if (offerResolution && !offerResolution.offer.isStackable) {
+    effectiveDiscount = { type: DISCOUNT_TYPE.AMOUNT, value: 0 };
+  }
+
   const totals = buildBillTotals({
     orderedItems: resolvedItems,
-    discount,
+    discount: effectiveDiscount,
+    offer: offerResolution
+      ? { discountAmount: offerResolution.discountAmount }
+      : null,
     taxPercentage: walkInTaxPercentage,
     serviceCharge,
     deliveryCharge,
@@ -675,6 +955,12 @@ export const createBill = async ({
     orderedItems: totals.orderedItems,
     subTotal: totals.subTotal,
     discount: totals.discount,
+    offer: offerResolution
+      ? buildOfferSnapshot({
+          offer: offerResolution.offer,
+          discountAmount: offerResolution.discountAmount,
+        })
+      : null,
     taxableAmount: totals.taxableAmount,
     taxPercentage: totals.taxPercentage,
     gstRate: totals.gstRate,
@@ -697,6 +983,24 @@ export const createBill = async ({
     booking.paymentStatus = totals.payment.paymentStatus;
     booking.paymentMethod = booking.paymentMethod || "Cash";
     await booking.save();
+  }
+
+  // Consume the offer's usage slot (marks the recipient USED + stats).
+  if (offerResolution) {
+    await consumeBillOffer({
+      bill,
+      pendingApply: {
+        offer: offerResolution.offer,
+        customerId: offerResolution.customerId,
+        email: offerResolution.email,
+        discountAmount: offerResolution.discountAmount,
+        usageSource: isWalkIn
+          ? OFFER_USAGE_SOURCE.WALK_IN
+          : OFFER_USAGE_SOURCE.ONLINE,
+      },
+      booking,
+      isWalkIn,
+    });
   }
 
   // A bill that is already fully covered by the carried advance closes
@@ -744,6 +1048,8 @@ export const createBill = async ({
   } catch (error) {
     console.error("Audit log error on bill creation:", error.message);
   }
+
+  void sendBillEventEmail({ billId: bill._id, event: "generated" }).catch((error) => console.error("Bill email error:", error.message));
 
   return {
     bill: await populateBill(Bill.findById(bill._id)),
@@ -922,6 +1228,12 @@ export const updateBill = async ({
     };
   }
 
+  // A non-stackable offer always takes precedence — the manual discount stays
+  // cleared for the lifetime of the applied offer.
+  if (bill.offer?.offerId && !bill.offer.isStackable) {
+    bill.discount = { type: DISCOUNT_TYPE.AMOUNT, value: 0 };
+  }
+
   const numericFields = [
     "serviceCharge",
     "deliveryCharge",
@@ -965,6 +1277,7 @@ export const updateBill = async ({
   const totals = buildBillTotals({
     orderedItems: bill.orderedItems,
     discount: bill.discount,
+    offer: bill.offer,
     taxPercentage: bill.taxPercentage,
     serviceCharge: bill.serviceCharge,
     deliveryCharge: bill.deliveryCharge,
@@ -1076,6 +1389,7 @@ export const addBillPayment = async ({
   const totals = buildBillTotals({
     orderedItems: bill.orderedItems,
     discount: bill.discount,
+    offer: bill.offer,
     taxPercentage: bill.taxPercentage,
     serviceCharge: bill.serviceCharge,
     deliveryCharge: bill.deliveryCharge,

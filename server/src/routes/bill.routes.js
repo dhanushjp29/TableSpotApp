@@ -11,6 +11,7 @@ import {
     addBillPaymentSchema,
     markBillStatusSchema,
     convertBookingToBillSchema,
+    consumeOfferSchema,
 } from "../validators/bill.validator.js";
 
 const router = Router();
@@ -48,6 +49,12 @@ router.patch(
     "/:billId/status",
     validateRequest(markBillStatusSchema),
     asyncHandler(billController.markStatus)
+);
+
+router.post(
+    "/offers/consume",
+    validateRequest(consumeOfferSchema),
+    asyncHandler(billController.consumeOffer)
 );
 
 export default router;

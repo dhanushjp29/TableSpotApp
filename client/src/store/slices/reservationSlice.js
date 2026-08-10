@@ -76,7 +76,11 @@ export const fetchBookingById = (bookingId) => async (dispatch) => {
   dispatch(setError(null));
   try {
     const response = await bookingApi.getById(bookingId);
-    dispatch(setCurrentBooking(response.data?.booking || response.data));
+    const booking = response.data?.booking || response.data;
+    dispatch(setCurrentBooking({
+      ...booking,
+      offerRecipient: response.data?.offerRecipient || booking?.offerRecipient || null,
+    }));
     return response;
   } catch (error) {
     dispatch(

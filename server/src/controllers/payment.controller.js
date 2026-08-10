@@ -15,6 +15,7 @@ import {
   validateAndResolveOrderedFoods,
   validateBookingDraft,
 } from "../services/booking.service.js";
+import { computeOfferDiscount, validateClaimedOfferForBooking } from "../services/offer.service.js";
 import {
   acquireBookingHolds,
   releaseBookingHolds,
@@ -415,9 +416,30 @@ const createPaymentFirstOrder = async ({
       0
     );
 
+    // Validate the claimed offer early so the customer is never charged for a
+    // discount that cannot be honoured once the payment captures.
+    let claimedOfferId = null;
+    let offerDiscount = 0;
+    if (bookingData.offerId) {
+      const validatedOffer = await validateClaimedOfferForBooking({
+        offerId: bookingData.offerId,
+        restaurantId: restaurant._id,
+        customerId: req.user._id,
+        subTotal: totalAmount,
+      });
+      claimedOfferId = validatedOffer?.offerId || null;
+      if (validatedOffer) {
+        offerDiscount = computeOfferDiscount({
+          offer: validatedOffer,
+          subTotal: totalAmount,
+        });
+      }
+    }
+
     const amountToCharge = calculateRequiredBookingPayment({
       restaurant,
       totalAmount,
+      discountAmount: claimedOfferId ? offerDiscount : 0,
     });
 
     if (amountToCharge <= 0) {
@@ -476,6 +498,7 @@ const createPaymentFirstOrder = async ({
         expectedDuration: Number(bookingData.expectedDuration) || 120,
         numberOfGuests: Number(bookingData.numberOfGuests),
         specialRequest: String(bookingData.specialRequest || "").trim(),
+        offerId: claimedOfferId,
         preOrderedFoods: (bookingData.preOrderedFoods || []).map((item) => ({
           foodId: item.foodId,
           variantName: item.variantName || "Regular",

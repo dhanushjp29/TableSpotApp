@@ -212,6 +212,14 @@ const bookingSchema = new mongoose.Schema(
         default: null,
     },
 
+    // The offer the customer claimed for this booking. Inherited by the bill
+    // when it is created so the discount is applied automatically.
+    offerId: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Offer",
+        default: null,
+    },
+
     completedAt: {
       type: Date,
       default: null,
