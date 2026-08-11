@@ -190,6 +190,16 @@ function NotificationsPage() {
           navigate(`/restaurants/${linkId}`);
         }
       }
+
+      if (linkModel === "RestaurantWarning") {
+        if (role === USER_ROLE.OWNER) {
+          navigate(ROUTES.OWNER_WARNINGS);
+        } else if (role === USER_ROLE.CUSTOMER) {
+          navigate(ROUTES.CUSTOMER_WARNINGS);
+        } else {
+          navigate(ROUTES.ADMIN_REPORTS);
+        }
+      }
     } catch {
       // Best-effort navigation; a broken link should not break the page.
     }

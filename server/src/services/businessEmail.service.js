@@ -3,6 +3,9 @@ import Bill from "../models/Bill.js";
 import EmailDelivery from "../models/EmailDelivery.js";
 import Payment from "../models/Payment.js";
 import Refund from "../models/Refund.js";
+import Restaurant from "../models/Restaurant.js";
+import RestaurantReport from "../models/RestaurantReport.js";
+import RestaurantWarning from "../models/RestaurantWarning.js";
 import User from "../models/User.js";
 import { compileTemplate } from "../utils/templateParser.js";
 import { sendEmail } from "./email.service.js";
@@ -129,4 +132,111 @@ export const sendRestaurantVerificationEmail = async ({ restaurant, approved }) 
   const template = approved ? "restaurant-approved" : "restaurant-rejected";
   const label = approved ? "Restaurant approved" : "Restaurant rejected";
   await deliver({ eventKey: `RESTAURANT_${approved ? "APPROVED" : "REJECTED"}_${restaurant._id}`, to: owner?.email, template, subject: `${label} · ${restaurant.restaurantName}`, variables: baseVariables({ label, title: label, name: owner?.fullName, message: approved ? `${restaurant.restaurantName} is now live on TableSpot.` : `${restaurant.restaurantName} was not approved.${restaurant.rejectionReason ? ` Reason: ${restaurant.rejectionReason}` : ""}`, rows: [["Restaurant", restaurant.restaurantName], ["Status", restaurant.verificationStatus]], cta: process.env.CLIENT_URL }) });
+};
+
+const REPORT_STATUS_TEXT = {
+  PENDING: "Pending",
+  UNDER_REVIEW: "Under Review",
+  RESOLVED: "Resolved",
+  REJECTED: "Rejected",
+};
+
+const WARNING_STATUS_TEXT = {
+  ACTIVE: "Active",
+  EXPIRED: "Expired",
+  CLEARED: "Cleared",
+};
+
+export const sendReportEventEmail = async ({ report, event, restaurant = null }) => {
+  const customer = await User.findById(report.userId).select("email fullName isActive isDeleted");
+  if (!customer?.email || customer.isDeleted || customer.isActive === false) return;
+
+  const restaurantInfo = restaurant || (await Restaurant.findById(report.restaurantId).select("restaurantName").lean());
+  const booking = report.bookingId
+    ? await Booking.findById(report.bookingId).select("bookingCode").lean()
+    : null;
+
+  const label =
+    event === "received"
+      ? "Report received"
+      : event === "rejected"
+        ? "Report rejected"
+        : "Report resolved";
+
+  const title =
+    event === "received"
+      ? "We received your report"
+      : event === "rejected"
+        ? "Your report was not upheld"
+        : "Your report has been resolved";
+
+  const message =
+    event === "received"
+      ? `Thank you for letting us know about your experience at ${restaurantInfo?.restaurantName || "the restaurant"}. Our team is reviewing your report.`
+      : event === "rejected"
+        ? `Your report against ${restaurantInfo?.restaurantName || "the restaurant"} was reviewed and could not be upheld.${report.adminNotes ? ` Note: ${report.adminNotes}` : ""}`
+        : `Your report against ${restaurantInfo?.restaurantName || "the restaurant"} has been reviewed and resolved.${report.adminNotes ? ` Note: ${report.adminNotes}` : ""}`;
+
+  const rows = [
+    ["Report", report.reportCode],
+    ["Restaurant", restaurantInfo?.restaurantName],
+    ["Category", report.category],
+    ["Severity", report.severity],
+    ["Booking", booking?.bookingCode],
+    ["Status", REPORT_STATUS_TEXT[report.status] || report.status],
+  ];
+
+  await deliver({
+    eventKey: `REPORT_${event.toUpperCase()}_CUSTOMER_${report._id}`,
+    to: customer.email,
+    template: "business-event",
+    subject: `${label} · ${report.reportCode}`,
+    variables: baseVariables({ label, title, name: customer.fullName, message, rows, cta: process.env.CLIENT_URL }),
+  });
+};
+
+export const sendWarningEventEmail = async ({ warning, event, owner = null, restaurant = null }) => {
+  const ownerInfo = owner || (await User.findById(warning.ownerId).select("email fullName isActive isDeleted"));
+  if (!ownerInfo?.email || ownerInfo.isDeleted || ownerInfo.isActive === false) return;
+
+  const restaurantInfo = restaurant || (await Restaurant.findById(warning.restaurantId).select("restaurantName").lean());
+
+  const label =
+    event === "issued"
+      ? "Restaurant warning issued"
+      : event === "expired"
+        ? "Restaurant warning expired"
+        : "Restaurant warning updated";
+
+  const title =
+    event === "issued"
+      ? `${restaurantInfo?.restaurantName || "Your restaurant"} received a ${warning.level} warning`
+      : event === "expired"
+        ? "Your warning has expired"
+        : "Your warning was updated";
+
+  const message =
+    event === "issued"
+      ? `We have issued a ${warning.level} warning to ${restaurantInfo?.restaurantName || "your restaurant"}. Please review the reason and take corrective action before the expiry date.`
+      : event === "expired"
+        ? `The ${warning.level} warning for ${restaurantInfo?.restaurantName || "your restaurant"} has now expired.`
+        : `The ${warning.level} warning for ${restaurantInfo?.restaurantName || "your restaurant"} was updated.`;
+
+  const rows = [
+    ["Warning", warning.warningCode],
+    ["Restaurant", restaurantInfo?.restaurantName],
+    ["Level", warning.level],
+    ["Status", WARNING_STATUS_TEXT[warning.status] || warning.status],
+    ["Reason", warning.reason],
+    ["Issued", warning.issuedAt ? new Date(warning.issuedAt).toLocaleDateString() : ""],
+    ["Expires", warning.expiresAt ? new Date(warning.expiresAt).toLocaleDateString() : ""],
+  ];
+
+  await deliver({
+    eventKey: `WARNING_${event.toUpperCase()}_OWNER_${warning._id}`,
+    to: ownerInfo.email,
+    template: "business-event",
+    subject: `${label} · ${warning.warningCode}`,
+    variables: baseVariables({ label, title, name: ownerInfo.fullName, message, rows, cta: process.env.CLIENT_URL }),
+  });
 };

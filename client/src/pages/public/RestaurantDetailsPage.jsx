@@ -12,6 +12,8 @@ import {
   Pencil,
   Trash2,
   ArrowLeft,
+  ShieldAlert,
+  CornerDownRight,
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -19,9 +21,11 @@ import { fetchRestaurantById } from "../../store/slices/restaurantSlice.js";
 import { fetchFoodsByRestaurant } from "../../store/slices/foodSlice.js";
 import {
   deleteRestaurantReview,
+  fetchFoodReviewsByRestaurant,
   fetchRestaurantReviewsByRestaurant,
 } from "../../store/slices/reviewSlice.js";
 import { restaurantReviewApi } from "../../api/review.api.js";
+import { restaurantReportApi } from "../../api/report.api.js";
 import { useAuth } from "../../hooks/useAuth.js";
 import { ROUTES } from "../../routes/routeConstants.js";
 
@@ -32,6 +36,7 @@ import Skeleton, { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
 import ReviewModal from "../../components/ui/ReviewModal.jsx";
+import ReportModal from "../../components/ui/ReportModal.jsx";
 import { formatCurrency } from "../../utils/formatCurrency.js";
 
 function RestaurantDetailsPage() {
@@ -42,6 +47,7 @@ function RestaurantDetailsPage() {
   const restaurant = useSelector((state) => state.restaurant.currentRestaurant);
   const foods = useSelector((state) => state.food.foods);
   const reviews = useSelector((state) => state.review.restaurantReviews);
+  const foodReviews = useSelector((state) => state.review.foodReviews);
   const restaurantLoading = useSelector((state) => state.restaurant.isLoading);
   const foodsLoading = useSelector((state) => state.food.isLoading);
   const reviewsLoading = useSelector((state) => state.review.isLoading);
@@ -52,6 +58,8 @@ function RestaurantDetailsPage() {
   const [editingReview, setEditingReview] = useState(null);
   const [reviewFoods, setReviewFoods] = useState([]);
   const [reviewBookingId, setReviewBookingId] = useState(null);
+  const [reportModalOpen, setReportModalOpen] = useState(false);
+  const [reviewsTab, setReviewsTab] = useState("restaurant"); // 'restaurant' or 'food'
 
   const isLoading = restaurantLoading || foodsLoading || reviewsLoading;
   const error = restaurantError || foodsError || reviewsError;
@@ -62,10 +70,16 @@ function RestaurantDetailsPage() {
     dispatch(fetchRestaurantReviewsByRestaurant(restaurantId, { limit: 5 })).catch(
       () => {}
     );
+    dispatch(fetchFoodReviewsByRestaurant(restaurantId, { limit: 5 })).catch(
+      () => {}
+    );
   }, [dispatch, restaurantId]);
 
   const refreshReviews = () => {
     dispatch(fetchRestaurantReviewsByRestaurant(restaurantId, { limit: 5 })).catch(
+      () => {}
+    );
+    dispatch(fetchFoodReviewsByRestaurant(restaurantId, { limit: 5 })).catch(
       () => {}
     );
   };
@@ -107,6 +121,24 @@ function RestaurantDetailsPage() {
   const handleEditReview = (review) => {
     setEditingReview(review);
     setReviewModalOpen(true);
+  };
+
+  const handleReportRestaurant = async () => {
+    if (!isAuthenticated) {
+      toast.error("Please log in to report a restaurant.");
+      navigate("/login");
+      return;
+    }
+    try {
+      const res = await restaurantReportApi.getEligibility(restaurantId);
+      if (!res?.data?.canReport) {
+        toast(res?.data?.reason || "You are not eligible to report this restaurant.");
+        return;
+      }
+      setReportModalOpen(true);
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Unable to check report eligibility.");
+    }
   };
 
   const handleDeleteReview = async (review) => {
@@ -223,6 +255,14 @@ function RestaurantDetailsPage() {
           <Star size={16} />
           Write a Review
         </Button>
+        <Button
+          variant="outline"
+          className="text-red-600 border-red-200 hover:bg-red-50"
+          onClick={handleReportRestaurant}
+        >
+          <ShieldAlert size={16} />
+          Report a Restaurant
+        </Button>
       </div>
 
       <ReviewModal
@@ -238,6 +278,13 @@ function RestaurantDetailsPage() {
         reviewData={editingReview}
         bookingId={reviewBookingId}
         onSuccess={refreshReviews}
+      />
+
+      <ReportModal
+        isOpen={reportModalOpen}
+        onClose={() => setReportModalOpen(false)}
+        restaurantId={restaurant._id}
+        restaurantName={restaurant.restaurantName}
       />
 
       {/* Content Grid */}
@@ -315,84 +362,216 @@ function RestaurantDetailsPage() {
             )}
           </div>
 
-          {/* Reviews */}
+          {/* Reviews Section */}
           <div className="card p-5">
-            <div className="flex items-center gap-2">
-              <Star size={20} className="text-primary" />
-              <h2 className="text-lg font-semibold text-text">Reviews</h2>
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Star size={20} className="text-primary" />
+                <h2 className="text-lg font-semibold text-text">Reviews</h2>
+              </div>
+              <div className="flex items-center gap-1 rounded-lg border border-gray-100 bg-gray-50/60 p-1 dark:border-white/10 dark:bg-white/5">
+                <button
+                  type="button"
+                  onClick={() => setReviewsTab("restaurant")}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                    reviewsTab === "restaurant"
+                      ? "bg-primary text-white shadow-sm"
+                      : "text-muted hover:text-text"
+                  }`}
+                >
+                  Restaurant Review
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReviewsTab("food")}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition-all ${
+                    reviewsTab === "food"
+                      ? "bg-primary text-white shadow-sm"
+                      : "text-muted hover:text-text"
+                  }`}
+                >
+                  Food Review
+                </button>
+              </div>
             </div>
-            {reviews.length === 0 ? (
+
+            {reviewsTab === "restaurant" ? (
+              reviews.length === 0 ? (
+                <EmptyState
+                  title="No reviews yet"
+                  description="Be the first to review this restaurant."
+                />
+              ) : (
+                <div className="mt-4 space-y-4">
+                  {reviews.map((review) => (
+                    <div
+                      key={review._id}
+                      className="border-b border-gray-50 pb-4 last:border-0"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-text">
+                            {review.userId?.fullName || "Anonymous"}
+                          </span>
+                          <Rating
+                            value={review.rating}
+                            size={12}
+                            showValue={false}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted">
+                            {new Date(review.createdAt).toLocaleDateString()}
+                          </span>
+                          {isOwnReview(review) && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={() => handleEditReview(review)}
+                                className="rounded p-1 text-muted transition-colors hover:bg-primary/10 hover:text-primary"
+                                aria-label="Edit review"
+                              >
+                                <Pencil size={14} />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeleteReview(review)}
+                                className="rounded p-1 text-muted transition-colors hover:bg-red-50 hover:text-red-600"
+                                aria-label="Delete review"
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                      {review.title && (
+                        <h4 className="mt-1 text-sm font-medium text-text">
+                          {review.title}
+                        </h4>
+                      )}
+                      <p className="mt-1 text-sm text-muted">
+                        {review.comment}
+                      </p>
+                      {review.images?.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {review.images.map((img, idx) => (
+                            <img
+                              key={idx}
+                              src={img}
+                              alt={`Review image ${idx + 1}`}
+                              className="h-20 w-20 rounded-lg object-cover border border-gray-100"
+                              loading="lazy"
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {review.ownerReply && (
+                        <div className="mt-3 flex gap-2 rounded-lg border border-primary/15 bg-primary/5 p-3">
+                          <CornerDownRight
+                            size={16}
+                            className="mt-0.5 shrink-0 text-primary"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-primary">
+                              Owner Reply
+                              {review.ownerRepliedAt
+                                ? ` • ${new Date(
+                                    review.ownerRepliedAt
+                                  ).toLocaleDateString()}`
+                                : ""}
+                            </p>
+                            <p className="mt-0.5 text-sm text-text">
+                              {review.ownerReply}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )
+            ) : foodReviews.length === 0 ? (
               <EmptyState
-                title="No reviews yet"
-                description="Be the first to review this restaurant."
+                title="No food reviews yet"
+                description="Reviews of individual dishes will appear here."
               />
             ) : (
               <div className="mt-4 space-y-4">
-                {reviews.map((review) => (
-                  <div
-                    key={review._id}
-                    className="border-b border-gray-50 pb-4 last:border-0"
-                  >
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium text-text">
-                          {review.userId?.fullName || "Anonymous"}
-                        </span>
-                        <Rating
-                          value={review.rating}
-                          size={12}
-                          showValue={false}
-                        />
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs text-muted">
-                          {new Date(review.createdAt).toLocaleDateString()}
-                        </span>
-                        {isOwnReview(review) && (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => handleEditReview(review)}
-                              className="rounded p-1 text-muted transition-colors hover:bg-primary/10 hover:text-primary"
-                              aria-label="Edit review"
-                            >
-                              <Pencil size={14} />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleDeleteReview(review)}
-                              className="rounded p-1 text-muted transition-colors hover:bg-red-50 hover:text-red-600"
-                              aria-label="Delete review"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </>
-                        )}
-                      </div>
-                    </div>
-                    {review.title && (
-                      <h4 className="mt-1 text-sm font-medium text-text">
-                        {review.title}
-                      </h4>
-                    )}
-                    <p className="mt-1 text-sm text-muted">
-                      {review.comment}
-                    </p>
-                    {review.images?.length > 0 && (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {review.images.map((img, idx) => (
-                          <img
-                            key={idx}
-                            src={img}
-                            alt={`Review image ${idx + 1}`}
-                            className="h-20 w-20 rounded-lg object-cover border border-gray-100"
-                            loading="lazy"
+                {foodReviews.map((review) => {
+                  const foodObj =
+                    typeof review.foodId === "object" ? review.foodId : null;
+                  return (
+                    <div
+                      key={review._id}
+                      className="border-b border-gray-50 pb-4 last:border-0"
+                    >
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium text-text">
+                            {review.userId?.fullName || "Anonymous"}
+                          </span>
+                          <Rating
+                            value={review.rating}
+                            size={12}
+                            showValue={false}
                           />
-                        ))}
+                        </div>
+                        <span className="text-xs text-muted">
+                          {review.createdAt
+                            ? new Date(review.createdAt).toLocaleDateString()
+                            : ""}
+                        </span>
                       </div>
-                    )}
-                  </div>
-                ))}
+                      {foodObj && (
+                        <Badge variant="primary" className="mt-2">
+                          {foodObj.foodName}
+                          {foodObj.foodCode ? ` · ${foodObj.foodCode}` : ""}
+                        </Badge>
+                      )}
+                      {review.title && (
+                        <h4 className="mt-1 text-sm font-medium text-text">
+                          {review.title}
+                        </h4>
+                      )}
+                      <p className="mt-1 text-sm text-muted">{review.comment}</p>
+                      {review.images?.length > 0 && (
+                        <div className="mt-2 flex flex-wrap gap-2">
+                          {review.images.map((img, idx) => (
+                            <img
+                              key={idx}
+                              src={img}
+                              alt={`Review image ${idx + 1}`}
+                              className="h-20 w-20 rounded-lg object-cover border border-gray-100"
+                              loading="lazy"
+                            />
+                          ))}
+                        </div>
+                      )}
+                      {review.ownerReply && (
+                        <div className="mt-3 flex gap-2 rounded-lg border border-primary/15 bg-primary/5 p-3">
+                          <CornerDownRight
+                            size={16}
+                            className="mt-0.5 shrink-0 text-primary"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-primary">
+                              Owner Reply
+                              {review.ownerRepliedAt
+                                ? ` • ${new Date(
+                                    review.ownerRepliedAt
+                                  ).toLocaleDateString()}`
+                                : ""}
+                            </p>
+                            <p className="mt-0.5 text-sm text-text">
+                              {review.ownerReply}
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>

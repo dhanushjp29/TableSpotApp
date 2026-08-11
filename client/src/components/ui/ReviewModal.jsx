@@ -1,4 +1,4 @@
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ImagePlus, Star, X } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -50,7 +50,9 @@ function ReviewForm({
   const isEditing = Boolean(reviewData);
 
   const [rating, setRating] = useState(reviewData?.rating || 5);
+  const [title, setTitle] = useState(reviewData?.title || "");
   const [comment, setComment] = useState(reviewData?.comment || "");
+  const [existingImages, setExistingImages] = useState(reviewData?.images || []);
   const [imageFile, setImageFile] = useState(null);
   const [imagePreview, setImagePreview] = useState("");
   const [isUploading, setIsUploading] = useState(false);
@@ -61,9 +63,44 @@ function ReviewForm({
       foodName: food.foodName,
       rating: 0,
       comment: "",
+      reviewId: null,
     }))
   );
   const fileInputRef = useRef(null);
+
+  useEffect(() => {
+    if (!isEditing || targetType !== "restaurant" || !bookingId) return;
+
+    let cancelled = false;
+    foodReviewApi
+      .getMyBookingReviews({ bookingId })
+      .then((res) => {
+        if (cancelled) return;
+        const existing = res?.data?.reviews || [];
+        setFoodEntries((prev) =>
+          prev.map((entry) => {
+            const match = existing.find(
+              (review) =>
+                String(review.foodId?._id || review.foodId) ===
+                String(entry.foodId)
+            );
+            return match
+              ? {
+                  ...entry,
+                  rating: Number(match.rating || 0),
+                  comment: match.comment || "",
+                  reviewId: match._id,
+                }
+              : entry;
+          })
+        );
+      })
+      .catch(() => {});
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isEditing, targetType, bookingId]);
 
   const handleClose = () => {
     setIsUploading(false);
@@ -83,11 +120,13 @@ function ReviewForm({
       return;
     }
     setImageFile(file);
+    setExistingImages([]);
     setImagePreview(URL.createObjectURL(file));
   };
 
   const removeImage = () => {
     setImageFile(null);
+    setExistingImages([]);
     setImagePreview("");
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
@@ -107,7 +146,7 @@ function ReviewForm({
 
     setIsSubmitting(true);
     try {
-      let images = [];
+      let images = existingImages;
       if (imageFile) {
         setIsUploading(true);
         const uploaded = await uploadApi.image(imageFile);
@@ -119,12 +158,43 @@ function ReviewForm({
         if (targetType === "restaurant") {
           await restaurantReviewApi.update(reviewData._id, {
             rating,
+            title,
             comment,
             images,
           });
+
+          const readyFoodEntries = foodEntries.filter(
+            (entry) => entry.rating > 0 && entry.comment.trim()
+          );
+          if (readyFoodEntries.length > 0) {
+            const results = await Promise.allSettled(
+              readyFoodEntries.map((entry) =>
+                entry.reviewId
+                  ? foodReviewApi.update(entry.reviewId, {
+                      rating: entry.rating,
+                      comment: entry.comment,
+                    })
+                  : foodReviewApi.create({
+                      rating: entry.rating,
+                      comment: entry.comment,
+                      images: [],
+                      foodId: entry.foodId,
+                      restaurantId: targetId,
+                      bookingId,
+                    })
+              )
+            );
+            const failed = results.filter((r) => r.status === "rejected");
+            if (failed.length > 0) {
+              toast.error(
+                `${readyFoodEntries.length - failed.length} food review(s) saved, ${failed.length} could not be submitted.`
+              );
+            }
+          }
         } else {
           await foodReviewApi.update(reviewData._id, {
             rating,
+            title,
             comment,
             images,
           });
@@ -133,6 +203,7 @@ function ReviewForm({
       } else if (targetType === "restaurant") {
         await restaurantReviewApi.create({
           rating,
+          title,
           comment,
           images,
           restaurantId: targetId,
@@ -166,6 +237,7 @@ function ReviewForm({
       } else {
         await foodReviewApi.create({
           rating,
+          title,
           comment,
           images,
           foodId: targetId,
@@ -191,6 +263,20 @@ function ReviewForm({
           Rating
         </label>
         <StarPicker value={rating} onChange={setRating} />
+      </div>
+
+      <div>
+        <label className="mb-1 block text-sm font-medium text-text">
+          Title
+        </label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          maxLength={100}
+          placeholder="Summarize your visit"
+          className="input-field w-full rounded-lg border border-gray-200 bg-white p-3 text-sm text-text focus:border-primary focus:outline-none dark:border-white/10 dark:bg-[#11151b] dark:text-slate-100"
+        />
       </div>
 
       <div>
@@ -221,10 +307,10 @@ function ReviewForm({
           className="hidden"
           onChange={handleFileChange}
         />
-        {imagePreview ? (
+        {imagePreview || existingImages[0] ? (
           <div className="relative inline-block">
             <img
-              src={imagePreview}
+              src={imagePreview || existingImages[0]}
               alt="Review preview"
               className="h-24 w-24 rounded-lg object-cover border border-gray-200 dark:border-white/10"
             />
@@ -250,11 +336,11 @@ function ReviewForm({
       </div>
 
       {/* Optional food reviews */}
-      {!isEditing && targetType === "restaurant" && foodEntries.length > 0 && (
+      {targetType === "restaurant" && foodEntries.length > 0 && (
         <div>
           <div className="flex items-center gap-2">
             <label className="block text-sm font-medium text-text">
-              Food Reviews (optional)
+              {isEditing ? "Food Reviews" : "Food Reviews (optional)"}
             </label>
             <span className="text-xs text-muted">
               Rate the dishes you enjoyed

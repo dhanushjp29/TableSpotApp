@@ -80,7 +80,7 @@ export const getById = async (req, res) => {
 };
 
 export const getAll = async (req, res) => {
-  const query = { ...req.query };
+  const query = { ...req.validatedData };
 
   if (req.user.role === USER_ROLE.CUSTOMER) {
     query.customerId = req.user._id;

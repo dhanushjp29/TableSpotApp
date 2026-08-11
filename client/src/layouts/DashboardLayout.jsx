@@ -19,6 +19,7 @@ import {
   History,
   RotateCcw,
   Ticket,
+  ShieldAlert,
 } from "lucide-react";
 import { useAuth } from "../hooks/useAuth.js";
 import { logoutUser } from "../store/slices/authSlice.js";
@@ -27,6 +28,7 @@ import { fetchUnreadCount } from "../store/slices/notificationSlice.js";
 import { ROUTES } from "../routes/routeConstants.js";
 import Avatar from "../components/ui/Avatar.jsx";
 import ThemeToggle from "../components/theme/ThemeToggle.jsx";
+import UserProfileMenu from "../components/common/UserProfileMenu.jsx";
 import ConfirmDialog from "../components/ui/ConfirmDialog.jsx";
 
 const roleNavConfig = {
@@ -35,6 +37,7 @@ const roleNavConfig = {
     { to: ROUTES.CUSTOMER_BOOKINGS, label: "My Bookings", icon: CalendarDays },
     { to: ROUTES.CUSTOMER_PAYMENTS, label: "Payments", icon: History },
     { to: ROUTES.CUSTOMER_REFUNDS, label: "Refunds", icon: RotateCcw },
+    { to: ROUTES.CUSTOMER_WARNINGS, label: "Warnings", icon: ShieldAlert },
     { to: ROUTES.CUSTOMER_OFFERS, label: "Offers", icon: Ticket },
     { to: ROUTES.CUSTOMER_FAVORITES, label: "Favorites", icon: Heart },
     { to: ROUTES.CUSTOMER_NOTIFICATIONS, label: "Notifications", icon: Bell },
@@ -50,6 +53,7 @@ const roleNavConfig = {
     { to: ROUTES.OWNER_PAYMENTS, label: "Payments", icon: History },
     { to: ROUTES.OWNER_REFUNDS, label: "Refunds", icon: RotateCcw },
     { to: ROUTES.OWNER_REVIEWS, label: "Reviews", icon: Star },
+    { to: ROUTES.OWNER_WARNINGS, label: "Warnings", icon: ShieldAlert },
     { to: ROUTES.OWNER_REPORTS, label: "Reports", icon: BarChart3 },
     { to: ROUTES.OWNER_OFFERS, label: "Offers", icon: Ticket },
     { to: ROUTES.OWNER_NOTIFICATIONS, label: "Notifications", icon: Bell },
@@ -212,13 +216,7 @@ function DashboardLayout() {
                   </span>
                 )}
               </Link>
-              <div className="hidden items-center gap-3 sm:flex">
-                <Avatar user={user} size={36} />
-                <div>
-                  <p className="text-sm font-medium text-text">{user?.fullName}</p>
-                  <p className="text-xs capitalize text-muted">{role}</p>
-                </div>
-              </div>
+              <UserProfileMenu user={user} role={role} />
               <button
                 onClick={() => setLogoutOpen(true)}
                 className="icon-btn"

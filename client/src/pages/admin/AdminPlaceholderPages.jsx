@@ -16,6 +16,7 @@ import {
   Lock,
   Search,
   Shield,
+  ShieldAlert,
   Star,
   Trash2,
   Unlock,
@@ -36,6 +37,7 @@ import {
   verifyRestaurant,
 } from "../../store/slices/restaurantSlice.js";
 import { fetchRestaurantReviews } from "../../store/slices/reviewSlice.js";
+import { fetchReports, fetchWarnings } from "../../store/slices/reportSlice.js";
 import {
   deleteUser,
   fetchUsers,
@@ -52,6 +54,9 @@ import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import { ROUTES } from "../../routes/routeConstants.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
 import ExportButton from "../../components/common/ExportButton.jsx";
+import ReportsModeration from "../../components/admin/ReportsModeration.jsx";
+import AdminWarningsSection from "../../components/admin/AdminWarningsSection.jsx";
+import AdminRefundsSection from "../../components/admin/AdminRefundsSection.jsx";
 import { useExcelExport } from "../../hooks/useExcelExport.js";
 import { exportRestaurantsToExcel } from "../../utils/restaurantExport.js";
 
@@ -67,6 +72,8 @@ export function AdminDashboardPage() {
   const restaurantReviews = useSelector(
     (state) => state.review.restaurantReviews
   );
+  const reports = useSelector((state) => state.report.reports);
+  const warnings = useSelector((state) => state.report.warnings);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -77,6 +84,8 @@ export function AdminDashboardPage() {
       dispatch(fetchBookings({ limit: 100 })).catch(() => null),
       dispatch(fetchBills({ limit: 100 })).catch(() => null),
       dispatch(fetchRestaurantReviews({ limit: 100 })).catch(() => null),
+      dispatch(fetchReports({ limit: 100 })).catch(() => null),
+      dispatch(fetchWarnings({ limit: 100 })).catch(() => null),
     ]).then(() => {
       if (isMounted) setIsLoading(false);
     });
@@ -108,8 +117,10 @@ export function AdminDashboardPage() {
       pendingVerifications: pending.length,
       revenue: paidRevenue,
       totalReviews: restaurantReviews.length,
+      pendingReports: reports.filter((r) => r.status === "PENDING").length,
+      activeWarnings: warnings.filter((w) => w.status === "ACTIVE").length,
     };
-  }, [users, restaurants, bookings, bills, restaurantReviews]);
+  }, [users, restaurants, bookings, bills, restaurantReviews, reports, warnings]);
 
   const handleApprove = async (r) => {
     try {
@@ -129,6 +140,8 @@ export function AdminDashboardPage() {
     { label: "Pending Approvals", value: stats.pendingVerifications, color: "border-l-rose-500", icon: AlertTriangle },
     { label: "Platform Revenue", value: formatCurrency(stats.revenue), color: "border-l-blue-500", icon: BarChart2 },
     { label: "Total Reviews", value: stats.totalReviews, color: "border-l-violet-500", icon: Star },
+    { label: "Pending Reports", value: stats.pendingReports, color: "border-l-orange-500", icon: AlertTriangle },
+    { label: "Active Warnings", value: stats.activeWarnings, color: "border-l-red-500", icon: ShieldAlert },
   ];
 
   return (
@@ -751,28 +764,6 @@ export function AdminRestaurantsPage() {
   );
 }
 
-/* ===== 4. ADMIN REVIEWS PAGE ===== */
-export function AdminReviewsPage() {
-  return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-text flex items-center gap-2">
-          <Star className="text-amber-500 fill-amber-500" size={24} />
-          Review Moderation
-        </h1>
-        <p className="text-sm text-muted">Monitor and moderate user-submitted reviews across the platform</p>
-      </div>
-
-      <Card className="p-8 text-center">
-        <EmptyState
-          title="All reviews clean"
-          description="No flagged or inappropriate reviews requiring administrator moderation."
-        />
-      </Card>
-    </div>
-  );
-}
-
 /* ===== 5. ADMIN REPORTS PAGE ===== */
 const STATUS_COLORS = {
   Pending: "#f59e0b",
@@ -1050,6 +1041,21 @@ export function AdminReportsPage() {
           </div>
         </div>
       </Card>
+
+      {/* Restaurant Reports Moderation */}
+      <div className="border-t border-border pt-6">
+        <ReportsModeration />
+      </div>
+
+      {/* Restaurant Warnings (reply / clear) */}
+      <div className="border-t border-border pt-6">
+        <AdminWarningsSection />
+      </div>
+
+      {/* Refund Monitoring */}
+      <div className="border-t border-border pt-6">
+        <AdminRefundsSection />
+      </div>
     </div>
   );
 }

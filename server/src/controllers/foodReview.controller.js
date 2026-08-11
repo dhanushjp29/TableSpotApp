@@ -72,6 +72,20 @@ export const getById = async (req, res) => {
     res.status(200).json(new ApiResponse(200, "Food review retrieved successfully.", result));
 };
 
+export const getMyBookingReviews = async (req, res) => {
+    const { bookingId } = req.query;
+
+    if (!bookingId) {
+        throw new ApiError(400, "Booking is required.");
+    }
+
+    const result = await foodReviewService.getMyReviewsForBooking({
+        userId: req.user._id,
+        bookingId,
+    });
+    res.status(200).json(new ApiResponse(200, "Food reviews retrieved successfully.", result));
+};
+
 export const getByFood = async (req, res) => {
     const { foodId } = req.params;
     const result = await foodReviewService.getReviewsByFood({ foodId, ...req.query });
@@ -81,5 +95,12 @@ export const getByFood = async (req, res) => {
 export const getByRestaurant = async (req, res) => {
     const { restaurantId } = req.params;
     const result = await foodReviewService.getReviewsByRestaurant({ restaurantId, ...req.query });
+    res.status(200).json(new ApiResponse(200, "Food reviews retrieved successfully.", result));
+};
+
+export const getAll = async (req, res) => {
+    const result = await foodReviewService.getReviews({
+        ...req.query,
+    });
     res.status(200).json(new ApiResponse(200, "Food reviews retrieved successfully.", result));
 };

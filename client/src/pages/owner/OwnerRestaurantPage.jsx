@@ -1,5 +1,5 @@
 import { CheckCircle2, ExternalLink, MapPin, Plus, RefreshCw, Search, ShieldAlert, ShieldCheck, Wallet } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
 import toast from "react-hot-toast";
 import { useDispatch, useSelector } from "react-redux";
@@ -12,6 +12,7 @@ import {
   fetchRestaurants,
   updateRestaurant,
 } from "../../store/slices/restaurantSlice.js";
+import { fetchWarnings } from "../../store/slices/reportSlice.js";
 
 import ImageUploader from "../../components/form/ImageUploader.jsx";
 import LocationFields from "../../components/form/LocationFields.jsx";
@@ -1076,6 +1077,7 @@ function OwnerRestaurantPage() {
   const restaurants = useSelector((state) => state.restaurant.restaurants);
   const isLoading = useSelector((state) => state.restaurant.isLoading);
   const error = useSelector((state) => state.restaurant.error);
+  const warnings = useSelector((state) => state.report.warnings);
   const [searchTerm, setSearchTerm] = useState("");
 
   const fetchRestaurantsData = async () => {
@@ -1097,8 +1099,20 @@ function OwnerRestaurantPage() {
       )
     : restaurants;
 
+  const activeWarningsByRestaurant = useMemo(() => {
+    const map = {};
+    for (const warning of warnings) {
+      if (warning.status === "ACTIVE" && warning.restaurantId?._id) {
+        const key = String(warning.restaurantId._id);
+        map[key] = (map[key] || 0) + 1;
+      }
+    }
+    return map;
+  }, [warnings]);
+
   useEffect(() => {
     fetchRestaurantsData();
+    dispatch(fetchWarnings({ limit: 50 })).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -1224,6 +1238,20 @@ function OwnerRestaurantPage() {
                   <p className="text-xs text-gray-200">{restaurant.city}, {restaurant.state}</p>
                 </div>
               </div>
+              {activeWarningsByRestaurant[restaurant._id] > 0 && (
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    navigate("/owner/warnings");
+                  }}
+                  className="flex w-full items-center gap-2 border-y border-red-200 bg-red-50 px-4 py-2 text-left text-xs font-medium text-red-700 hover:bg-red-100"
+                >
+                  <ShieldAlert size={14} />
+                  {activeWarningsByRestaurant[restaurant._id]} active warning
+                  {activeWarningsByRestaurant[restaurant._id] > 1 ? "s" : ""} — view
+                </button>
+              )}
               <div className="p-4">
                 <div className="flex items-center justify-between">
                   <div>

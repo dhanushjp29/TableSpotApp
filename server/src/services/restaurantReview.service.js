@@ -337,6 +337,29 @@ export const getReviewById = async ({ reviewId }) => {
     return { review };
 };
 
+export const getMyReviewForBooking = async ({
+    userId,
+    restaurantId = null,
+    bookingId,
+}) => {
+    const query = {
+        userId,
+        bookingId,
+        isDeleted: false,
+    };
+
+    if (restaurantId) {
+        query.restaurantId = restaurantId;
+    }
+
+    const review = await RestaurantReview.findOne(query)
+        .populate("userId", "userCode fullName email profileImage")
+        .populate("restaurantId", "restaurantCode restaurantName slug")
+        .populate("bookingId", "bookingCode bookingDateTime");
+
+    return { review };
+};
+
 export const getReviewsByRestaurant = async ({
     restaurantId,
     page = 1,

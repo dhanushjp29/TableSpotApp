@@ -29,6 +29,7 @@ import BookingConfirmationPage from "../pages/customer/BookingConfirmationPage.j
 import BookingDetailPage from "../pages/customer/BookingDetailPage.jsx";
 import CustomerPaymentHistoryPage from "../pages/customer/CustomerPaymentHistoryPage.jsx";
 import CustomerRefundsPage from "../pages/customer/CustomerRefundsPage.jsx";
+import CustomerWarningsPage from "../pages/customer/CustomerWarningsPage.jsx";
 import CustomerOffersPage from "../pages/customer/CustomerOffersPage.jsx";
 import CustomerOfferDetailsPage from "../pages/customer/CustomerOfferDetailsPage.jsx";
 import {
@@ -50,15 +51,16 @@ import OwnerOfferDetailsPage from "../pages/owner/OwnerOfferDetailsPage.jsx";
 import OwnerPaymentHistoryPage from "../pages/owner/OwnerPaymentHistoryPage.jsx";
 import OwnerRefundsPage from "../pages/owner/OwnerRefundsPage.jsx";
 import OwnerReviewsPage from "../pages/owner/OwnerReviewsPage.jsx";
+import OwnerWarningsPage from "../pages/owner/OwnerWarningsPage.jsx";
 import OwnerReportsPage from "../pages/owner/OwnerReportsPage.jsx";
 
 import {
   AdminDashboardPage,
   AdminReportsPage,
-  AdminRestaurantsPage,
-  AdminReviewsPage,
   AdminUsersPage,
 } from "../pages/admin/AdminPlaceholderPages.jsx";
+import AdminRestaurantsPage from "../pages/admin/AdminRestaurantsPage.jsx";
+import AdminReviewsPage from "../pages/admin/AdminReviewsPage.jsx";
 
 // Lazy-loaded route components (for performance)
 const RestaurantDetailsLazy = lazy(() =>
@@ -141,6 +143,7 @@ function AppRoutes() {
         <Route path={ROUTES.CUSTOMER_FAVORITES} element={<CustomerFavoritesPage />} />
         <Route path={ROUTES.CUSTOMER_PAYMENTS} element={<CustomerPaymentHistoryPage />} />
         <Route path={ROUTES.CUSTOMER_REFUNDS} element={<CustomerRefundsPage />} />
+        <Route path={ROUTES.CUSTOMER_WARNINGS} element={<CustomerWarningsPage />} />
         <Route path={ROUTES.CUSTOMER_OFFERS} element={<CustomerOffersPage />} />
         <Route path={ROUTES.CUSTOMER_OFFER_DETAILS} element={<CustomerOfferDetailsPage />} />
         <Route path={ROUTES.CUSTOMER_PROFILE} element={<ProfilePage />} />
@@ -173,6 +176,7 @@ function AppRoutes() {
         <Route path={ROUTES.OWNER_OFFERS} element={<OwnerOffersPage />} />
         <Route path={ROUTES.OWNER_OFFER_DETAILS} element={<OwnerOfferDetailsPage />} />
         <Route path={ROUTES.OWNER_REVIEWS} element={<OwnerReviewsPage />} />
+        <Route path={ROUTES.OWNER_WARNINGS} element={<OwnerWarningsPage />} />
         <Route path={ROUTES.OWNER_REPORTS} element={<OwnerReportsPage />} />
         <Route path={ROUTES.OWNER_NOTIFICATIONS} element={<NotificationsPage />} />
         <Route path={ROUTES.OWNER_PROFILE} element={<ProfilePage />} />

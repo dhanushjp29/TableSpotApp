@@ -9,6 +9,7 @@ import billReducer from "./slices/billSlice.js";
 import tableReducer from "./slices/tableSlice.js";
 import foodReducer from "./slices/foodSlice.js";
 import reviewReducer from "./slices/reviewSlice.js";
+import reportReducer from "./slices/reportSlice.js";
 import refundReducer from "./slices/refundSlice.js";
 import paymentReducer from "./slices/paymentSlice.js";
 import offerReducer from "./slices/offerSlice.js";
@@ -25,6 +26,7 @@ export const store = configureStore({
     table: tableReducer,
     food: foodReducer,
     review: reviewReducer,
+    report: reportReducer,
     refund: refundReducer,
     payment: paymentReducer,
     offer: offerReducer,

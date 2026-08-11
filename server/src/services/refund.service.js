@@ -251,6 +251,7 @@ export const listRefunds = async ({
   restaurantId = null,
   customerId = null,
   refundStatus = null,
+  notRefunded = false,
 }) => {
   const query = { isDeleted: false };
 
@@ -258,6 +259,11 @@ export const listRefunds = async ({
   if (restaurantId) query.restaurantId = restaurantId;
   if (customerId) query.customerId = customerId;
   if (refundStatus) query.refundStatus = refundStatus;
+  if (notRefunded) {
+    query.refundStatus = {
+      $nin: [REFUND_STATUS.REFUNDED, REFUND_STATUS.NOT_REQUIRED],
+    };
+  }
 
   const pageNumber = Math.max(Number(page) || 1, 1);
   const pageSize = Math.min(Math.max(Number(limit) || 10, 1), 100);

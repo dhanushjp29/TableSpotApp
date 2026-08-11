@@ -14,6 +14,7 @@ import Badge from "../ui/Badge.jsx";
 import { OFFER_RECIPIENT_STATUS_META } from "../../constants/offer.js";
 import { formatDate, formatDateTime, formatTime } from "../../utils/formatDate.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
+import { getBookingFoodItems } from "../../utils/foodItems.js";
 
 const STATUS_VARIANT = {
   Pending: "warning",
@@ -59,7 +60,7 @@ export default function BookingDetailsSummary({ booking, offerRecipient = null }
   const customer = typeof booking.userId === "object" ? booking.userId : null;
   const date = booking.bookingDateTime ? new Date(booking.bookingDateTime) : null;
   const bill = typeof booking.billId === "object" ? booking.billId : null;
-  const foods = booking.preOrderedFoods || [];
+  const foods = getBookingFoodItems(booking);
   const payments = bill?.payment?.payments?.length
     ? bill.payment.payments
     : booking.sourcePaymentId?.amount
@@ -123,17 +124,25 @@ export default function BookingDetailsSummary({ booking, offerRecipient = null }
           </div>
         </Section>
 
-        <Section icon={UtensilsCrossed} title="Pre-ordered food">
-          {foods.length === 0 ? <p className="text-sm text-muted">No pre-ordered food.</p> : <div className="space-y-3">
-            {foods.map((item, index) => {
-              const food = typeof item.foodId === "object" ? item.foodId : null;
-              const unit = item.unitPrice ?? item.price ?? item.offerPrice ?? 0;
-              const lineTotal = item.totalPrice ?? (Number(unit) * Number(item.quantity || 0));
-              return <div key={index} className="flex items-center justify-between gap-3 border-b border-border/70 pb-3 last:border-0 last:pb-0">
-                <div><p className="font-semibold text-text">{food?.foodName || item.foodName || "Food item"}</p><p className="text-xs text-muted">Variant: {display(item.variantName, "Regular")} · Qty: {item.quantity} · {formatCurrency(unit)} × {item.quantity}</p></div>
-                <span className="font-semibold text-text">{formatCurrency(lineTotal)}</span>
-              </div>;
-            })}
+        <Section icon={UtensilsCrossed} title="Food items">
+          {foods.length === 0 ? <p className="text-sm text-muted">No food items.</p> : <div className="space-y-3">
+            {foods.map((item, index) => (
+              <div key={index} className="border-b border-border/70 pb-3 last:border-0 last:pb-0">
+                <div className="flex items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-text">{item.foodName}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted">
+                      <span>Variant: {item.variantName}</span>
+                      <span>Qty: {item.quantity}</span>
+                      <span>Unit: {formatCurrency(item.offerPrice > 0 ? item.offerPrice : item.unitPrice)}</span>
+                      {item.offerPrice > 0 && <span className="line-through">₹{Number(item.unitPrice).toFixed(2)}</span>}
+                      {item.orderSource && <Badge variant={item.orderSource === "Pre-Order" ? "primary" : "neutral"} className="text-[10px]">{item.orderSource}</Badge>}
+                    </div>
+                  </div>
+                  <span className="font-semibold text-text">{formatCurrency(item.totalPrice)}</span>
+                </div>
+              </div>
+            ))}
           </div>}
           {bill && <div className="mt-4 border-t border-border pt-3"><Row label="Pre-order subtotal" value={formatCurrency(bill.subTotal)} /><Row label="Offer discount" value={bill.offer?.discountAmount ? `-${formatCurrency(bill.offer.discountAmount)}` : "—"} /></div>}
         </Section>

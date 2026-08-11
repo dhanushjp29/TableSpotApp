@@ -14,6 +14,7 @@ import { initSocket } from "./sockets/socket.handler.js";
 import { startDeadlineCron } from "./services/deadlineCron.service.js";
 import { startOfferCron } from "./services/offerCron.service.js";
 import { startTableStatusScheduler } from "./services/tableStatusScheduler.service.js";
+import { startWarningCron } from "./services/warningCron.service.js";
 
 const PORT = process.env.PORT || 5000;
 
@@ -34,6 +35,9 @@ const startServer = async () => {
 
         // Offer expiring-soon reminders + expire stale active recipients
         startOfferCron();
+
+        // Expire restaurant warnings whose validity window has closed
+        startWarningCron();
 
         const activeServer = server.listen(PORT, () => {
             console.log(`Server is running on port ${PORT}`);

@@ -10,6 +10,7 @@ import {
   refundReasonLabel,
   refundMethodLabel,
 } from "../../utils/pdf/pdfTheme.js";
+import { getBookingFoodItems } from "../../utils/foodItems.js";
 import {
   PdfRoot,
   PdfHeader,
@@ -39,11 +40,9 @@ export default function BookingPdf({ booking, view = "owner" }) {
     ? new Date(booking.bookingDateTime)
     : null;
   const bill = typeof booking?.billId === "object" ? booking.billId : null;
-  const orderedItems = bill?.orderedItems?.length
-    ? bill.orderedItems
-    : booking?.preOrderedFoods || [];
+  const orderedItems = getBookingFoodItems(booking);
   const orderedTotal = orderedItems.reduce(
-    (sum, item) => sum + Number(item.price || 0) * Number(item.quantity || 0),
+    (sum, item) => sum + Number(item.totalPrice || 0),
     0
   );
   const refund =
@@ -109,13 +108,13 @@ export default function BookingPdf({ booking, view = "owner" }) {
         </PdfSection>
 
         {orderedItems.length > 0 && (
-          <PdfSection title="Pre-ordered items">
+          <PdfSection title="Food items">
             <PdfTable
               columns={[
                 {
                   key: "item",
                   label: "Item",
-                  render: (item) => item.foodId?.foodName || "Food item",
+                  render: (item) => item.foodName,
                 },
                 {
                   key: "variant",
@@ -132,18 +131,30 @@ export default function BookingPdf({ booking, view = "owner" }) {
                   key: "price",
                   label: "Unit price",
                   align: "right",
-                  render: (item) => money(item.unitPrice ?? item.price),
+                  render: (item) => money(item.unitPrice),
+                },
+                {
+                  key: "offer",
+                  label: "Offer price",
+                  align: "right",
+                  render: (item) =>
+                    item.offerPrice > 0 ? money(item.offerPrice) : "—",
+                },
+                {
+                  key: "source",
+                  label: "Source",
+                  render: (item) => item.orderSource || "—",
                 },
                 {
                   key: "amount",
                   label: "Amount",
                   align: "right",
                   bold: true,
-                  render: (item) => money(item.totalPrice ?? Number(item.price || item.unitPrice || 0) * Number(item.quantity || 0)),
+                  render: (item) => money(item.totalPrice),
                 },
               ]}
               rows={orderedItems}
-              emptyText="No pre-ordered items"
+              emptyText="No food items"
             />
           </PdfSection>
         )}
@@ -191,7 +202,7 @@ export default function BookingPdf({ booking, view = "owner" }) {
           <PdfSummaryBox>
             {orderedTotal > 0 && (
               <PdfSummaryRow
-                label="Pre-order total"
+                label="Food items total"
                 value={money(orderedTotal)}
               />
             )}

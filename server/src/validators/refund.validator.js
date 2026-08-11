@@ -44,5 +44,9 @@ export const listRefundsQuerySchema = z
     bookingId: mongoIdSchema.optional(),
     restaurantId: mongoIdSchema.optional(),
     refundStatus: z.enum(REFUND_STATUS_VALUES).optional(),
+    notRefunded: z
+      .enum(["true", "false"])
+      .transform((value) => value === "true")
+      .optional(),
   })
   .strict();

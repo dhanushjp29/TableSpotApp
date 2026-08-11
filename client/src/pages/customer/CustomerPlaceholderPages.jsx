@@ -62,12 +62,51 @@ export function CustomerBookingsPage() {
     restaurantName: "",
     foods: [],
     bookingId: null,
+    reviewData: null,
   });
+  const [bookingReviews, setBookingReviews] = useState({});
   const [receiptModal, setReceiptModal] = useState({ isOpen: false, bill: null });
+
+  const resetReviewModalState = () =>
+    setReviewModalState({
+      isOpen: false,
+      restaurantId: null,
+      restaurantName: "",
+      foods: [],
+      bookingId: null,
+      reviewData: null,
+    });
+
+  const refreshBookingReviews = async (bookingList) => {
+    const reviewLookups = (bookingList || [])
+      .map((booking) => {
+        const restaurant =
+          typeof booking.restaurantId === "object" ? booking.restaurantId : null;
+        if (!restaurant?._id) return null;
+
+        return restaurantReviewApi
+          .getMyBookingReview({
+            bookingId: booking._id,
+            restaurantId: restaurant._id,
+          })
+          .then((res) => [String(booking._id), res?.data?.review || null])
+          .catch(() => [String(booking._id), null]);
+      })
+      .filter(Boolean);
+
+    const results = await Promise.all(reviewLookups);
+    setBookingReviews(
+      results.reduce((acc, [bookingId, review]) => {
+        if (review) acc[bookingId] = review;
+        return acc;
+      }, {})
+    );
+  };
 
   const reloadBookings = async () => {
     try {
-      await dispatch(fetchBookings());
+      const response = await dispatch(fetchBookings());
+      await refreshBookingReviews(response.data?.bookings || []);
       setError(null);
     } catch (err) {
       setError(err?.response?.data?.message || "Failed to load bookings.");
@@ -79,7 +118,8 @@ export function CustomerBookingsPage() {
   useEffect(() => {
     let isMounted = true;
     dispatch(fetchBookings())
-      .then(() => {
+      .then(async (response) => {
+        await refreshBookingReviews(response.data?.bookings || []);
         if (isMounted) {
           setError(null);
           setIsLoading(false);
@@ -232,6 +272,7 @@ export function CustomerBookingsPage() {
               : null;
             const restaurant =
               typeof booking.restaurantId === "object" ? booking.restaurantId : null;
+            const existingReview = bookingReviews[String(booking._id)];
 
             return (
               <Card key={booking._id} className="p-5 hover:shadow-md transition-shadow border border-gray-100">
@@ -329,6 +370,28 @@ export function CustomerBookingsPage() {
                         size="sm"
                         className="text-amber-600 hover:bg-amber-50"
                         onClick={async () => {
+                          if (existingReview) {
+                            try {
+                              const res = await restaurantReviewApi.getById(
+                                existingReview._id
+                              );
+                              const review = res?.data?.review || existingReview;
+                              setReviewModalState({
+                                isOpen: true,
+                                restaurantId: restaurant._id,
+                                restaurantName: restaurant.restaurantName,
+                                foods: booking.billId?.orderedItems || [],
+                                bookingId: booking._id,
+                                reviewData: review,
+                              });
+                            } catch (err) {
+                              toast.error(
+                                err?.response?.data?.message || "Unable to load your review right now."
+                              );
+                            }
+                            return;
+                          }
+
                           try {
                             const res = await restaurantReviewApi.getEligibility(
                               restaurant._id,
@@ -346,6 +409,7 @@ export function CustomerBookingsPage() {
                               restaurantName: restaurant.restaurantName,
                               foods: res?.data?.billOrderedItems || [],
                               bookingId: booking._id,
+                              reviewData: null,
                             });
                           } catch (err) {
                             toast.error(
@@ -355,7 +419,7 @@ export function CustomerBookingsPage() {
                         }}
                       >
                         <Star size={14} className="mr-1 fill-amber-400" />
-                        Write Review
+                        {existingReview ? "Edit Review" : "Write Review"}
                       </Button>
                     )}
                   </div>
@@ -368,12 +432,13 @@ export function CustomerBookingsPage() {
 
       <ReviewModal
         isOpen={reviewModalState.isOpen}
-        onClose={() => setReviewModalState({ isOpen: false, restaurantId: null, restaurantName: "", foods: [], bookingId: null })}
+        onClose={resetReviewModalState}
         targetType="restaurant"
         targetId={reviewModalState.restaurantId}
         targetName={reviewModalState.restaurantName}
         foods={reviewModalState.foods}
         bookingId={reviewModalState.bookingId}
+        reviewData={reviewModalState.reviewData}
         onSuccess={reloadBookings}
       />
 

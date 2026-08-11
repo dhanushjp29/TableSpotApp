@@ -620,6 +620,82 @@ export const getGstRateForCategory = (category) =>
   GST_RATE_BY_CATEGORY[category] ?? 5;
 
 // ===============================
+// Restaurant Reports & Warnings
+// ===============================
+
+export const REPORT_CATEGORY = {
+  FOOD_QUALITY: "Food Quality",
+  HYGIENE: "Hygiene",
+  WRONG_BILLING: "Wrong Billing",
+  STAFF_BEHAVIOUR: "Staff Behaviour",
+  SERVICE_DELAY: "Service Delay",
+  FAKE_INFORMATION: "Fake Information",
+  SAFETY_ISSUE: "Safety Issue",
+  OTHER: "Other",
+};
+
+export const REPORT_CATEGORY_VALUES = Object.values(REPORT_CATEGORY);
+
+export const REPORT_SEVERITY = {
+  LOW: "Low",
+  MEDIUM: "Medium",
+  HIGH: "High",
+};
+
+export const REPORT_SEVERITY_VALUES = Object.values(REPORT_SEVERITY);
+
+export const REPORT_STATUS = {
+  PENDING: "PENDING",
+  UNDER_REVIEW: "UNDER_REVIEW",
+  RESOLVED: "RESOLVED",
+  REJECTED: "REJECTED",
+};
+
+export const REPORT_STATUS_VALUES = Object.values(REPORT_STATUS);
+
+export const REPORT_STATUS_LABEL = {
+  [REPORT_STATUS.PENDING]: "Pending",
+  [REPORT_STATUS.UNDER_REVIEW]: "Under Review",
+  [REPORT_STATUS.RESOLVED]: "Resolved",
+  [REPORT_STATUS.REJECTED]: "Rejected",
+};
+
+export const WARNING_LEVEL = {
+  LEVEL_1: "Level 1",
+  LEVEL_2: "Level 2",
+  FINAL: "Final Warning",
+};
+
+export const WARNING_LEVEL_VALUES = Object.values(WARNING_LEVEL);
+
+export const WARNING_STATUS = {
+  ACTIVE: "ACTIVE",
+  EXPIRED: "EXPIRED",
+  CLEARED: "CLEARED",
+};
+
+export const WARNING_STATUS_VALUES = Object.values(WARNING_STATUS);
+
+export const WARNING_STATUS_LABEL = {
+  [WARNING_STATUS.ACTIVE]: "Active",
+  [WARNING_STATUS.EXPIRED]: "Expired",
+  [WARNING_STATUS.CLEARED]: "Cleared",
+};
+
+// Default validity window for an issued warning before it auto-expires.
+export const WARNING_ACTIVE_DAYS = 90;
+export const WARNING_EXPIRY_CHECK_INTERVAL_HOURS = 6;
+
+// Report description length limits.
+export const MIN_REPORT_DESCRIPTION_LENGTH = 20;
+export const MAX_REPORT_DESCRIPTION_LENGTH = 1000;
+export const MAX_REPORT_IMAGES = 5;
+
+// Admin resolution notes / rejection reason length limits.
+export const MAX_WARNING_REASON_LENGTH = 1000;
+export const MAX_REPORT_ADMIN_NOTES_LENGTH = 1000;
+
+// ===============================
 // Code Prefixes
 // ===============================
 
@@ -635,6 +711,8 @@ export const CODE_PREFIX = {
   SESSION: "SES",
   REFUND: "RFD",
   AUDIT: "AUD",
+  REPORT: "RPT",
+  WARNING: "WRN",
 };
 
 

@@ -14,6 +14,7 @@ const router = Router();
 
 // Public Routes
 router.get("/restaurant/:restaurantId", asyncHandler(restaurantReviewController.getByRestaurant));
+router.get("/my/booking", authenticate, asyncHandler(restaurantReviewController.getMyBookingReview));
 router.get("/:reviewId", asyncHandler(restaurantReviewController.getById));
 
 // Protected Routes

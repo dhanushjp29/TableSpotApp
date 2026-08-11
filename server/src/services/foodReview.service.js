@@ -375,6 +375,73 @@ export const getReviewById = async ({ reviewId }) => {
     return { review };
 };
 
+export const getReviews = async ({
+    page = 1,
+    limit = 10,
+    status = "",
+    rating = null,
+    restaurantId = null,
+    ownerId = null,
+}) => {
+    const query = { isDeleted: false };
+
+    if (restaurantId) {
+        query.restaurantId = restaurantId;
+    }
+
+    if (ownerId) {
+        const ownedRestaurants = await Restaurant.find({ ownerId }).select("_id");
+        const ownedRestaurantIds = ownedRestaurants.map((r) => r._id);
+        query.restaurantId = { $in: ownedRestaurantIds };
+    }
+
+    if (status) {
+        query.status = status;
+    }
+
+    if (rating) {
+        query.rating = Number(rating);
+    }
+
+    const pageNumber = Math.max(Number(page) || 1, 1);
+    const pageSize = Math.min(Math.max(Number(limit) || 10, 1), 100);
+    const skip = (pageNumber - 1) * pageSize;
+
+    const [reviews, total] = await Promise.all([
+        FoodReview.find(query)
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(pageSize)
+            .populate("userId", "userCode fullName email profileImage")
+            .populate("restaurantId", "restaurantCode restaurantName slug city state")
+            .populate("foodId", "foodCode foodName coverImage")
+            .populate("bookingId", "bookingCode bookingDateTime"),
+        FoodReview.countDocuments(query),
+    ]);
+
+    return {
+        reviews,
+        meta: {
+            page: pageNumber,
+            limit: pageSize,
+            total,
+            totalPages: Math.ceil(total / pageSize) || 1,
+        },
+    };
+};
+
+export const getMyReviewsForBooking = async ({ userId, bookingId }) => {
+    const reviews = await FoodReview.find({
+        userId,
+        bookingId,
+        isDeleted: false,
+    })
+        .populate("foodId", "foodCode foodName coverImage")
+        .populate("restaurantId", "restaurantCode restaurantName slug");
+
+    return { reviews };
+};
+
 export const getReviewsByFood = async ({
     foodId,
     page = 1,

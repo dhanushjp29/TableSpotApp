@@ -27,6 +27,16 @@ export const restaurantReviewApi = {
     return response.data;
   },
 
+  async getMyBookingReview({ bookingId, restaurantId = null }) {
+    const response = await apiClient.get("/restaurant-reviews/my/booking", {
+      params: {
+        bookingId,
+        ...(restaurantId ? { restaurantId } : {}),
+      },
+    });
+    return response.data;
+  },
+
   async create(data) {
     const response = await apiClient.post("/restaurant-reviews", data);
     return response.data;
@@ -66,6 +76,13 @@ export const foodReviewApi = {
 
   async getById(reviewId) {
     const response = await apiClient.get(`/food-reviews/${reviewId}`);
+    return response.data;
+  },
+
+  async getMyBookingReviews({ bookingId }) {
+    const response = await apiClient.get("/food-reviews/my/booking", {
+      params: { bookingId },
+    });
     return response.data;
   },
 

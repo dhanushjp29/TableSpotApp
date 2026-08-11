@@ -20,6 +20,10 @@ router.get("/:reviewId", asyncHandler(foodReviewController.getById));
 // Protected Routes
 router.use(authenticate);
 
+router.get("/my/booking", asyncHandler(foodReviewController.getMyBookingReviews));
+
+router.get("/", asyncHandler(foodReviewController.getAll));
+
 router.post(
     "/",
     validateRequest(createReviewSchema),
