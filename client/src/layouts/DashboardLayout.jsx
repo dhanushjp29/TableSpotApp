@@ -30,6 +30,7 @@ import Avatar from "../components/ui/Avatar.jsx";
 import ThemeToggle from "../components/theme/ThemeToggle.jsx";
 import UserProfileMenu from "../components/common/UserProfileMenu.jsx";
 import ConfirmDialog from "../components/ui/ConfirmDialog.jsx";
+import { useTheme } from "../hooks/useTheme.js";
 
 const roleNavConfig = {
   customer: [
@@ -80,10 +81,13 @@ function DashboardLayout() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { user, role } = useAuth();
+  const { resolvedTheme } = useTheme();
   const sidebarOpen = useSelector((state) => state.ui.sidebarOpen);
   const unreadCount = useSelector((state) => state.notification.unreadCount);
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const logo = resolvedTheme === "dark" ? "/08_dark_horizontal_logo.png" : "/09_light_horizontal_logo.png";
 
   const navItems = roleNavConfig[role] || [];
 
@@ -131,22 +135,15 @@ function DashboardLayout() {
           sidebarOpen ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <div className="flex h-16 items-center justify-between border-b border-border px-5">
-          <Link to="/" className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-white shadow-sm">
-              T
+        <div className="relative flex h-18 items-center justify-center border-b border-border px-5">
+          <Link to="/" className="flex flex-col items-center leading-tight">
+            <img src={logo} alt="TableSpot" className="h-14 w-auto object-contain" />
+            <span className="mt-0.5 block text-[10px] uppercase tracking-[0.28em] text-muted">
+              {role} portal
             </span>
-            <div className="leading-tight">
-              <span className="block text-base font-bold tracking-tight text-text">
-                TableSpot
-              </span>
-              <span className="block text-[11px] uppercase tracking-[0.28em] text-muted">
-                {role} portal
-              </span>
-            </div>
           </Link>
           <button
-            className="icon-btn lg:hidden"
+            className="icon-btn absolute right-3 top-1/2 -translate-y-1/2 lg:hidden"
             onClick={() => dispatch(toggleSidebar())}
             aria-label="Close sidebar"
           >

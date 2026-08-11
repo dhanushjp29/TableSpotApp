@@ -10,6 +10,7 @@ import { loginUser, googleLoginUser } from "../../store/slices/authSlice.js";
 import { ROUTES } from "../../routes/routeConstants.js";
 import Button from "../../components/ui/Button.jsx";
 import Input from "../../components/ui/Input.jsx";
+import AuthFooter from "../../components/ui/AuthFooter.jsx";
 
 const loginSchema = z.object({
   email: z.string().email("Enter a valid email address."),
@@ -126,61 +127,65 @@ function LoginPage() {
   }, []);
 
   return (
-    <div className="card p-8">
-      <h1 className="text-2xl font-bold text-text">Welcome back</h1>
-      <p className="mt-1 text-sm text-muted">Sign in to your TableSpot account.</p>
+    <>
+      <div className="card p-8">
+        <h1 className="text-2xl font-bold text-text">Welcome back</h1>
+        <p className="mt-1 text-sm text-muted">Sign in to your TableSpot account.</p>
 
-      <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4" noValidate>
-        <Input
-          label="Email"
-          type="email"
-          placeholder="you@example.com"
-          error={errors.email?.message}
-          {...register("email")}
-        />
-        <Input
-          label="Password"
-          type="password"
-          placeholder="••••••••"
-          error={errors.password?.message}
-          {...register("password")}
-        />
-        <div className="flex items-center justify-between text-sm">
-          <Link to={ROUTES.FORGOT_PASSWORD} className="text-primary hover:text-primary-dark">
-            Forgot password?
+        <form onSubmit={handleSubmit(onSubmit)} className="mt-6 space-y-4" noValidate>
+          <Input
+            label="Email"
+            type="email"
+            placeholder="you@example.com"
+            error={errors.email?.message}
+            {...register("email")}
+          />
+          <Input
+            label="Password"
+            type="password"
+            placeholder="••••••••"
+            error={errors.password?.message}
+            {...register("password")}
+          />
+          <div className="flex items-center justify-between text-sm">
+            <Link to={ROUTES.FORGOT_PASSWORD} className="text-primary hover:text-primary-dark">
+              Forgot password?
+            </Link>
+          </div>
+          <Button type="submit" className="w-full" isLoading={isSubmitting} loadingText="Logging in...">
+            Login
+          </Button>
+        </form>
+
+        {/* Google Login */}
+        {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
+          <>
+            <div className="my-5 flex items-center gap-3">
+              <div className="h-px flex-1 bg-gray-100" />
+              <span className="text-xs text-muted">OR</span>
+              <div className="h-px flex-1 bg-gray-100" />
+            </div>
+            <div className="flex justify-center" ref={googleButtonRef}>
+              {isGoogleLoading && (
+                <div className="flex items-center gap-2 text-sm text-muted">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                  Signing in with Google...
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        <p className="mt-6 text-center text-sm text-muted">
+          Don't have an account?{" "}
+          <Link to={ROUTES.REGISTER} className="font-medium text-primary hover:text-primary-dark">
+            Register
           </Link>
-        </div>
-        <Button type="submit" className="w-full" isLoading={isSubmitting} loadingText="Logging in...">
-          Login
-        </Button>
-      </form>
+        </p>
+      </div>
 
-      {/* Google Login */}
-      {import.meta.env.VITE_GOOGLE_CLIENT_ID && (
-        <>
-          <div className="my-5 flex items-center gap-3">
-            <div className="h-px flex-1 bg-gray-100" />
-            <span className="text-xs text-muted">OR</span>
-            <div className="h-px flex-1 bg-gray-100" />
-          </div>
-          <div className="flex justify-center" ref={googleButtonRef}>
-            {isGoogleLoading && (
-              <div className="flex items-center gap-2 text-sm text-muted">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-                Signing in with Google...
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      <p className="mt-6 text-center text-sm text-muted">
-        Don't have an account?{" "}
-        <Link to={ROUTES.REGISTER} className="font-medium text-primary hover:text-primary-dark">
-          Register
-        </Link>
-      </p>
-    </div>
+      <AuthFooter />
+    </>
   );
 }
 

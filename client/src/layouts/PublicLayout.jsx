@@ -2,6 +2,7 @@ import { Link, Outlet } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.js";
 import Avatar from "../components/ui/Avatar.jsx";
 import ThemeToggle from "../components/theme/ThemeToggle.jsx";
+import { useTheme } from "../hooks/useTheme.js";
 import { ROUTES } from "../routes/routeConstants.js";
 
 const roleDashboard = {
@@ -12,20 +13,20 @@ const roleDashboard = {
 
 function PublicLayout() {
   const { isAuthenticated, user, role } = useAuth();
+  const { resolvedTheme } = useTheme();
   const dashboardPath = roleDashboard[role] || ROUTES.CUSTOMER_DASHBOARD;
+  const logo =
+    resolvedTheme === "dark"
+      ? "/08_dark_horizontal_logo.png"
+      : "/09_light_horizontal_logo.png";
 
   return (
     <div className="flex min-h-screen flex-col bg-background">
       <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-xl">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-3">
-            <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-sm font-bold text-white shadow-sm">
-              T
-            </span>
+            <img src={logo} alt="TableSpot" className="h-12 w-auto object-contain" />
             <div className="leading-tight">
-              <span className="block text-base font-bold tracking-tight text-text">
-                TableSpot
-              </span>
               <span className="block text-[11px] uppercase tracking-[0.28em] text-muted">
                 Restaurant reservations
               </span>
