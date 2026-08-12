@@ -5,7 +5,9 @@ import { useDispatch } from "react-redux";
 
 import AppRoutes from "./routes/AppRoutes.jsx";
 import ErrorBoundary from "./components/common/ErrorBoundary.jsx";
+import DownloadLoadingOverlay from "./components/ui/DownloadLoadingOverlay.jsx";
 import { ThemeProvider } from "./context/ThemeContext.jsx";
+import DownloadLoaderProvider from "./hooks/DownloadLoaderProvider.jsx";
 import { initializeAuth } from "./store/slices/authSlice.js";
 import useLiveNotifications from "./hooks/useLiveNotifications.js";
 
@@ -30,39 +32,42 @@ function App() {
 
   return (
     <ThemeProvider>
-      <BrowserRouter>
-        <RouteAwareErrorBoundary>
-          <AppRoutes />
-        </RouteAwareErrorBoundary>
-        <LiveNotificationBridge />
-        <Toaster
-          position="top-right"
-          containerStyle={{ top: 72 }}
-          toastOptions={{
-            duration: 4000,
-            style: {
-              background: "var(--color-surface)",
-              color: "var(--color-text)",
-              border: "1px solid var(--color-border)",
-              borderRadius: "0.875rem",
-              fontSize: "0.875rem",
-              boxShadow: "var(--shadow-md)",
-            },
-            success: {
-              iconTheme: {
-                primary: "#16a34a",
-                secondary: "var(--color-background)",
+      <DownloadLoaderProvider>
+        <BrowserRouter>
+          <RouteAwareErrorBoundary>
+            <AppRoutes />
+          </RouteAwareErrorBoundary>
+          <LiveNotificationBridge />
+          <Toaster
+            position="top-right"
+            containerStyle={{ top: 72 }}
+            toastOptions={{
+              duration: 4000,
+              style: {
+                background: "var(--color-surface)",
+                color: "var(--color-text)",
+                border: "1px solid var(--color-border)",
+                borderRadius: "0.875rem",
+                fontSize: "0.875rem",
+                boxShadow: "var(--shadow-md)",
               },
-            },
-            error: {
-              iconTheme: {
-                primary: "#dc2626",
-                secondary: "var(--color-background)",
+              success: {
+                iconTheme: {
+                  primary: "#16a34a",
+                  secondary: "var(--color-background)",
+                },
               },
-            },
-          }}
-        />
-      </BrowserRouter>
+              error: {
+                iconTheme: {
+                  primary: "#dc2626",
+                  secondary: "var(--color-background)",
+                },
+              },
+            }}
+          />
+          <DownloadLoadingOverlay />
+        </BrowserRouter>
+      </DownloadLoaderProvider>
     </ThemeProvider>
   );
 }

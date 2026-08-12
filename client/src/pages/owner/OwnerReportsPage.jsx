@@ -58,6 +58,7 @@ import { formatCurrency } from "../../utils/formatCurrency.js";
 import { formatDateTime } from "../../utils/formatDate.js";
 import PdfDownloadButton from "../../components/pdf/PdfDownloadButton.jsx";
 import OwnerReportPdf from "../../components/pdf/OwnerReportPdf.jsx";
+import { useDownloadLoader } from "../../hooks/useDownloadLoader.js";
 
 ChartJS.register(
   CategoryScale,
@@ -274,6 +275,7 @@ export default function OwnerReportsPage() {
   const [revenueMetric, setRevenueMetric] = useState("revenue");
   const [foodLimit, setFoodLimit] = useState(5);
   const [isExcelExporting, setIsExcelExporting] = useState(false);
+  const { isDownloading, runDownload } = useDownloadLoader();
   const chartTheme = useChartTheme();
 
   const range = useMemo(
@@ -328,17 +330,20 @@ export default function OwnerReportsPage() {
       toast.error("No report data to export.");
       return;
     }
+    if (isExcelExporting || isDownloading) return;
     setIsExcelExporting(true);
     try {
-      const params = {
-        restaurantId: report.meta?.restaurantId || "all",
-        startDate: report.meta?.range?.start,
-        endDate: report.meta?.range?.end,
-      };
-      const res = await ownerReportApi.getExportData(params);
-      const details = res?.data || {};
-      await exportOwnerReportToExcel({ report, details });
-      toast.success("Excel file downloaded successfully.");
+      await runDownload(async () => {
+        const params = {
+          restaurantId: report.meta?.restaurantId || "all",
+          startDate: report.meta?.range?.start,
+          endDate: report.meta?.range?.end,
+        };
+        const res = await ownerReportApi.getExportData(params);
+        const details = res?.data || {};
+        await exportOwnerReportToExcel({ report, details });
+        toast.success("Excel file downloaded successfully.");
+      });
     } catch (err) {
       console.error("[OwnerReportsPage] Excel export failed:", err);
       toast.error("Export failed. Please try again.");

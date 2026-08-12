@@ -1,55 +1,56 @@
+import {
+  Banknote,
+  CreditCard,
+  FileDown,
+  FileSpreadsheet,
+  Filter,
+  Landmark,
+  Minus,
+  Percent,
+  Plus,
+  Printer,
+  Receipt,
+  Search,
+  Smartphone,
+  Trash2,
+  UtensilsCrossed,
+} from "lucide-react";
 import { useEffect, useRef, useState } from "react";
+import toast from "react-hot-toast";
 import { useDispatch, useSelector } from "react-redux";
 import { useNavigate, useParams } from "react-router-dom";
-import {
-  Receipt,
-  Plus,
-  Search,
-  Printer,
-  CreditCard,
-  Filter,
-  Minus,
-  Trash2,
-  Banknote,
-  Smartphone,
-  Landmark,
-  UtensilsCrossed,
-  Percent,
-  FileSpreadsheet,
-  FileDown,
-} from "lucide-react";
-import toast from "react-hot-toast";
 
-import {
-  addBillPayment,
-  createBill,
-  convertBookingToBill,
-  fetchBills,
-  fetchBillById,
-  updateBill,
-} from "../../store/slices/billSlice.js";
-import { fetchBookings } from "../../store/slices/reservationSlice.js";
-import { fetchFoodsByRestaurant } from "../../store/slices/foodSlice.js";
-import { fetchTablesByRestaurant } from "../../store/slices/tableSlice.js";
-import { fetchOffers, consumeOfferForBill } from "../../store/slices/offerSlice.js";
-import Card from "../../components/ui/Card.jsx";
+import BillEditor from "../../components/billing/BillEditor.jsx";
+import BillingWorkspace from "../../components/billing/BillingWorkspace.jsx";
+import InvoiceDatePicker from "../../components/common/InvoiceDatePicker.jsx";
+import RestaurantFilter from "../../components/owner/RestaurantFilter.jsx";
 import Badge from "../../components/ui/Badge.jsx";
 import Button from "../../components/ui/Button.jsx";
+import Card from "../../components/ui/Card.jsx";
+import EmptyState from "../../components/ui/EmptyState.jsx";
+import ErrorState from "../../components/ui/ErrorState.jsx";
 import Input from "../../components/ui/Input.jsx";
 import Modal from "../../components/ui/Modal.jsx";
 import Select from "../../components/ui/Select.jsx";
 import { SkeletonCard } from "../../components/ui/Skeleton.jsx";
-import EmptyState from "../../components/ui/EmptyState.jsx";
-import ErrorState from "../../components/ui/ErrorState.jsx";
-import { formatDate, formatDateTime } from "../../utils/formatDate.js";
-import RestaurantFilter from "../../components/owner/RestaurantFilter.jsx";
-import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
-import { ROUTES } from "../../routes/routeConstants.js";
-import BillEditor from "../../components/billing/BillEditor.jsx";
-import BillingWorkspace from "../../components/billing/BillingWorkspace.jsx";
-import InvoiceDatePicker from "../../components/common/InvoiceDatePicker.jsx";
-import { exportBillsToExcel } from "../../utils/billingExport.js";
 import { useExcelExport } from "../../hooks/useExcelExport.js";
+import { useDownloadLoader } from "../../hooks/useDownloadLoader.js";
+import { ROUTES } from "../../routes/routeConstants.js";
+import {
+  addBillPayment,
+  convertBookingToBill,
+  createBill,
+  fetchBillById,
+  fetchBills,
+  updateBill,
+} from "../../store/slices/billSlice.js";
+import { fetchFoodsByRestaurant } from "../../store/slices/foodSlice.js";
+import { consumeOfferForBill, fetchOffers } from "../../store/slices/offerSlice.js";
+import { fetchBookings } from "../../store/slices/reservationSlice.js";
+import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
+import { fetchTablesByRestaurant } from "../../store/slices/tableSlice.js";
+import { exportBillsToExcel } from "../../utils/billingExport.js";
+import { formatDate, formatDateTime } from "../../utils/formatDate.js";
 import { renderPdfBlob } from "../../utils/pdf/pdfGenerator.js";
 
 const WALK_IN_PAY_METHODS = [
@@ -97,6 +98,7 @@ export default function OwnerBillingPage() {
   const dispatch = useDispatch();
   const navigate = useNavigate();
   const { billId: routeBillId } = useParams();
+  const { runDownload } = useDownloadLoader();
   const {
     bills,
     isLoading: billsLoading,
@@ -110,7 +112,7 @@ export default function OwnerBillingPage() {
   const user = useSelector((state) => state.auth.user);
   const restaurants = useSelector((state) => state.restaurant.restaurants);
   const restaurantsLoading = useSelector((state) => state.restaurant.isLoading);
-const offers = useSelector((state) => state.offer.offers);
+  const offers = useSelector((state) => state.offer.offers);
   const { foods: spotFoods, isLoading: foodsLoading } = useSelector(
     (state) => state.food
   );
@@ -130,7 +132,7 @@ const offers = useSelector((state) => state.offer.offers);
   const [editingWalkInBill, setEditingWalkInBill] = useState(null);
   const [selectedBookingId, setSelectedBookingId] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-const [isApplyingOffer, setIsApplyingOffer] = useState(false);
+  const [isApplyingOffer, setIsApplyingOffer] = useState(false);
   const [walkInRestaurantId, setWalkInRestaurantId] = useState("");
   const [walkInTableId, setWalkInTableId] = useState("");
   const [walkInCustomerName, setWalkInCustomerName] = useState("");
@@ -184,7 +186,7 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
       dispatch(fetchBills({ limit: 100, ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}) })),
       dispatch(fetchBookings({ limit: 100, ...(selectedRestaurant ? { restaurantId: selectedRestaurant } : {}) })),
       dispatch(fetchOffers({ limit: 200 })),
-    ]).catch(() => {});
+    ]).catch(() => { });
   };
 
   const loadWalkInContext = async (restaurantId) => {
@@ -436,8 +438,8 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
     const price =
       variants.length > 0
         ? Math.min(
-            ...variants.map((v) => Number(v?.offerPrice > 0 ? v.offerPrice : v?.price || 0))
-          )
+          ...variants.map((v) => Number(v?.offerPrice > 0 ? v.offerPrice : v?.price || 0))
+        )
         : 0;
     return price > 0 ? `${food.foodName} â€” â‚¹${price}` : food.foodName;
   };
@@ -652,10 +654,10 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
     setWalkInRestaurantId(restaurantId);
     setWalkInTableId(
       bill?.tableId?._id ||
-        bill?.tableId ||
-        bill?.bookingId?.tableId?._id ||
-        bill?.bookingId?.tableId ||
-        ""
+      bill?.tableId ||
+      bill?.bookingId?.tableId?._id ||
+      bill?.bookingId?.tableId ||
+      ""
     );
     setWalkInCustomerName(bill?.customerName || "");
     setWalkInCustomerPhone(bill?.customerPhone || "");
@@ -794,16 +796,18 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
 
   const downloadReceiptPdf = async (receiptBill = activeReceiptBill) => {
     try {
-      const blob = await createReceiptPdfBlob(receiptBill);
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `${receiptBill.billCode || "tablespot-receipt"}.pdf`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
-      toast.success("Receipt PDF downloaded.");
+      await runDownload(async () => {
+        const blob = await createReceiptPdfBlob(receiptBill);
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `${receiptBill.billCode || "tablespot-receipt"}.pdf`;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        toast.success("Receipt PDF downloaded.");
+      });
     } catch {
       toast.error("Unable to generate the receipt PDF.");
     }
@@ -811,18 +815,20 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
 
   const openReceiptPdf = async (receiptBill = activeReceiptBill) => {
     try {
-      const blob = await createReceiptPdfBlob(receiptBill);
-      const url = URL.createObjectURL(blob);
-      const printWindow = window.open(url, "_blank");
-      if (!printWindow) {
-        const link = document.createElement("a");
-        link.href = url;
-        link.download = `${receiptBill?.billCode || "tablespot-receipt"}.pdf`;
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      }
-      setTimeout(() => URL.revokeObjectURL(url), 60000);
+      await runDownload(async () => {
+        const blob = await createReceiptPdfBlob(receiptBill);
+        const url = URL.createObjectURL(blob);
+        const printWindow = window.open(url, "_blank");
+        if (!printWindow) {
+          const link = document.createElement("a");
+          link.href = url;
+          link.download = `${receiptBill?.billCode || "tablespot-receipt"}.pdf`;
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+        }
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+      });
     } catch {
       toast.error("Unable to generate the receipt PDF.");
     }
@@ -875,32 +881,32 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
           manageBill._id,
           isWalkInEdit
             ? {
-                restaurantId: walkInRestaurantId,
-                tableId: walkInTableId,
-                customerName: walkInCustomerName,
-                customerPhone: walkInCustomerPhone,
-                customerEmail: walkInCustomerEmail,
-                orderedItems: walkInBillItems.map((item) => ({
-                  foodId: item.foodId,
-                  foodName: item.foodName || "",
-                  variantName: item.variantName || "Regular",
-                  quantity: Number(item.quantity) || 1,
-                })),
-                discount: {
-                  type: walkInDiscountType,
-                  value: Number(walkInDiscountValue) || 0,
-                },
-                taxPercentage: Number(walkInTaxPercentage) || 0,
-                notes: walkInNotes,
-              }
+              restaurantId: walkInRestaurantId,
+              tableId: walkInTableId,
+              customerName: walkInCustomerName,
+              customerPhone: walkInCustomerPhone,
+              customerEmail: walkInCustomerEmail,
+              orderedItems: walkInBillItems.map((item) => ({
+                foodId: item.foodId,
+                foodName: item.foodName || "",
+                variantName: item.variantName || "Regular",
+                quantity: Number(item.quantity) || 1,
+              })),
+              discount: {
+                type: walkInDiscountType,
+                value: Number(walkInDiscountValue) || 0,
+              },
+              taxPercentage: Number(walkInTaxPercentage) || 0,
+              notes: walkInNotes,
+            }
             : {
-                orderedItems: billItems,
-                discount: {
-                  type: discountType,
-                  value: Number(discountValue) || 0,
-                },
-                taxPercentage: Number(onlineTaxPercentage) || 0,
-              }
+              orderedItems: billItems,
+              discount: {
+                type: discountType,
+                value: Number(discountValue) || 0,
+              },
+              taxPercentage: Number(onlineTaxPercentage) || 0,
+            }
         )
       );
       const updatedBill = extractBillFromResponse(response);
@@ -1005,7 +1011,7 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
     const workspaceOffers = offers.filter(
       (offer) => String(offer.restaurantId?._id || offer.restaurantId) === String(workspaceRestaurantId)
     );
-    return <div className="mx-auto max-w-[1500px] px-4 py-6 sm:px-6 lg:px-8">
+    return <div className="mx-auto max-w-375 px-4 py-6 sm:px-6 lg:px-8">
       <BillingWorkspace
         bill={workspaceBill}
         billType={activeBillView.billType || workspaceBill?.billType || "WALK_IN"}
@@ -1080,25 +1086,25 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
       {/* Search & Filter */}
       <div className="flex flex-col gap-4 rounded-2xl border border-red-100 bg-red-50/40 p-4 shadow-sm dark:border-border dark:bg-surface/90">
         <div className="flex flex-col items-stretch gap-4 xl:flex-row xl:items-end xl:justify-between">
-        <div className="w-full xl:max-w-xs">
-          <RestaurantFilter restaurants={restaurants} value={selectedRestaurant} onChange={setSelectedRestaurant} />
-        </div>
-        <div className="relative flex-1 w-full">
-          <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
-          <input
-            type="text"
-            placeholder="Search bill by ID..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-            className="input-field pl-10 w-full"
-          />
-        </div>
+          <div className="w-full xl:max-w-xs">
+            <RestaurantFilter restaurants={restaurants} value={selectedRestaurant} onChange={setSelectedRestaurant} />
+          </div>
+          <div className="relative flex-1 w-full">
+            <Search size={18} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted" />
+            <input
+              type="text"
+              placeholder="Search bill by ID..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="input-field pl-10 w-full"
+            />
+          </div>
 
-        <div className="flex flex-wrap items-end gap-3">
-          <div className="w-full sm:w-44"><InvoiceDatePicker label="From date" value={dateFrom} onChange={setDateFrom} /></div>
-          <div className="w-full sm:w-44"><InvoiceDatePicker label="To date" value={dateTo} onChange={setDateTo} /></div>
-          <Button type="button" variant="outline" size="sm" onClick={exportVisibleBills} isLoading={isExporting}><FileSpreadsheet size={15} className="mr-1.5" />Excel</Button>
-        </div>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="w-full sm:w-44"><InvoiceDatePicker label="From date" value={dateFrom} onChange={setDateFrom} /></div>
+            <div className="w-full sm:w-44"><InvoiceDatePicker label="To date" value={dateTo} onChange={setDateTo} /></div>
+            <Button type="button" variant="outline" size="sm" onClick={exportVisibleBills} isLoading={isExporting}><FileSpreadsheet size={15} className="mr-1.5" />Excel</Button>
+          </div>
         </div>
         <div className="flex items-center gap-2 overflow-x-auto w-full pb-1 sm:pb-0">
           <Filter size={16} className="text-muted shrink-0 ml-1" />
@@ -1106,11 +1112,10 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
             <button
               key={st}
               onClick={() => setBillTypeFilter(st)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg shrink-0 transition-all ${
-                billTypeFilter === st
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg shrink-0 transition-all ${billTypeFilter === st
                   ? "bg-secondary text-white"
                   : "border border-border bg-surface-secondary/70 text-muted hover:bg-surface-hover hover:text-text"
-              }`}
+                }`}
             >
               {st === "ALL" ? "All Types" : st === "ONLINE" ? "Online" : "Walk-in"}
             </button>
@@ -1119,11 +1124,10 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
             <button
               key={st}
               onClick={() => setStatusFilter(st)}
-              className={`px-3 py-1.5 text-xs font-semibold rounded-lg shrink-0 transition-all ${
-                statusFilter === st
+              className={`px-3 py-1.5 text-xs font-semibold rounded-lg shrink-0 transition-all ${statusFilter === st
                   ? "bg-primary text-white"
                   : "border border-border bg-surface-secondary/70 text-muted hover:bg-surface-hover hover:text-text"
-              }`}
+                }`}
             >
               {st}
             </button>
@@ -1141,7 +1145,7 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
       ) : error ? (
         <ErrorState title="Unable to load bills" description={error} onRetry={fetchData} />
       ) : filteredBills.length === 0 ? (
-            <EmptyState title="No billing records" description="Click 'Online Bill' or 'Create Walk-in Bill' to create an invoice." />
+        <EmptyState title="No billing records" description="Click 'Online Bill' or 'Create Walk-in Bill' to create an invoice." />
       ) : (
         <div className="overflow-x-auto rounded-2xl border border-border bg-surface shadow-sm">
           <table className="w-full text-left text-sm text-text">
@@ -1161,7 +1165,7 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
             </thead>
             <tbody className="divide-y divide-border/70 font-medium">
               {filteredBills.map((bill) => (
-                <tr key={bill._id} className="transition-colors hover:bg-primary/[0.04] dark:hover:bg-white/[0.03]">
+                <tr key={bill._id} className="transition-colors hover:bg-primary/4 dark:hover:bg-white/3">
                   <td className="px-5 py-4 font-mono text-xs font-semibold text-primary">
                     {bill.billCode || `#${bill._id.slice(-6)}`}
                   </td>
@@ -1437,11 +1441,11 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
                   hint={
                     walkInFoodId && !walkInFoodsLoading
                       ? (() => {
-                          const food = walkInFoods.find((f) => f._id === walkInFoodId);
-                          return food?.hasVariants && (food.variants || []).length > 0
-                            ? undefined
-                            : "No variants";
-                        })()
+                        const food = walkInFoods.find((f) => f._id === walkInFoodId);
+                        return food?.hasVariants && (food.variants || []).length > 0
+                          ? undefined
+                          : "No variants";
+                      })()
                       : undefined
                   }
                 >
@@ -1645,11 +1649,10 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
                       clearWalkInError("payments");
                     }}
                     aria-pressed={isSelected}
-                    className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all ${
-                      isSelected
+                    className={`flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-sm font-medium transition-all ${isSelected
                         ? "border-primary bg-primary/10 text-primary ring-2 ring-primary/30"
                         : "border-border bg-surface text-muted hover:border-gray-300 hover:bg-surface-hover"
-                    }`}
+                      }`}
                   >
                     <Icon size={16} />
                     {method.label}
@@ -1767,9 +1770,8 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
         <Modal
           isOpen={!!manageBill}
           onClose={() => setManageBill(null)}
-          title={`${
-            isBillEditable(manageBill) ? "Update Bill" : "Manage Bill"
-          } ${manageBill.billCode || `#${manageBill._id.slice(-6)}`}`}
+          title={`${isBillEditable(manageBill) ? "Update Bill" : "Manage Bill"
+            } ${manageBill.billCode || `#${manageBill._id.slice(-6)}`}`}
           size="lg"
         >
           <div className="space-y-5 pt-2">
@@ -1806,7 +1808,7 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
                       {billItems.map((item, idx) => (
                         <div
                           key={idx}
-                        className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-secondary/40 p-2.5 text-sm"
+                          className="flex items-center justify-between gap-3 rounded-xl border border-border bg-surface-secondary/40 p-2.5 text-sm"
                         >
                           <div className="min-w-0">
                             <p className="truncate font-medium text-text">
@@ -2169,6 +2171,3 @@ const [isApplyingOffer, setIsApplyingOffer] = useState(false);
     </div>
   );
 }
-
-
-

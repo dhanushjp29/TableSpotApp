@@ -6,6 +6,7 @@ import { formatDate, formatDateTime } from "../../utils/formatDate.js";
 import { renderPdfBlob, downloadBlob } from "../../utils/pdf/pdfGenerator.js";
 import BillReceiptPrint from "./BillReceiptPrint.jsx";
 import Button from "../ui/Button.jsx";
+import { useDownloadLoader } from "../../hooks/useDownloadLoader.js";
 
 const money = (value) => `₹${Number(value || 0).toFixed(2)}`;
 
@@ -17,16 +18,19 @@ export default function BillReceiptView({ bill, id = "receipt-print-area" }) {
   const status = bill?.payment?.paymentStatus || bill?.billStatus || "Pending";
   const isPaid = String(status).toLowerCase() === "paid";
   const [downloading, setDownloading] = useState(false);
+  const { runDownload } = useDownloadLoader();
 
   const downloadReceiptPdf = async () => {
     const element = document.getElementById(`${id}-print`);
     if (!element) return;
     setDownloading(true);
     try {
-      const filename = `${bill?.billCode || "tablespot-receipt"}.pdf`;
-      const blob = await renderPdfBlob({ element, filename });
-      downloadBlob(blob, filename);
-      toast.success("Receipt PDF downloaded.");
+      await runDownload(async () => {
+        const filename = `${bill?.billCode || "tablespot-receipt"}.pdf`;
+        const blob = await renderPdfBlob({ element, filename });
+        downloadBlob(blob, filename);
+        toast.success("Receipt PDF downloaded.");
+      });
     } catch {
       toast.error("Unable to generate the receipt PDF.");
     } finally {
