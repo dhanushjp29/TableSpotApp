@@ -66,7 +66,9 @@ function VerifyEmailPage() {
   };
 
   return (
-    <div className="card p-8">
+    <div className="flex flex-1 items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md">
+        <div className="card p-8">
       <h1 className="text-2xl font-bold text-text">Verify Your Email</h1>
       <p className="mt-1 text-sm text-muted">
         Enter the OTP we sent to your email to activate your account.
@@ -103,6 +105,8 @@ function VerifyEmailPage() {
         <Link to={ROUTES.LOGIN} className="font-medium text-primary hover:text-primary-dark">
           Back to Login
         </Link>
+      </div>
+        </div>
       </div>
     </div>
   );

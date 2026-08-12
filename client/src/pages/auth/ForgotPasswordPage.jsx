@@ -38,7 +38,9 @@ function ForgotPasswordPage() {
   };
 
   return (
-    <div className="card p-8">
+    <div className="flex flex-1 items-center justify-center px-4 py-12">
+      <div className="w-full max-w-md">
+        <div className="card p-8">
       <h1 className="text-2xl font-bold text-text">Forgot Password</h1>
       <p className="mt-1 text-sm text-muted">
         Enter your email and we'll send you a reset code.
@@ -63,6 +65,8 @@ function ForgotPasswordPage() {
           Login
         </Link>
       </p>
+        </div>
+      </div>
     </div>
   );
 }

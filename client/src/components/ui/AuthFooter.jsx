@@ -10,7 +10,7 @@ function AuthFooter() {
 
   return (
     <footer
-      className="mt-10 w-screen border-t border-border bg-surface-secondary/70 py-6 backdrop-blur-sm"
+      className="auth-footer mt-10 w-screen border-t border-border bg-surface-secondary/70 py-6 backdrop-blur-sm"
       style={{ marginLeft: "calc(50% - 50vw)" }}
     >
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-4 px-4 sm:flex-row sm:px-6 lg:px-8">

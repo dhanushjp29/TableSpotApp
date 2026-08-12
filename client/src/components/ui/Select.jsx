@@ -16,6 +16,7 @@ function Select({
   name,
   ref,
   disabled = false,
+  leftIcon,
   ...rest
 }) {
   const inputId = id || name;
@@ -140,10 +141,17 @@ function Select({
         disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
-        className={`input-field flex items-center justify-between gap-2 text-left ${
+        className={`input-field relative flex items-center justify-between gap-2 text-left ${
+          leftIcon ? "pl-10" : ""
+        } ${
           error ? "border-error focus:border-error focus:ring-error" : ""
         } ${disabled ? "cursor-not-allowed opacity-60" : ""}`}
       >
+        {leftIcon && (
+          <span className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-muted">
+            {leftIcon}
+          </span>
+        )}
         <span
           className={`min-w-0 truncate ${
             displayValue !== "" ? "text-text" : "text-muted"

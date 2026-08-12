@@ -717,3 +717,697 @@
     0 0 0 1px rgba(255, 255, 255, 0.04),
     inset 0 1px 0 rgba(255, 255, 255, 0.06);
 }
+
+/* ---- Auth pages (login / register) ---- */
+
+/* "Book / Dine / Enjoy" hero — one vertical typographic block, kept clear of the form card */
+.auth-hero {
+  position: relative;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0.5rem 0 1.25rem;
+  animation: auth-hero-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes auth-hero-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.auth-hero-heading {
+  display: flex;
+  flex-direction: column;
+  line-height: 0.86;
+  letter-spacing: -0.03em;
+  font-weight: 800;
+}
+
+.auth-hero-word {
+  display: block;
+  font-size: clamp(48px, 16vw, 72px);
+  font-weight: 800;
+  line-height: 0.86;
+  letter-spacing: -0.035em;
+  opacity: 0;
+  animation: auth-word-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+.auth-hero-heading > :nth-child(1) {
+  animation-delay: 0.06s;
+}
+.auth-hero-heading > :nth-child(2) {
+  animation-delay: 0.13s;
+}
+.auth-hero-heading > :nth-child(3) {
+  animation-delay: 0.2s;
+}
+@keyframes auth-word-in {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.auth-hero-word--solid {
+  color: #171717;
+}
+.dark .auth-hero-word--solid {
+  color: #ffffff;
+}
+
+.auth-hero-word--accent {
+  position: relative;
+  display: inline-block;
+  color: #ef1b23;
+}
+
+/* Hand-drawn red swoosh underlining "Dine" */
+.auth-hero-swoosh {
+  position: absolute;
+  left: 4%;
+  bottom: -0.14em;
+  width: 108%;
+  height: 0.32em;
+  max-width: none;
+  pointer-events: none;
+  opacity: 0.9;
+}
+
+.auth-hero-subtitle {
+  position: relative;
+  margin-top: clamp(1.25rem, 3vh, 2rem);
+  font-size: clamp(15px, 1.6vw, 19px);
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+}
+
+/* Small red hand-drawn underline below the subtitle */
+.auth-hero-subline {
+  position: absolute;
+  left: 50%;
+  bottom: -1.15em;
+  width: 84%;
+  height: 0.24em;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.auth-card-wrap {
+  position: relative;
+  z-index: 5;
+}
+
+@media (min-width: 640px) {
+  .auth-hero-word {
+    font-size: clamp(52px, 8vw, 80px);
+  }
+}
+
+@media (min-width: 1024px) {
+  .auth-hero {
+    align-items: flex-start;
+    text-align: left;
+    padding: 2rem 0;
+  }
+  .auth-hero-word {
+    font-size: clamp(64px, 7vw, 110px);
+  }
+  .auth-hero-subtitle {
+    font-size: clamp(17px, 1.4vw, 21px);
+  }
+  .auth-hero-subline {
+    left: 0;
+    transform: none;
+  }
+  .auth-card-wrap {
+    justify-self: end;
+    margin-inline: 0;
+  }
+}
+
+.auth-card {
+  position: relative;
+  z-index: 10;
+  padding: 2rem 2.25rem;
+  border-radius: 1.5rem;
+  border: 1px solid var(--color-border);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.55);
+}
+.auth-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 10%;
+  right: 10%;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, rgba(198, 40, 40, 0.6), transparent);
+  pointer-events: none;
+}
+.dark .auth-card::before {
+  background: linear-gradient(90deg, transparent, rgba(239, 68, 68, 0.75), transparent);
+}
+.dark .auth-card {
+  background: rgba(24, 27, 33, 0.78);
+  border-color: rgba(255, 255, 255, 0.1);
+  box-shadow: var(--shadow-lg), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.auth-eyebrow {
+  margin-top: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  color: var(--color-primary);
+}
+.auth-eyebrow::before {
+  content: "";
+  width: 1.75rem;
+  height: 2px;
+  border-radius: 999px;
+  background: var(--color-primary);
+}
+
+.auth-divider {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin: 1.5rem 0 0.875rem;
+  color: var(--color-text-muted);
+  font-size: 0.72rem;
+  font-weight: 500;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--color-border);
+}
+
+.auth-quick-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 0.55rem 0.4rem;
+  border-radius: 0.75rem;
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  color: var(--color-text-secondary);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+.auth-quick-btn:hover:not(:disabled) {
+  border-color: rgba(198, 40, 40, 0.4);
+  color: var(--color-primary);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(198, 40, 40, 0.12);
+}
+.auth-quick-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.auth-quick-btn.is-active {
+  background: linear-gradient(135deg, rgba(198, 40, 40, 0.12), rgba(142, 0, 0, 0.18));
+  border-color: rgba(198, 40, 40, 0.45);
+  color: var(--color-primary);
+  box-shadow: 0 0 0 1px rgba(198, 40, 40, 0.2), 0 6px 16px rgba(198, 40, 40, 0.14);
+}
+
+/* ---- Auth scene: full-page food collage backdrop ---- */
+
+.auth-scene {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+  transition: transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: auth-scene-in 1s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes auth-scene-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.auth-scene--flip {
+  transform: scaleX(-1);
+}
+
+/* Theme backdrops — warm cream in light mode, charcoal in dark mode */
+.auth-scene-backdrop {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(130% 95% at 16% 6%, rgba(198, 40, 40, 0.08), transparent 46%),
+    radial-gradient(115% 85% at 95% 92%, rgba(245, 158, 11, 0.07), transparent 52%),
+    linear-gradient(180deg, #fdf8ef 0%, #faf3e8 46%, #f1e9da 100%);
+}
+.dark .auth-scene-backdrop {
+  background:
+    radial-gradient(130% 95% at 16% 6%, rgba(198, 40, 40, 0.18), transparent 48%),
+    radial-gradient(115% 85% at 95% 92%, rgba(245, 158, 11, 0.09), transparent 55%),
+    linear-gradient(180deg, #12151c 0%, #0f1115 100%);
+}
+
+/* Food cutouts — light mode: soft/smoked; dark mode: strong/realistic */
+.auth-scene-food,
+.auth-scene-corner {
+  position: absolute;
+  object-fit: contain;
+  max-width: none;
+  will-change: transform;
+    opacity: 1;
+    filter: drop-shadow(0 20px 34px rgba(60, 20, 8, 0.22));
+  animation: auth-food-float 8s ease-in-out infinite;
+}
+.dark .auth-scene-food,
+.dark .auth-scene-corner {
+    opacity: 1;
+    filter: drop-shadow(0 24px 44px rgba(0, 0, 0, 0.55));
+}
+
+/* Tall corner cutouts — leafy tips peeking from the top corners */
+.auth-scene-corner--tl {
+  top: -7%;
+  left: -4%;
+  height: 30vh;
+  width: auto;
+}
+.auth-scene-corner--tr {
+  top: -7%;
+  right: -4%;
+  height: 30vh;
+  width: auto;
+  animation-delay: -2.2s;
+}
+
+/* Decorative red flowing line sweeping the empty center band */
+.auth-scene-line {
+  position: absolute;
+  left: 40%;
+  top: 28%;
+  width: 46%;
+  height: auto;
+  max-width: none;
+  transform: rotate(-8deg);
+  opacity: 0.5;
+  filter: sepia(1) saturate(7) hue-rotate(-34deg) brightness(0.92);
+}
+.dark .auth-scene-line {
+  opacity: 0.78;
+  filter: sepia(1) saturate(6) hue-rotate(-32deg) brightness(1);
+}
+
+/* Bottom-left dish cluster — cropped into the corner so the hero stays clear */
+.auth-pos-bl {
+  left: -14%;
+  bottom: -12%;
+  width: 28%;
+  transform: rotate(-6deg);
+}
+.auth-pos-grn {
+  left: 0%;
+  bottom: 0%;
+  width: 18%;
+  transform: rotate(-4deg);
+  animation-delay: -3.1s;
+}
+
+/* Bottom-right subtle dish */
+.auth-pos-br {
+  right: -7%;
+  bottom: -10%;
+  width: 20%;
+  transform: rotate(-6deg);
+  animation-delay: -5.8s;
+}
+
+/* Restaurant photo card — tucked into the bottom-left, clear of the typography */
+.auth-scene-photo {
+  position: absolute;
+  left: -2%;
+  bottom: 12%;
+  width: 13%;
+  padding: 5px;
+  border-radius: 1rem;
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid rgba(17, 17, 17, 0.06);
+  box-shadow: 0 20px 44px rgba(40, 10, 5, 0.28);
+  transform: rotate(-4deg);
+  animation: auth-food-float 9s ease-in-out infinite;
+}
+.auth-scene-photo img {
+  display: block;
+  width: 100%;
+  height: 5.5rem;
+  object-fit: cover;
+  border-radius: 0.7rem;
+}
+.dark .auth-scene-photo {
+  background: rgba(24, 27, 33, 0.92);
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+@keyframes auth-food-float {
+  0%,
+  100% {
+    translate: 0 0;
+  }
+  50% {
+    translate: 0 -11px;
+  }
+}
+
+/* Card entrance — smooth login/register transition */
+.auth-enter {
+  animation: auth-enter 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes auth-enter {
+  from {
+    opacity: 0;
+    transform: translateY(14px) scale(0.985);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* Responsive — keep the collage ambient, never fighting the card or hero */
+@media (max-width: 1279px) {
+  .auth-scene-corner--tl,
+  .auth-scene-corner--tr {
+    height: 26vh;
+  }
+  .auth-pos-bl {
+    left: -12%;
+    width: 30%;
+  }
+  .auth-pos-grn {
+    width: 20%;
+  }
+  .auth-scene-photo {
+    width: 14%;
+    bottom: 10%;
+  }
+}
+
+@media (max-width: 1023px) {
+  .auth-scene-corner--tl,
+  .auth-scene-corner--tr {
+    height: 20vh;
+  }
+  .auth-scene-line {
+    left: 50%;
+    top: 20%;
+    width: 72%;
+    transform: translate(-50%, 0) rotate(-6deg);
+    opacity: 0.32;
+  }
+  .dark .auth-scene-line {
+    opacity: 0.5;
+  }
+  .auth-pos-bl {
+    left: -16%;
+    bottom: -8%;
+    width: 44%;
+  }
+  .auth-pos-grn {
+    left: -8%;
+    width: 24%;
+  }
+  .auth-pos-br,
+  .auth-scene-photo {
+    display: none;
+  }
+}
+
+@media (max-width: 639px) {
+  .auth-scene-corner--tl,
+  .auth-scene-corner--tr {
+    height: 14vh;
+    opacity: 0.45;
+  }
+  .dark .auth-scene-corner--tl,
+  .dark .auth-scene-corner--tr {
+    opacity: 0.7;
+  }
+  .auth-scene-line {
+    left: 50%;
+    top: 16%;
+    width: 88%;
+    transform: translate(-50%, 0) rotate(-4deg);
+    opacity: 0.25;
+  }
+  .dark .auth-scene-line {
+    opacity: 0.4;
+  }
+  .auth-pos-bl {
+    left: -24%;
+    bottom: -6%;
+    width: 54%;
+  }
+  .auth-pos-grn {
+    width: 30%;
+    left: -12%;
+  }
+}
+
+
+/* Final food composition: mapped assets stay crisp, scattered, and outside the brand/card breathing space. */
+.auth-scene .auth-food,
+.auth-scene .auth-corner {
+  object-fit: contain;
+  opacity: 1;
+  filter: drop-shadow(0 8px 14px rgba(60, 20, 8, 0.16));
+  animation: auth-food-float 9s ease-in-out infinite;
+}
+.auth-scene .auth-corner {
+  width: 100%;
+  height: 100%;
+  max-height: none;
+  bottom: auto;
+  z-index: 1;
+}
+.auth-scene .auth-corner--left { left: 0; right: auto; }
+.auth-scene .auth-corner--right { right: 0; left: auto; }
+.auth-scene--login .auth-corner--left {
+  width: clamp(150px, 21vw, 285px);
+  bottom: -58px;
+}
+.auth-scene .auth-food {
+  z-index: 2;
+  max-width: 130px;
+  height: auto;
+}
+.auth-scene .brand-safe-zone {
+  left: 30%;
+  top: 19%;
+  width: 32%;
+  height: 62%;
+  z-index: 4;
+}
+.auth-scene--login .auth-food:nth-of-type(3) { left: 4%; }
+.auth-scene--login .auth-food:nth-of-type(4) { left: 24%; }
+.auth-scene--login .auth-food:nth-of-type(5) { left: 14%; }
+.auth-scene--login .auth-food:nth-of-type(6) { left: 2%; }
+.auth-scene--login .auth-food:nth-of-type(7) { left: 23%; }
+.auth-scene--login .auth-food:nth-of-type(8) { right: 8%; }
+.auth-scene--login .auth-food:nth-of-type(9) { right: 9%; }
+.auth-scene--register .auth-food:nth-of-type(3) { right: 4%; }
+.auth-scene--register .auth-food:nth-of-type(4) { right: 19%; }
+.auth-scene--register .auth-food:nth-of-type(5) { right: 7%; }
+.auth-scene--register .auth-food:nth-of-type(6) { right: 2%; }
+.auth-scene--register .auth-food:nth-of-type(7) { right: 18%; }
+.auth-scene--register .auth-food:nth-of-type(8) { right: 6%; }
+.auth-scene--register .auth-food:nth-of-type(9) { left: 6%; }
+
+@media (max-width: 1023px) {
+  .auth-scene .auth-corner { width: min(27vw, 300px); }
+  .auth-scene .auth-food { max-width: 100px; }
+}
+
+@media (max-width: 639px) {
+  .auth-scene .auth-corner { display: block; width: 100%; height: 100%; max-height: none; bottom: auto; }
+  .auth-scene .auth-corner--left { left: 0; right: auto; }
+  .auth-scene .auth-corner--right { right: 0; left: auto; }
+  .auth-scene .auth-food { display: none; max-width: 70px; }
+  .auth-scene .auth-food:nth-of-type(3),
+  .auth-scene .auth-food:nth-of-type(4),
+  .auth-scene .auth-food:nth-of-type(5),
+  .auth-scene .auth-food:nth-of-type(6) { display: block; }
+  .auth-scene--login .auth-food:nth-of-type(3) { left: 5%; top: 12%; }
+  .auth-scene--login .auth-food:nth-of-type(4) { left: auto; right: 5%; top: 18%; }
+  .auth-scene--login .auth-food:nth-of-type(5) { left: 7%; top: 76%; }
+  .auth-scene--login .auth-food:nth-of-type(6) { left: auto; right: 7%; top: 82%; }
+  .auth-scene--register .auth-food:nth-of-type(3) { right: 5%; top: 12%; }
+  .auth-scene--register .auth-food:nth-of-type(4) { right: auto; left: 5%; top: 18%; }
+  .auth-scene--register .auth-food:nth-of-type(5) { right: 7%; top: 76%; }
+  .auth-scene--register .auth-food:nth-of-type(6) { right: auto; left: 7%; top: 82%; }
+}
+
+/* ---- Refined auth composition ---- */
+.auth-page {
+  position: relative;
+  overflow: hidden;
+  min-height: 0;
+}
+.auth-hero-layout {
+  grid-template-columns: minmax(190px, 0.9fr) minmax(260px, 1.05fr) minmax(320px, 0.9fr);
+  min-height: clamp(570px, calc(100vh - 145px), 760px);
+}
+.auth-page--login .auth-hero-layout {
+  grid-template-areas: "scene hero card";
+}
+.auth-page--login .auth-hero { grid-area: hero; }
+.auth-page--login .auth-card-wrap { grid-area: card; }
+.auth-page--register .auth-hero-layout {
+  grid-template-areas: "card hero scene";
+}
+.auth-page--register .auth-hero { grid-area: hero; }
+.auth-page--register .auth-card-wrap { grid-area: card; }
+
+.auth-hero {
+  align-items: center;
+  text-align: center;
+  padding: 1rem 0 2rem;
+}
+.auth-hero-word { font-family: Georgia, "Times New Roman", serif; }
+.auth-card-wrap { width: min(100%, 390px); }
+.auth-card {
+  padding: 1.65rem 1.8rem;
+  border-radius: 1.15rem;
+  box-shadow: 0 22px 60px rgba(67, 31, 15, 0.14), inset 0 1px 0 rgba(255,255,255,.65);
+}
+.auth-card form { margin-top: 1.15rem; }
+.auth-card .auth-eyebrow { margin-top: .85rem; }
+.auth-card .mt-6 { margin-top: 1rem; }
+.auth-footer { margin-top: 0; padding-block: .85rem; }
+.auth-footer img { height: 2rem; }
+
+/* Art-directed food composition: crisp assets stay small and clear of the hero/card. */
+.auth-scene { z-index: 0; }
+.brand-safe-zone {
+  position: absolute;
+  left: 30%;
+  top: 20%;
+  width: 32%;
+  height: 60%;
+  z-index: 20;
+  pointer-events: none;
+}
+.auth-corner, .auth-food {
+  position: absolute;
+  z-index: 1;
+  pointer-events: none;
+  object-fit: contain;
+  max-width: none;
+  animation: auth-food-float 9s ease-in-out infinite;
+}
+.auth-corner {
+  display: block;
+  width: clamp(220px, 30vw, 420px);
+  height: auto;
+  bottom: 0;
+  object-fit: contain;
+  filter: drop-shadow(0 18px 28px rgba(60,20,8,.2));
+}
+.auth-scene .auth-corner { width: clamp(220px, 30vw, 420px); height: auto; bottom: 0; max-height: none; }
+.auth-scene .auth-corner--left { left: 0; right: auto; }
+.auth-scene .auth-corner--right { right: 0; left: auto; }
+.auth-food { filter: drop-shadow(0 10px 16px rgba(60,20,8,.16)); }
+
+/* Login: outer-left editorial scatter; the 30%-62% hero band stays empty. */
+.auth-scene--login .auth-food--pizza { left: 3%; top: 27%; }
+.auth-scene--login .auth-food--pasta { left: 16%; top: 8%; }
+.auth-scene--login .auth-food--dhosa { left: 22%; top: 18%; }
+.auth-scene--login .auth-food--salad { left: 19%; top: 70%; }
+.auth-scene--login .auth-food--briyani { left: 1%; top: 83%; }
+.auth-scene--login .auth-food--cake { left: 24%; top: 61%; }
+.auth-scene--login .auth-food--mint { left: 14%; top: 46%; }
+.auth-scene--login .auth-food--pepper { left: 27%; top: 57%; }
+
+/* Register: outer-right editorial scatter; the 30%-62% hero band stays empty. */
+.auth-scene--register .auth-food--rolls { right: 3%; top: 12%; }
+.auth-scene--register .auth-food--chinese { right: 18%; top: 7%; }
+.auth-scene--register .auth-food--dessert { right: 7%; top: 29%; }
+.auth-scene--register .auth-food--parotta { right: 2%; top: 82%; }
+.auth-scene--register .auth-food--omelet { right: 19%; top: 67%; }
+.auth-scene--register .auth-food--idly { right: 6%; top: 76%; }
+.auth-scene--register .auth-food--mint { right: 24%; top: 48%; }
+.auth-scene-line { z-index: 0; left: 29%; top: 32%; width: 42%; opacity: .34; }
+
+@media (max-width: 1023px) {
+  .auth-hero-layout { grid-template-columns: minmax(180px, .8fr) minmax(240px, 1fr); min-height: 560px; }
+  .auth-page--login .auth-hero-layout { grid-template-areas: "hero card"; }
+  .auth-page--register .auth-hero-layout { grid-template-areas: "card hero"; }
+  .auth-scene .auth-corner { width: clamp(170px, 34vw, 300px); }
+  .auth-food--pasta, .auth-food--briyani, .auth-food--chinese, .auth-food--parotta { width: 100px; }
+  .auth-food--pizza, .auth-food--cake, .auth-food--rolls, .auth-food--omelet { width: 86px; }
+  .auth-food--salad, .auth-food--dessert, .auth-food--dhosa, .auth-food--idly { width: 76px; }
+}
+@media (max-width: 639px) {
+  .auth-hero-layout,
+  .auth-page--login .auth-hero-layout,
+  .auth-page--register .auth-hero-layout {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 1rem;
+    min-height: auto;
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+  }
+  .auth-hero { order: 1; padding: .5rem 0 1.5rem; }
+  .auth-card-wrap { order: 2; width: calc(100% - 32px); }
+  .auth-card { padding: 1.35rem 1.15rem; }
+  .auth-scene .auth-corner { width: 140px; }
+  .auth-scene .auth-corner--left { left: 0; right: auto; }
+  .auth-scene .auth-corner--right { right: 0; left: auto; }
+  .auth-food { display: none; }
+  .brand-safe-zone { display: none; }
+  .auth-food--mint { display: block; width: 30px; top: 18%; }
+  .auth-scene--login .auth-food--pasta,
+  .auth-scene--register .auth-food--rolls { display: block; width: 66px; top: 24%; }
+  .auth-scene-line { width: 74%; left: 13%; top: 25%; opacity: .22; }
+  .auth-footer { padding-block: .7rem; }
+  .auth-footer > div { gap: .5rem; }
+  .auth-footer p, .auth-footer a { font-size: .7rem; }
+}
+
+/* Login corner art override, after all shared responsive rules. */
+.auth-scene.auth-scene--login .auth-corner.auth-corner--left {
+  width: clamp(150px, 21vw, 285px);
+  bottom: 60px;
+}
