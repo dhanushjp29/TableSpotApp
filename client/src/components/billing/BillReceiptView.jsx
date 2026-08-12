@@ -68,7 +68,7 @@ export default function BillReceiptView({ bill, id = "receipt-print-area" }) {
         data-receipt-theme="light"
         className="overflow-hidden rounded-3xl border border-red-200 bg-white text-gray-900 shadow-[0_18px_55px_rgba(127,29,29,0.12)] dark:border-red-900/60 dark:bg-[#171b23] dark:text-slate-100"
       >
-        <div className="relative overflow-hidden bg-gradient-to-br from-red-700 via-red-600 to-orange-500 px-5 py-6 text-white sm:px-8">
+        <div className="relative overflow-hidden bg-linear-to-br from-red-700 via-red-600 to-orange-500 px-5 py-6 text-white sm:px-8">
           <div className="absolute -right-10 -top-14 h-40 w-40 rounded-full bg-white/10" />
           <div className="absolute -bottom-24 right-24 h-44 w-44 rounded-full bg-orange-300/20" />
           <div className="relative flex items-start justify-between gap-4">
@@ -101,7 +101,7 @@ export default function BillReceiptView({ bill, id = "receipt-print-area" }) {
           </div>
 
           <div className="mt-6 overflow-x-auto">
-            <table className="w-full min-w-[520px] text-left text-sm">
+            <table className="w-full min-w-130 text-left text-sm">
               <thead><tr className="border-b-2 border-red-200 text-[10px] uppercase tracking-widest text-red-800 dark:border-red-800/70 dark:text-red-300"><th className="pb-3">Item</th><th className="pb-3">Qty</th><th className="pb-3 text-right">Amount</th></tr></thead>
               <tbody className="divide-y divide-gray-200 dark:divide-white/10">{(bill?.orderedItems || []).map((item, index) => <tr key={`${item.foodId}-${index}`}><td className="py-3 font-bold text-gray-950 dark:text-slate-100">{item.foodName} <span className="text-xs font-semibold text-gray-600 dark:text-slate-300">({item.variantName || "Regular"})</span></td><td className="py-3 font-semibold text-gray-800 dark:text-slate-200">{item.quantity}</td><td className="py-3 text-right font-bold text-gray-950 dark:text-slate-100">{money(item.totalPrice)}</td></tr>)}</tbody>
             </table>
@@ -120,7 +120,7 @@ export default function BillReceiptView({ bill, id = "receipt-print-area" }) {
           {payments.length > 0 && <div className="mt-6 rounded-2xl border border-gray-300 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#11151b]"><p className="mb-3 text-[10px] font-bold uppercase tracking-widest text-gray-700 dark:text-slate-300">Payment history</p>{payments.map((payment, index) => <div key={`${payment.transactionId || index}`} className="flex justify-between border-b border-gray-200 py-2 text-sm last:border-0 dark:border-white/10"><span className="font-bold text-gray-900 dark:text-slate-100">{payment.paymentMethod}{payment.transactionId ? ` · ${payment.transactionId}` : ""}</span><span className="font-bold text-gray-950 dark:text-slate-100">{money(payment.amount)}</span></div>)}</div>}
         </div>
       </div>
-      <div className="pointer-events-none absolute left-[-10000px] top-0 w-[794px]" aria-hidden="true"><BillReceiptPrint bill={bill} id={`${id}-print`} /></div>
+      <div className="pointer-events-none absolute left-[-10000px] top-0 w-198.5" aria-hidden="true"><BillReceiptPrint bill={bill} id={`${id}-print`} /></div>
     </div>
   );
 }

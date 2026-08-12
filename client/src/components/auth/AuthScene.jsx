@@ -1,6 +1,6 @@
-import leftCorner from "../../assets/loginpage/left_corner1.png";
-import rightCorner from "../../assets/loginpage/right_corner.png";
+import leftCorner from "../../assets/loginpage/left_corner.png";
 import line from "../../assets/loginpage/line.png";
+import rightCorner from "../../assets/loginpage/right_corner.png";
 import { LOGIN_FOOD_ITEMS, REGISTER_FOOD_ITEMS } from "./authFoodConfig.js";
 
 function Food({ src, x, y, size, rotate, zIndex }) {
