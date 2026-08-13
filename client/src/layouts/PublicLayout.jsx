@@ -1,4 +1,4 @@
-import { Link, Outlet } from "react-router-dom";
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom";
 import { useAuth } from "../hooks/useAuth.js";
 import Avatar from "../components/ui/Avatar.jsx";
 import ThemeToggle from "../components/theme/ThemeToggle.jsx";
@@ -14,15 +14,31 @@ const roleDashboard = {
 function PublicLayout() {
   const { isAuthenticated, user, role } = useAuth();
   const { resolvedTheme } = useTheme();
+  const { pathname } = useLocation();
+  const isRestaurantPage =
+    pathname === ROUTES.RESTAURANTS || pathname.startsWith("/restaurants/");
   const dashboardPath = roleDashboard[role] || ROUTES.CUSTOMER_DASHBOARD;
   const logo =
     resolvedTheme === "dark"
       ? "/08_dark_horizontal_logo.png"
       : "/09_light_horizontal_logo.png";
 
+  const navLinkClasses = (isActive) =>
+    isRestaurantPage
+      ? isActive
+        ? "inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors"
+        : "inline-flex items-center rounded-full px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-primary"
+      : "text-sm font-medium text-text-secondary transition-colors hover:text-primary";
+
   return (
     <div className="flex min-h-screen flex-col bg-background">
-      <header className="sticky top-0 z-40 border-b border-border bg-background/80 backdrop-blur-xl">
+      <header
+        className={`sticky top-0 z-40 border-b backdrop-blur-xl ${
+          isRestaurantPage
+            ? "border-border bg-background/85"
+            : "border-primary/20 bg-[rgba(74,11,22,.72)] shadow-[0_10px_32px_rgba(74,11,22,.14)]"
+        }`}
+      >
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4 sm:px-6 lg:px-8">
           <Link to="/" className="flex items-center gap-3">
             <img src={logo} alt="TableSpot" className="h-12 w-auto object-contain" />
@@ -33,26 +49,27 @@ function PublicLayout() {
             </div>
           </Link>
 
-          <nav className="hidden items-center gap-6 md:flex">
-            <Link
-              to={ROUTES.RESTAURANTS}
-              className="text-sm font-medium text-text-secondary transition-colors hover:text-primary"
-            >
+          <nav
+            data-joyride="main-navbar"
+            className={`hidden items-center md:flex ${isRestaurantPage ? "gap-2" : "gap-6"}`}
+          >
+            <NavLink to={ROUTES.RESTAURANTS} className={({ isActive }) => navLinkClasses(isActive)}>
               Restaurants
-            </Link>
-            <Link
-              to={ROUTES.FOODS}
-              className="text-sm font-medium text-text-secondary transition-colors hover:text-primary"
-            >
+            </NavLink>
+            <NavLink to={ROUTES.FOODS} className={({ isActive }) => navLinkClasses(isActive)}>
               Food
-            </Link>
+            </NavLink>
 
             {isAuthenticated ? (
               <div className="flex items-center gap-3">
                 <ThemeToggle />
                 <Link
                   to={dashboardPath}
-                  className="text-sm font-medium text-text-secondary transition-colors hover:text-primary"
+                  className={
+                    isRestaurantPage
+                      ? "btn-outline text-sm"
+                      : "text-sm font-medium text-text-secondary transition-colors hover:text-primary"
+                  }
                 >
                   Dashboard
                 </Link>
@@ -71,7 +88,11 @@ function PublicLayout() {
                 <ThemeToggle />
                 <Link
                   to={ROUTES.LOGIN}
-                  className="text-sm font-medium text-text-secondary transition-colors hover:text-primary"
+                  className={
+                    isRestaurantPage
+                      ? "btn-outline text-sm"
+                      : "text-sm font-medium text-text-secondary transition-colors hover:text-primary"
+                  }
                 >
                   Login
                 </Link>

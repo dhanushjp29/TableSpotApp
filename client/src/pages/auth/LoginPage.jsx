@@ -206,29 +206,23 @@ function LoginPage() {
                 </>
               )}
 
-              {/* Quick Login */}
-              <div className="auth-divider">
-                <span>quick login</span>
-              </div>
-              <div className="grid grid-cols-3 gap-2.5">
-                {QUICK_LOGIN_ACCOUNTS.map((account) => {
-                  const Icon = account.icon;
-                  const active = quickRole === account.role;
-                  return (
-                    <button
-                      key={account.role}
-                      type="button"
-                      onClick={() => handleQuickLogin(account)}
-                      disabled={isSubmitting}
-                      aria-label={`Quick login as ${account.label}`}
-                      className={`auth-quick-btn ${active ? "is-active" : ""}`}
-                    >
-                      <Icon size={16} aria-hidden="true" />
-                      <span>{account.label}</span>
-                    </button>
-                  );
-                })}
-              </div>
+              {new URLSearchParams(location.search).get("joyride") === "true" && (
+                <div data-joyride="quick-login">
+                  <div className="auth-divider"><span>quick login</span></div>
+                  <div className="grid grid-cols-3 gap-2.5">
+                    {QUICK_LOGIN_ACCOUNTS.map((account) => {
+                      const Icon = account.icon;
+                      const active = quickRole === account.role;
+                      return (
+                        <button key={account.role} type="button" onClick={() => handleQuickLogin(account)} disabled={isSubmitting} aria-label={`Quick login as ${account.label}`} className={`auth-quick-btn ${active ? "is-active" : ""}`}>
+                          <Icon size={16} aria-hidden="true" />
+                          <span>{account.label}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               <p className="mt-6 text-center text-sm text-muted">
                 Don't have an account?{" "}

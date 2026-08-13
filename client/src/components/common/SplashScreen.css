@@ -1,0 +1,95 @@
+.ts-splash {
+  --brand-red: #c2221f;
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  overflow: hidden;
+  background: #26070b;
+  isolation: isolate;
+  pointer-events: auto;
+  will-change: opacity, transform;
+}
+
+.ts-splash__ambient {
+  position: absolute;
+  inset: -20%;
+  background:
+    radial-gradient(ellipse 58% 46% at 50% 48%, rgba(194, 34, 31, .72), transparent 64%),
+    radial-gradient(ellipse 80% 72% at 5% 100%, rgba(93, 12, 18, .56), transparent 62%),
+    radial-gradient(ellipse 68% 62% at 100% 0%, rgba(222, 55, 45, .24), transparent 64%),
+    linear-gradient(118deg, #4b0b12 0%, var(--brand-red) 46%, #650d13 100%);
+  animation: ts-velvet-drift 9s ease-in-out infinite alternate, ts-velvet-breathe 5.6s ease-in-out infinite;
+}
+
+.ts-splash__ambient::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: .045;
+  background-image: repeating-linear-gradient(105deg, transparent 0 13px, rgba(255, 201, 185, .14) 14px, transparent 15px 35px);
+  mix-blend-mode: soft-light;
+}
+
+.ts-splash__wave {
+  position: absolute;
+  z-index: 1;
+  left: 50%;
+  top: 50%;
+  width: 30vmax;
+  height: 30vmax;
+  border-radius: 47% 53% 58% 42% / 44% 42% 58% 56%;
+  background: radial-gradient(ellipse at center, rgba(235, 69, 57, .2), rgba(194, 34, 31, .08) 42%, transparent 72%);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(.42) rotate(-8deg);
+  filter: blur(2px);
+  pointer-events: none;
+  animation: ts-soft-wave 3.35s cubic-bezier(.2, .75, .25, 1) 1.45s forwards;
+}
+
+.ts-splash__logo-stage {
+  position: absolute;
+  z-index: 2;
+  left: 50%;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: min(72vw, 560px);
+  transform: translate(-50%, -50%);
+  perspective: 900px;
+  animation: ts-logo-breathe 5.4s ease-in-out 2s infinite;
+}
+
+.ts-splash__logo {
+  display: block;
+  width: 100%;
+  height: auto;
+  aspect-ratio: 1414 / 1021;
+  opacity: 0;
+  filter: blur(2px);
+  transform: translate3d(0, 8px, 0) scale(.9);
+  animation: ts-logo-approach .95s cubic-bezier(.2, .9, .25, 1) .08s forwards;
+}
+
+.ts-splash--leaving { animation: ts-splash-exit .78s cubic-bezier(.22, 1, .36, 1) forwards; }
+
+@keyframes ts-velvet-drift { from { transform: translate3d(-1%, -1%, 0) scale(1); } to { transform: translate3d(1%, 1%, 0) scale(1.035); } }
+@keyframes ts-velvet-breathe { 0%, 100% { opacity: .94; } 50% { opacity: 1; } }
+@keyframes ts-logo-approach {
+  0% { opacity: 0; filter: blur(2px); transform: translate3d(0, 8px, 0) scale(.9); }
+  65% { opacity: 1; filter: blur(.35px); transform: translate3d(0, -1px, 0) scale(1.012); }
+  100% { opacity: 1; filter: blur(0); transform: translate3d(0, 0, 0) scale(1) rotateX(0); }
+}
+@keyframes ts-logo-breathe { 0%, 100% { transform: translate(-50%, -50%) scale(1); } 50% { transform: translate(-50%, -50%) scale(1.012); } }
+@keyframes ts-soft-wave {
+  0% { opacity: 0; transform: translate(-50%, -50%) scale(.42) rotate(-8deg); }
+  22% { opacity: .78; }
+  72% { opacity: .28; transform: translate(-50%, -50%) scale(4.8) rotate(8deg); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(8.2) rotate(14deg); }
+}
+@keyframes ts-splash-exit { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(1.015); pointer-events: none; } }
+@media (max-width: 640px) { .ts-splash__logo-stage { width: min(80vw, 390px); } .ts-splash__ambient { inset: -28%; } }
+@media (prefers-reduced-motion: reduce) {
+  .ts-splash__ambient, .ts-splash__logo-stage, .ts-splash__wave { animation: none; }
+  .ts-splash__logo { opacity: 1; filter: none; transform: none; animation: none; }
+  .ts-splash--leaving { animation: ts-splash-exit .25s ease-out forwards; }
+}

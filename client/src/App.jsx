@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { BrowserRouter, useLocation } from "react-router-dom";
 import { Toaster } from "react-hot-toast";
 import { useDispatch } from "react-redux";
@@ -10,6 +10,8 @@ import { ThemeProvider } from "./context/ThemeContext.jsx";
 import DownloadLoaderProvider from "./hooks/DownloadLoaderProvider.jsx";
 import { initializeAuth } from "./store/slices/authSlice.js";
 import useLiveNotifications from "./hooks/useLiveNotifications.js";
+import SplashScreen from "./components/common/SplashScreen.jsx";
+import TableSpotJoyride from "./components/onboarding/TableSpotJoyride.jsx";
 
 function RouteAwareErrorBoundary({ children }) {
   const location = useLocation();
@@ -24,6 +26,23 @@ function LiveNotificationBridge() {
 
 function App() {
   const dispatch = useDispatch();
+  const [showSplash, setShowSplash] = useState(() => {
+    try {
+      return sessionStorage.getItem("tablespot_splash_seen") !== "true";
+    } catch {
+      // If storage is unavailable, keep the intro independent and show it once for this mount.
+      return true;
+    }
+  });
+
+  const handleSplashComplete = useCallback(() => {
+    try {
+      sessionStorage.setItem("tablespot_splash_seen", "true");
+    } catch {
+      // Storage can be blocked in privacy-restricted environments; the app still reveals normally.
+    }
+    setShowSplash(false);
+  }, []);
 
   // Verify auth session on app load
   useEffect(() => {
@@ -66,8 +85,10 @@ function App() {
             }}
           />
           <DownloadLoadingOverlay />
+          <TableSpotJoyride splashDone={!showSplash} />
         </BrowserRouter>
       </DownloadLoaderProvider>
+      {showSplash && <SplashScreen onComplete={handleSplashComplete} />}
     </ThemeProvider>
   );
 }

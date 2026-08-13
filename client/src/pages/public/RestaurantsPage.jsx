@@ -141,9 +141,9 @@ function RestaurantsPage() {
   ].sort();
 
   return (
-    <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+    <div data-joyride="restaurants-content" className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
       {/* Header */}
-      <div className="mb-6">
+      <div className="mb-6 rounded-2xl">
         <button
           onClick={handleBack}
           className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-muted hover:text-primary"
