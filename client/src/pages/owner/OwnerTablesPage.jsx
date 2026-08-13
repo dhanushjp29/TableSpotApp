@@ -130,7 +130,7 @@ const rebuildSeats = (prev, { label, count, shape, regenerateLabels }) => {
 
 function ShapePicker({ value, onChange }) {
   return (
-    <div className="grid grid-cols-3 gap-2">
+    <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
       {SHAPE_OPTIONS.map((option) => {
         const isSelected = value === option.value;
         return (
@@ -246,9 +246,12 @@ function SeatEditor({ seats, tableLabel, shape, onChange }) {
 
       <div>
         <p className="input-label">Seat Labels</p>
-        <div className="grid max-h-44 grid-cols-3 gap-2 overflow-y-auto rounded-lg border border-border bg-surface-secondary/30 p-2">
+        <div className="grid max-h-44 grid-cols-2 gap-2 overflow-y-auto rounded-lg border border-border bg-surface-secondary/30 p-2 sm:grid-cols-3">
           {seats.map((seat, index) => (
-            <div key={seat.seatIndex} className="flex items-center gap-1">
+            <div
+              key={seat.seatIndex}
+              className="flex min-w-0 items-center gap-1"
+            >
               <input
                 type="text"
                 value={seat.seatLabel}

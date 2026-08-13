@@ -24,7 +24,7 @@ function Pagination({ page = 1, totalPages = 1, onPageChange, className = "" }) 
 
   return (
     <nav
-      className={`flex items-center justify-center gap-1 ${className}`}
+      className={`flex flex-wrap items-center justify-center gap-1 ${className}`}
       aria-label="Pagination"
     >
       <button

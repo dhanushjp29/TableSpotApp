@@ -364,7 +364,7 @@ function RestaurantDetailsPage() {
 
           {/* Reviews Section */}
           <div className="card p-5">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-2">
                 <Star size={20} className="text-primary" />
                 <h2 className="text-lg font-semibold text-text">Reviews</h2>
@@ -408,9 +408,9 @@ function RestaurantDetailsPage() {
                       key={review._id}
                       className="border-b border-gray-50 pb-4 last:border-0"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-text">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm font-medium text-text">
                             {review.userId?.fullName || "Anonymous"}
                           </span>
                           <Rating
@@ -419,7 +419,7 @@ function RestaurantDetailsPage() {
                             showValue={false}
                           />
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex shrink-0 items-center gap-2">
                           <span className="text-xs text-muted">
                             {new Date(review.createdAt).toLocaleDateString()}
                           </span>
@@ -506,9 +506,9 @@ function RestaurantDetailsPage() {
                       key={review._id}
                       className="border-b border-gray-50 pb-4 last:border-0"
                     >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2">
-                          <span className="text-sm font-medium text-text">
+                      <div className="flex items-center justify-between gap-3">
+                        <div className="flex min-w-0 items-center gap-2">
+                          <span className="truncate text-sm font-medium text-text">
                             {review.userId?.fullName || "Anonymous"}
                           </span>
                           <Rating
@@ -517,7 +517,7 @@ function RestaurantDetailsPage() {
                             showValue={false}
                           />
                         </div>
-                        <span className="text-xs text-muted">
+                        <span className="shrink-0 text-xs text-muted">
                           {review.createdAt
                             ? new Date(review.createdAt).toLocaleDateString()
                             : ""}

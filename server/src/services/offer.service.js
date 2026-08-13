@@ -356,6 +356,13 @@ export const createOffer = async ({ ownerId, data }) => {
     throw new ApiError(400, "Validity end must be after validity start.");
   }
 
+  if (
+    data.discountType === "Percentage" &&
+    Number(data.discountValue) > 100
+  ) {
+    throw new ApiError(400, "Percentage discount value cannot exceed 100.");
+  }
+
   if (data.targeting === OFFER_TARGETING.SELECTED && !data.targetUserIds?.length) {
     throw new ApiError(400, "Selected targeting requires at least one customer.");
   }
@@ -482,6 +489,17 @@ export const updateOffer = async ({ ownerId, offerId, updates }) => {
 
   if (updates.discountValue !== undefined) {
     offer.discountValue = Number(updates.discountValue);
+  }
+
+  const effectiveDiscountType = updates.discountType ?? offer.discountType;
+  const effectiveDiscountValue =
+    updates.discountValue !== undefined ? Number(updates.discountValue) : Number(offer.discountValue);
+
+  if (
+    effectiveDiscountType === "Percentage" &&
+    Number(effectiveDiscountValue) > 100
+  ) {
+    throw new ApiError(400, "Percentage discount value cannot exceed 100.");
   }
 
   if (updates.validityStart !== undefined) {

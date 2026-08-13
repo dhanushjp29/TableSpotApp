@@ -25,17 +25,17 @@ import mint3 from "../../assets/Food_img/mint3.png";
 
 export const LOGIN_FOOD_ITEMS = [
   { src: pasta, x: "13%", y: "7%", size: 134, rotate: -9, zIndex: 2 },
-  { src: pizza, x: "4%", y: "26%", size: 120, rotate: 12, zIndex: 3 },
+  { src: pizza, x: "4%", y: "12%", size: 120, rotate: 12, zIndex: 3 },
   { src: dhosa, x: "28%", y: "25%", size: 85, rotate: 6, zIndex: 2 },
   { src: salad, x: "14%", y: "73%", size: 108, rotate: -8, zIndex: 2 },
   { src: briyani, x: "33%", y: "70%", size: 126, rotate: -6, zIndex: 3 },
   { src: cake, x: "23%", y: "54%", size: 64, rotate: -12, zIndex: 3 },
   { src: mint1, x: "90%", y: "11%", size: 78, rotate: 15, zIndex: 2 },
-  { src: pepper, x: "10%", y: "40%", size: 60, rotate: -40, zIndex: 2 },
-  { src: pancake, x: "40%", y: "13%", size: 70, rotate: 7, zIndex: 2 },
+  { src: pepper, x: "10%", y: "30%", size: 60, rotate: -40, zIndex: 2 },
+  { src: pancake, x: "40%", y: "9%", size: 70, rotate: 7, zIndex: 2 },
   { src: leaf, x: "62%", y: "82%", size: 54, rotate: -11, zIndex: 2 },
   { src: tomoto, x: "93%", y: "60%", size: 60, rotate: -30, zIndex: 2 },
-  { src: mint3, x: "58%", y: "18%", size: 70, rotate: 7, zIndex: 2 },
+  { src: mint3, x: "58%", y: "13%", size: 70, rotate: 7, zIndex: 2 },
 ];
 
 export const REGISTER_FOOD_ITEMS = [

@@ -5,6 +5,7 @@ import { mongoIdSchema } from "./common.validator.js";
 import {
   MAX_WARNING_REASON_LENGTH,
   WARNING_LEVEL_VALUES,
+  WARNING_STATUS,
   WARNING_STATUS_VALUES,
 } from "../utils/constants.js";
 
@@ -27,10 +28,20 @@ export const createWarningSchema = z
     expiresAt: z.coerce.date().optional(),
     relatedReportId: mongoIdSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.expiresAt && new Date(data.expiresAt).getTime() <= Date.now()) {
+      ctx.addIssue({
+        path: ["expiresAt"],
+        message: "Warning expiry must be in the future.",
+        code: z.ZodIssueCode.custom,
+      });
+    }
+  });
 
 // Update Restaurant Warning (admin): re-scope level/reason, extend the
-// expiry, or clear an active warning early.
+// expiry, or clear an active warning early. EXPIRED is a terminal state that
+// only the expiry scheduler may apply - admins cannot force it manually.
 export const updateWarningSchema = z
   .object({
     title: z.string().trim().min(3).max(200).optional(),
@@ -47,7 +58,23 @@ export const updateWarningSchema = z
       .optional(),
     clearedReason: z.string().trim().max(MAX_WARNING_REASON_LENGTH).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((data, ctx) => {
+    if (data.status === WARNING_STATUS.EXPIRED) {
+      ctx.addIssue({
+        path: ["status"],
+        message: "Warnings cannot be manually set to EXPIRED.",
+        code: z.ZodIssueCode.custom,
+      });
+    }
+    if (data.expiresAt && new Date(data.expiresAt).getTime() <= Date.now()) {
+      ctx.addIssue({
+        path: ["expiresAt"],
+        message: "Warning expiry must be in the future.",
+        code: z.ZodIssueCode.custom,
+      });
+    }
+  });
 
 // Params
 export const warningIdSchema = z

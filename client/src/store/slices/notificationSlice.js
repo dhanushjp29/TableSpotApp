@@ -36,16 +36,21 @@ const notificationSlice = createSlice({
       state.meta = action.payload;
     },
     markAllRead(state) {
-      state.notifications = [];
+      state.notifications = state.notifications.map((n) => ({
+        ...n,
+        isRead: true,
+      }));
       state.unreadCount = 0;
     },
     markAsRead(state, action) {
       const id = String(action.payload);
-      const before = state.notifications.length;
-      state.notifications = state.notifications.filter(
-        (n) => String(n._id) !== id
-      );
-      if (state.notifications.length < before) {
+      let foundUnread = false;
+      state.notifications = state.notifications.map((n) => {
+        if (String(n._id) !== id) return n;
+        if (!n.isRead) foundUnread = true;
+        return { ...n, isRead: true };
+      });
+      if (foundUnread) {
         state.unreadCount = Math.max(0, state.unreadCount - 1);
       }
     },

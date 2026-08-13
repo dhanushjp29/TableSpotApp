@@ -1,4 +1,5 @@
 import express from "express";
+import mongoose from "mongoose";
 import helmet from "helmet";
 import cors from "cors";
 import morgan from "morgan";
@@ -65,7 +66,16 @@ app.use("/api/v1/auth/forgot-password", authLimiter);
 app.use("/api/v1/auth/reset-password", authLimiter);
 app.use("/api/v1/auth/change-password", authLimiter);
 
-// Health Check
+// Health/readiness check. It intentionally exposes no connection details.
+app.get("/health", (_req, res) => {
+  const databaseReady = mongoose.connection.readyState === 1;
+  res.status(databaseReady ? 200 : 503).json({
+    success: databaseReady,
+    status: databaseReady ? "ok" : "degraded",
+    database: databaseReady ? "connected" : "unavailable",
+  });
+});
+
 app.get("/", (_req, res) => {
   res.status(200).json({
     success: true,

@@ -23,6 +23,8 @@ import OfferRecipient from "../src/models/OfferRecipient.js";
 import Notification from "../src/models/Notification.js";
 import Session from "../src/models/Session.js";
 import Bill from "../src/models/Bill.js";
+import RestaurantReport from "../src/models/RestaurantReport.js";
+import RestaurantWarning from "../src/models/RestaurantWarning.js";
 
 import generateCode from "../src/utils/generateCode.js";
 import { CODE_PREFIX, USER_ROLE, SALT_ROUNDS } from "../src/utils/constants.js";
@@ -33,6 +35,13 @@ const E2E_TABLE_CODE_PREFIX = "E2E-";
 const E2E_OFFER_CODE_PREFIX = "TS_E2E";
 
 const usersFixture = {
+  admin: {
+    fullName: "E2E Admin",
+    email: "admin.e2e@tablespot.test",
+    phoneNumber: "9990000000",
+    password: "Test@12345",
+    role: USER_ROLE.ADMIN,
+  },
   owner: {
     fullName: "E2E Owner",
     email: "owner.e2e@tablespot.test",
@@ -199,6 +208,16 @@ const cleanup = async () => {
   results.offerRecipients = await OfferRecipient.deleteMany({
     $or: [{ customerId: { $in: userIds } }, { offerId: { $in: offerIds } }],
   });
+  results.warnings = await RestaurantWarning.deleteMany({
+    $or: [
+      { ownerId: { $in: userIds } },
+      { restaurantId: { $in: restaurantIds } },
+      { issuedBy: { $in: userIds } },
+    ],
+  });
+  results.reports = await RestaurantReport.deleteMany({
+    $or: [{ userId: { $in: userIds } }, { restaurantId: { $in: restaurantIds } }],
+  });
   results.bills = await Bill.deleteMany({
     $or: [{ customerId: { $in: userIds } }, { restaurantId: { $in: restaurantIds } }],
   });
@@ -304,7 +323,6 @@ const createFoods = async (restaurants) => {
 const createBookings = async (users, restaurants, tables) => {
   const now = Date.now();
   const day = 24 * 60 * 60 * 1000;
-
   const bookingFixtures = [
     // Customer A: recent confirmed (segment: recentWithinDays 30)
     {
@@ -326,7 +344,7 @@ const createBookings = async (users, restaurants, tables) => {
       totalAmount: 1200,
       status: "Confirmed",
     },
-    // Customer A: completed (segment: hasCompletedBooking)
+    // Customer A: completed (segment: hasCompletedBooking) + report eligibility
     {
       user: users.customerA,
       restaurant: restaurants.restaurantA,
@@ -335,6 +353,7 @@ const createBookings = async (users, restaurants, tables) => {
       guests: 3,
       totalAmount: 900,
       status: "Completed",
+      completedAt: new Date(now - 89 * day),
     },
     // Customer B: one old booking at restaurant A (should NOT satisfy segments)
     {
@@ -358,9 +377,10 @@ const createBookings = async (users, restaurants, tables) => {
     },
   ];
 
+  const createdBookings = [];
   for (const fixture of bookingFixtures) {
     const bookingCode = await generateCode(Booking, "bookingCode", CODE_PREFIX.BOOKING);
-    await Booking.create({
+    const booking = await Booking.create({
       bookingCode,
       userId: fixture.user._id,
       restaurantId: fixture.restaurant._id,
@@ -372,10 +392,219 @@ const createBookings = async (users, restaurants, tables) => {
       bookingStatus: fixture.status,
       bookingType: "Online",
       paymentStatus: "Paid",
+      completedAt: fixture.completedAt || null,
       isActive: true,
     });
+    createdBookings.push(booking);
   }
-  console.log(`Created bookings: ${bookingFixtures.length}`);
+  console.log(`Created bookings: ${createdBookings.length}`);
+  return createdBookings;
+};
+
+/**
+ * A settled (Paid) bill for the customer A completed visit at restaurant A.
+ * Unlocks report eligibility, review eligibility, and offer redemption flows.
+ */
+const createBills = async (users, restaurants, foods, bookings) => {
+  const completed = bookings.find(
+    (b) =>
+      b.bookingStatus === "Completed" &&
+      String(b.userId) === String(users.customerA._id) &&
+      String(b.restaurantId) === String(restaurants.restaurantA._id)
+  );
+
+  if (!completed) {
+    throw new Error("Completed booking for customer A not found; cannot seed bill.");
+  }
+
+  const butterChicken = foods.restaurantA.find((f) => f.foodName === "Butter Chicken");
+  const vegBiryani = foods.restaurantA.find((f) => f.foodName === "Veg Biryani");
+
+  const orderedItems = [
+    {
+      foodId: butterChicken._id,
+      foodName: butterChicken.foodName,
+      variantName: "Full",
+      quantity: 1,
+      unitPrice: 500,
+      offerPrice: 0,
+      totalPrice: 500,
+      orderSource: "Spot Order",
+      gstRate: 0,
+    },
+    {
+      foodId: vegBiryani._id,
+      foodName: vegBiryani.foodName,
+      variantName: "Regular",
+      quantity: 2,
+      unitPrice: 220,
+      offerPrice: 0,
+      totalPrice: 440,
+      orderSource: "Spot Order",
+      gstRate: 0,
+    },
+  ];
+
+  const billCode = await generateCode(Bill, "billCode", CODE_PREFIX.BILL);
+  const bill = await Bill.create({
+    billCode,
+    bookingId: completed._id,
+    billType: "ONLINE",
+    tableId: completed.tableId,
+    restaurantId: restaurants.restaurantA._id,
+    customerName: "E2E Customer A",
+    customerPhone: users.customerA.phoneNumber,
+    customerEmail: users.customerA.email,
+    orderedItems,
+    subTotal: 940,
+    discount: { type: "Amount", value: 0 },
+    offer: {
+      offerId: null,
+      offerCode: "",
+      title: "",
+      discountType: "Amount",
+      discountValue: 0,
+      discountAmount: 0,
+      isStackable: false,
+      appliedAt: null,
+    },
+    taxAmount: 0,
+    taxPercentage: 0,
+    grandTotal: 940,
+    payment: {
+      totalPaid: 940,
+      advancePaid: 940,
+      spotPaid: 0,
+      balanceDue: 0,
+      paymentStatus: "Paid",
+      payments: [{ paymentMethod: "UPI", amount: 940 }],
+    },
+    billStatus: "Paid",
+    generatedBy: users.owner._id,
+    generatedAt: completed.completedAt,
+  });
+
+  console.log(`Created bill: ${billCode} (${bill.grandTotal})`);
+  return bill;
+};
+
+const createOffers = async (users, restaurants) => {
+  const now = Date.now();
+  const day = 24 * 60 * 60 * 1000;
+
+  const offerFixtures = [
+    {
+      offerCode: "TS_E2E10",
+      title: "E2E 15% Off",
+      description: "E2E flat 15% percentage offer.",
+      discountType: "Percentage",
+      discountValue: 15,
+      minOrderAmount: 0,
+      maxDiscountAmount: 300,
+      maxRedemptions: 200,
+      perUserRedemptionLimit: 1,
+      targeting: "ALL",
+      isStackable: false,
+      isActive: true,
+      validityStart: new Date(now - 1 * day),
+      validityEnd: new Date(now + 364 * day),
+    },
+    {
+      offerCode: "TS_E2E11",
+      title: "E2E 150 Off",
+      description: "E2E fixed amount offer with min order.",
+      discountType: "Amount",
+      discountValue: 150,
+      minOrderAmount: 800,
+      maxDiscountAmount: 150,
+      maxRedemptions: 100,
+      perUserRedemptionLimit: 2,
+      targeting: "ALL",
+      isStackable: false,
+      isActive: true,
+      validityStart: new Date(now - 1 * day),
+      validityEnd: new Date(now + 364 * day),
+    },
+    {
+      offerCode: "TS_E2E12",
+      title: "E2E Loyalty 10%",
+      description: "E2E segment offer (completed booking customers).",
+      discountType: "Percentage",
+      discountValue: 10,
+      minOrderAmount: 0,
+      maxDiscountAmount: 200,
+      maxRedemptions: 100,
+      perUserRedemptionLimit: 1,
+      targeting: "SEGMENT",
+      segmentRules: { minBookings: 1, minTotalSpent: 0, hasCompletedBooking: true, recentWithinDays: 0, inactiveSinceDays: 0 },
+      isStackable: false,
+      isActive: true,
+      validityStart: new Date(now - 1 * day),
+      validityEnd: new Date(now + 364 * day),
+    },
+    {
+      offerCode: "TS_E2E13",
+      title: "E2E Selected 20%",
+      description: "E2E manual-select offer for customers A and B.",
+      discountType: "Percentage",
+      discountValue: 20,
+      minOrderAmount: 0,
+      maxDiscountAmount: 500,
+      maxRedemptions: 100,
+      perUserRedemptionLimit: 1,
+      targeting: "SELECTED",
+      targetUserIds: [users.customerA._id, users.customerB._id],
+      isStackable: false,
+      isActive: true,
+      validityStart: new Date(now - 1 * day),
+      validityEnd: new Date(now + 364 * day),
+    },
+    {
+      offerCode: "TS_E2E14",
+      title: "E2E Expired Offer",
+      description: "E2E offer whose validity window has closed.",
+      discountType: "Amount",
+      discountValue: 50,
+      minOrderAmount: 0,
+      maxDiscountAmount: 50,
+      maxRedemptions: 100,
+      perUserRedemptionLimit: 1,
+      targeting: "ALL",
+      isStackable: false,
+      isActive: true,
+      validityStart: new Date(now - 60 * day),
+      validityEnd: new Date(now - 10 * day),
+    },
+    {
+      offerCode: "TS_E2E15",
+      title: "E2E Paused Offer",
+      description: "E2E offer paused by the owner.",
+      discountType: "Amount",
+      discountValue: 25,
+      minOrderAmount: 0,
+      maxDiscountAmount: 25,
+      maxRedemptions: 100,
+      perUserRedemptionLimit: 1,
+      targeting: "ALL",
+      isStackable: false,
+      isActive: false,
+      validityStart: new Date(now - 1 * day),
+      validityEnd: new Date(now + 364 * day),
+    },
+  ];
+
+  const created = [];
+  for (const fixture of offerFixtures) {
+    const offer = await Offer.create({
+      ...fixture,
+      restaurantId: restaurants.restaurantA._id,
+      createdBy: users.owner._id,
+    });
+    created.push(offer);
+  }
+
+  console.log(`Created offers: ${created.length}`);
+  return created;
 };
 
 const main = async () => {
@@ -387,20 +616,29 @@ const main = async () => {
   const restaurants = await createRestaurants(users);
   const tables = await createTables(users, restaurants);
   const foods = await createFoods(restaurants);
-  await createBookings(users, restaurants, tables);
+  const bookings = await createBookings(users, restaurants, tables);
+  const bill = await createBills(users, restaurants, foods, bookings);
+  const offers = await createOffers(users, restaurants);
 
   const summary = {
     users: Object.keys(users).length,
     restaurants: Object.keys(restaurants).length,
     tables: tables.restaurantA.length + tables.restaurantB.length,
     foods: foods.restaurantA.length + foods.restaurantB.length,
+    bookings: bookings.length,
+    bills: 1,
+    offers: offers.length,
   };
   console.log("SEED COMPLETE:", JSON.stringify(summary));
 
   await mongoose.disconnect();
 };
 
-main().catch((error) => {
+main().catch(async (error) => {
   console.error("SEED FAILED:", error);
-  process.exitCode = 1;
+  try {
+    await mongoose.disconnect();
+  } finally {
+    process.exit(1);
+  }
 });

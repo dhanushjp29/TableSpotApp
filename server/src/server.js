@@ -1,76 +1,61 @@
-import dotenv from "dotenv";
 import http from "http";
-import path from "path";
-import { fileURLToPath } from "url";
-
-// Proper dotenv path loading to look inside src/
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-dotenv.config({ path: path.join(__dirname, ".env") });
 
 import app from "./app.js";
-import connectDatabase from "./config/database.js";
-import { initSocket } from "./sockets/socket.handler.js";
+import connectDatabase, { closeDatabase } from "./config/database.js";
+import { assertProductionEnvironment } from "./config/env.js";
+import { assertRazorpayMockModesSafe } from "./config/razorpay.js";
 import { startDeadlineCron } from "./services/deadlineCron.service.js";
 import { startOfferCron } from "./services/offerCron.service.js";
 import { startTableStatusScheduler } from "./services/tableStatusScheduler.service.js";
 import { startWarningCron } from "./services/warningCron.service.js";
+import { closeSocket, initSocket } from "./sockets/socket.handler.js";
 
 const PORT = process.env.PORT || 5000;
 
 const startServer = async () => {
-    try {
-        await connectDatabase();
+  try {
+    assertProductionEnvironment();
+    assertRazorpayMockModesSafe();
+    await connectDatabase();
 
-        const server = http.createServer(app);
+    const server = http.createServer(app);
+    initSocket(server);
 
-        // Initialize Socket.io
-        initSocket(server);
+    startDeadlineCron();
+    startTableStatusScheduler();
+    startOfferCron();
+    startWarningCron();
 
-        // Start scheduled deadline tasks (no-show grace, refund deadlines)
-        startDeadlineCron();
+    const activeServer = server.listen(PORT, () => {
+      console.log(`Server is running on port ${PORT}`);
+    });
 
-        // Revert owner-set table status timers back to Available on expiry
-        startTableStatusScheduler();
+    let shuttingDown = false;
+    const shutdown = async (signal) => {
+      if (shuttingDown) return;
+      shuttingDown = true;
+      console.log(`${signal} received. Shutting down gracefully...`);
+      await new Promise((resolve) => activeServer.close(resolve));
+      await closeSocket();
+      await closeDatabase();
+      console.log("HTTP, Socket.io, and MongoDB connections closed.");
+      process.exit(0);
+    };
 
-        // Offer expiring-soon reminders + expire stale active recipients
-        startOfferCron();
-
-        // Expire restaurant warnings whose validity window has closed
-        startWarningCron();
-
-        const activeServer = server.listen(PORT, () => {
-            console.log(`Server is running on port ${PORT}`);
-        });
-
-        // Graceful shutdown handlers
-        process.on("unhandledRejection", (err) => {
-            console.error("UNHANDLED REJECTION! Shutting down gracefully...");
-            console.error(err.name, err.message, err.stack);
-            activeServer.close(() => {
-                process.exit(1);
-            });
-        });
-
-        process.on("uncaughtException", (err) => {
-            console.error("UNCAUGHT EXCEPTION! Shutting down gracefully...");
-            console.error(err.name, err.message, err.stack);
-            activeServer.close(() => {
-                process.exit(1);
-            });
-        });
-
-        process.on("SIGTERM", () => {
-            console.log("👋 SIGTERM RECEIVED. Shutting down gracefully...");
-            activeServer.close(() => {
-                console.log("💥 Process terminated!");
-            });
-        });
-
-    } catch (error) {
-        console.error("Failed to start server:", error.message);
-        process.exit(1);
-    }
+    process.on("unhandledRejection", (error) => {
+      console.error("Unhandled rejection. Shutting down gracefully.", error?.name, error?.message);
+      void shutdown("unhandledRejection");
+    });
+    process.on("uncaughtException", (error) => {
+      console.error("Uncaught exception. Shutting down gracefully.", error?.name, error?.message);
+      void shutdown("uncaughtException");
+    });
+    process.on("SIGTERM", () => void shutdown("SIGTERM"));
+    process.on("SIGINT", () => void shutdown("SIGINT"));
+  } catch (error) {
+    console.error("Failed to start server:", error.message);
+    process.exit(1);
+  }
 };
 
 startServer();

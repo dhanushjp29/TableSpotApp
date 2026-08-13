@@ -291,14 +291,14 @@ function FoodDetailsPage() {
                 key={review._id}
                 className="border-b border-gray-50 pb-4 last:border-0"
               >
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium text-text">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex min-w-0 items-center gap-2">
+                    <span className="truncate text-sm font-medium text-text">
                       {review.userId?.fullName || "Anonymous"}
                     </span>
                     <Rating value={review.rating} size={12} showValue={false} />
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex shrink-0 items-center gap-2">
                     <span className="text-xs text-muted">
                       {new Date(review.createdAt).toLocaleDateString()}
                     </span>

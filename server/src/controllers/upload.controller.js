@@ -11,7 +11,7 @@ export const uploadImage = async (req, res) => {
 
     return res.json({ data: result, message: "Image uploaded successfully." });
   } catch (err) {
-    return res.status(err.status || 500).json({ message: err.message || "Upload failed." });
+    return res.status(err.statusCode || 500).json({ message: err.message || "Upload failed." });
   }
 };
 

@@ -136,7 +136,7 @@ export default function BookingDetailsSummary({ booking, offerRecipient = null }
                       <span>Qty: {item.quantity}</span>
                       <span>Unit: {formatCurrency(item.offerPrice > 0 ? item.offerPrice : item.unitPrice)}</span>
                       {item.offerPrice > 0 && <span className="line-through">₹{Number(item.unitPrice).toFixed(2)}</span>}
-                      {item.orderSource && <Badge variant={item.orderSource === "Pre-Order" ? "primary" : "neutral"} className="text-[10px]">{item.orderSource}</Badge>}
+                      {item.orderSource && <Badge variant={item.orderSource === "Pre-Order" ? "primary" : "neutral"} className="text-xs">{item.orderSource}</Badge>}
                     </div>
                   </div>
                   <span className="font-semibold text-text">{formatCurrency(item.totalPrice)}</span>

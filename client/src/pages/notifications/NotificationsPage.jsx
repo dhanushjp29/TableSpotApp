@@ -382,10 +382,10 @@ function NotificationsPage() {
                 </div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between gap-2">
-                    <h4 className="font-semibold text-text text-sm truncate">
+                    <h4 className="min-w-0 truncate font-semibold text-text text-sm">
                       {notification.title}
                     </h4>
-                    <span className="text-xs text-muted whitespace-nowrap">
+                    <span className="shrink-0 text-xs text-muted whitespace-nowrap">
                       {timeAgo(notification.createdAt)}
                     </span>
                   </div>
@@ -414,7 +414,7 @@ function NotificationsPage() {
                             this request.
                           </p>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
                           <Button
                             size="sm"
                             variant="primary"

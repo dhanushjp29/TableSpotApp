@@ -9,6 +9,7 @@ import { sendRefundEventEmail } from "./businessEmail.service.js";
 import { createRefundForPayment } from "./razorpay.service.js";
 import { unlockOwnerIfNoUnresolvedRefunds } from "./ownerRestriction.service.js";
 import { getIO } from "../sockets/socket.handler.js";
+import crypto from "crypto";
 import {
   CODE_PREFIX,
   PAYMENT_TRANSACTION_STATUS,
@@ -24,6 +25,135 @@ const formatAmount = (value) =>
   `₹${roundAmount(value).toLocaleString("en-IN", {
     maximumFractionDigits: 2,
   })}`;
+
+const REFUND_PROCESSING_TIMEOUT_MS = 10 * 60 * 1000;
+
+const buildRefundFingerprint = ({ amount, reason, refundMethod }) =>
+  crypto
+    .createHash("sha256")
+    .update(`${roundAmount(amount)}|${reason}|${refundMethod}`)
+    .digest("hex");
+
+const buildAutomaticRefundKey = ({ bookingId, reason }) =>
+  `auto:${bookingId}:${reason}`;
+
+const claimRefundForProcessing = async ({
+  refundId,
+  processedBy,
+  refundMethod,
+}) => {
+  const current = await Refund.findById(refundId);
+  if (!current || current.isDeleted) {
+    throw new ApiError(404, "Refund record not found.");
+  }
+
+  if (current.refundStatus === REFUND_STATUS.REFUND_PROCESSING) {
+    const stale =
+      current.processingAt &&
+      current.processingAt.getTime() < Date.now() - REFUND_PROCESSING_TIMEOUT_MS;
+    if (stale) {
+      current.refundStatus = REFUND_STATUS.REFUND_REQUIRES_RECONCILIATION;
+      current.reconciliationRequiredAt = new Date();
+      current.failureReason =
+        "Refund processing became stale; gateway outcome must be verified before retrying.";
+      await current.save();
+    }
+    throw new ApiError(
+      409,
+      "This refund is already being processed or requires reconciliation."
+    );
+  }
+
+  if (
+    current.refundStatus !== REFUND_STATUS.REFUND_PENDING &&
+    current.refundStatus !== REFUND_STATUS.REFUND_OVERDUE
+  ) {
+    if (
+      current.refundStatus === REFUND_STATUS.REFUNDED ||
+      current.refundStatus === REFUND_STATUS.REFUND_AWAITING_CUSTOMER_CONFIRMATION
+    ) {
+      return { refund: current, alreadyProcessed: true };
+    }
+    throw new ApiError(
+      409,
+      `This refund has already been handled (current status: ${current.refundStatus}).`
+    );
+  }
+
+  const claimToken = crypto.randomUUID();
+  const claimed = await Refund.findOneAndUpdate(
+    {
+      _id: refundId,
+      refundStatus: {
+        $in: [REFUND_STATUS.REFUND_PENDING, REFUND_STATUS.REFUND_OVERDUE],
+      },
+    },
+    {
+      $set: {
+        refundStatus: REFUND_STATUS.REFUND_PROCESSING,
+        refundMethod: refundMethod || current.refundMethod,
+        processingAt: new Date(),
+        processedBy: processedBy || current.ownerId,
+        processingClaimToken: claimToken,
+      },
+      $inc: { processingAttempt: 1 },
+    },
+    { new: true }
+  );
+
+  if (!claimed) {
+    throw new ApiError(409, "This refund is already being processed.");
+  }
+
+  return { refund: claimed, claimToken };
+};
+
+const reserveRefundAmount = async ({ payment, amount }) => {
+  const requestedAmount = roundAmount(amount);
+  const reserved = await Payment.findOneAndUpdate(
+    {
+      _id: payment._id,
+      paymentStatus: PAYMENT_TRANSACTION_STATUS.CAPTURED,
+      $expr: {
+        $lte: [
+          {
+            $add: [
+              { $ifNull: ["$refundedAmount", 0] },
+              { $ifNull: ["$refundProcessingAmount", 0] },
+              requestedAmount,
+            ],
+          },
+          "$amount",
+        ],
+      },
+    },
+    { $inc: { refundProcessingAmount: requestedAmount } },
+    { new: true }
+  );
+
+  if (!reserved) {
+    throw new ApiError(
+      409,
+      "The requested refund exceeds the remaining refundable amount."
+    );
+  }
+  return reserved;
+};
+
+const releaseRefundReservation = async ({ paymentId, amount, completed }) => {
+  const requestedAmount = roundAmount(amount);
+  await Payment.updateOne(
+    { _id: paymentId },
+    completed
+      ? {
+          $inc: {
+            refundProcessingAmount: -requestedAmount,
+            refundedAmount: requestedAmount,
+          },
+        }
+      : { $inc: { refundProcessingAmount: -requestedAmount } }
+  );
+};
 
 const getBookingCode = async (bookingId) => {
   if (!bookingId) return "";
@@ -209,6 +339,37 @@ export const createRefund = async ({
   createdBy = null,
   idempotencyKey = "",
 }) => {
+  const normalizedAmount = roundAmount(amount);
+  if (!Number.isFinite(Number(amount)) || normalizedAmount <= 0) {
+    throw new ApiError(400, "Refund amount must be greater than zero.");
+  }
+
+  const normalizedIdempotencyKey =
+    String(idempotencyKey || "").trim() ||
+    buildAutomaticRefundKey({ bookingId: booking._id, reason });
+  const idempotencyFingerprint = buildRefundFingerprint({
+    amount: normalizedAmount,
+    reason,
+    refundMethod,
+  });
+
+  const existing = await Refund.findOne({
+    bookingId: booking._id,
+    idempotencyKey: normalizedIdempotencyKey,
+  });
+  if (existing) {
+    if (
+      existing.idempotencyFingerprint &&
+      existing.idempotencyFingerprint !== idempotencyFingerprint
+    ) {
+      throw new ApiError(
+        409,
+        "This refund idempotency key was already used with a different request."
+      );
+    }
+    return existing;
+  }
+
   const refundCode = await generateCode(
     Refund,
     "refundCode",
@@ -220,23 +381,41 @@ export const createRefund = async ({
     requestedAt.getTime() + REFUND_DEADLINE_DAYS * 24 * 60 * 60 * 1000
   );
 
-  const refund = await Refund.create({
-    refundCode,
-    bookingId: booking._id,
-    billId: booking.billId || null,
-    restaurantId: booking.restaurantId,
-    ownerId: restaurant.ownerId,
-    customerId: booking.userId,
-    amount: roundAmount(amount),
-    reason,
-    remarks: String(remarks || "").trim(),
-    refundMethod,
-    refundStatus: REFUND_STATUS.REFUND_PENDING,
-    requestedAt,
-    deadlineAt,
-    createdBy,
-    idempotencyKey: String(idempotencyKey || "").trim() || null,
-  });
+  let refund;
+  try {
+    refund = await Refund.create({
+      refundCode,
+      bookingId: booking._id,
+      billId: booking.billId || null,
+      restaurantId: booking.restaurantId,
+      ownerId: restaurant.ownerId,
+      customerId: booking.userId,
+      amount: normalizedAmount,
+      reason,
+      remarks: String(remarks || "").trim(),
+      refundMethod,
+      refundStatus: REFUND_STATUS.REFUND_PENDING,
+      requestedAt,
+      deadlineAt,
+      createdBy,
+      idempotencyKey: normalizedIdempotencyKey,
+      idempotencyFingerprint,
+    });
+  } catch (error) {
+    if (error?.code !== 11000) throw error;
+    refund = await Refund.findOne({
+      bookingId: booking._id,
+      idempotencyKey: normalizedIdempotencyKey,
+    });
+    if (!refund) throw error;
+    if (refund.idempotencyFingerprint !== idempotencyFingerprint) {
+      throw new ApiError(
+        409,
+        "This refund idempotency key was already used with a different request."
+      );
+    }
+    return refund;
+  }
 
   await syncBookingRefundStatus(refund);
   void sendRefundEventEmail({ refundId: refund._id, event: "initiated" }).catch((error) => console.error("Refund initiated email error:", error.message));
@@ -344,24 +523,13 @@ export const processRefund = async ({
   processedBy = null,
   refundMethod = null,
 }) => {
-  const refund = await getRefundOrThrow(refundId);
-
-  if (
-    refund.refundStatus !== REFUND_STATUS.REFUND_PENDING &&
-    refund.refundStatus !== REFUND_STATUS.REFUND_OVERDUE
-  ) {
-    throw new ApiError(
-      409,
-      `Only pending or overdue refunds can be processed (current status: ${refund.refundStatus}).`
-    );
-  }
-
-  if (refundMethod) {
-    refund.refundMethod = refundMethod;
-  }
-
-  refund.processingAt = new Date();
-  refund.processedBy = processedBy || refund.ownerId;
+  const claim = await claimRefundForProcessing({
+    refundId,
+    processedBy,
+    refundMethod,
+  });
+  const { refund } = claim;
+  if (claim.alreadyProcessed) return refund;
 
   const bookingCode = await getBookingCode(refund.bookingId);
   const bookingSuffix = bookingCode ? ` for booking ${bookingCode}` : "";
@@ -437,8 +605,16 @@ export const processRefund = async ({
     throw new ApiError(409, refund.failureReason);
   }
 
-  refund.refundStatus = REFUND_STATUS.REFUND_PROCESSING;
-  await refund.save();
+  try {
+    await reserveRefundAmount({ payment, amount: refund.amount });
+  } catch (error) {
+    refund.refundStatus = REFUND_STATUS.REFUND_FAILED;
+    refund.failedAt = new Date();
+    refund.failureReason = "The requested refund exceeds the remaining refundable amount.";
+    await refund.save();
+    await syncBookingRefundStatus(refund);
+    throw error;
+  }
   await syncBookingRefundStatus(refund);
   emitRefundUpdate(refund);
 
@@ -466,6 +642,11 @@ export const processRefund = async ({
 
     payment.gatewayRefundId = gatewayRefund.id;
     await payment.save();
+    await releaseRefundReservation({
+      paymentId: payment._id,
+      amount: refund.amount,
+      completed: true,
+    });
 
     await writeAudit({
       eventType: "REFUNDED",
@@ -491,9 +672,16 @@ export const processRefund = async ({
 
     return refund;
   } catch (error) {
-    refund.refundStatus = REFUND_STATUS.REFUND_FAILED;
+    await releaseRefundReservation({
+      paymentId: payment._id,
+      amount: refund.amount,
+      completed: false,
+    });
+    refund.refundStatus = REFUND_STATUS.REFUND_REQUIRES_RECONCILIATION;
+    refund.reconciliationRequiredAt = new Date();
     refund.failedAt = new Date();
-    refund.failureReason = error.message;
+    refund.failureReason =
+      "Razorpay refund outcome could not be confirmed safely. Verify the gateway before retrying.";
     await refund.save();
     await syncBookingRefundStatus(refund);
     emitRefundUpdate(refund);
@@ -503,7 +691,7 @@ export const processRefund = async ({
       eventAction: "refund_failed_gateway",
       refund,
       performedBy: processedBy,
-      metadata: { failureReason: error.message },
+      metadata: { failureReason: "gateway_outcome_unconfirmed" },
     });
 
     await notifyCustomerRefund({

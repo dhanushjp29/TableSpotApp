@@ -93,19 +93,37 @@ const offerCoreSchema = z
   })
   .strict();
 
+// Percentage discounts must never exceed 100% - a value above 100 would let a
+// discount produce negative bills. Applied to both create and update paths.
+const percentageMaxRefine = (data, ctx) => {
+  if (
+    data.discountType === "Percentage" &&
+    data.discountValue != null &&
+    Number(data.discountValue) > 100
+  ) {
+    ctx.addIssue({
+      path: ["discountValue"],
+      message: "Percentage discount value cannot exceed 100.",
+      code: z.ZodIssueCode.custom,
+    });
+  }
+};
+
 // Create Offer
 export const createOfferSchema = offerCoreSchema
   .extend({
     restaurantId: mongoIdSchema,
   })
-  .strict();
+  .strict()
+  .superRefine(percentageMaxRefine);
 
 // Update Offer (offerCode / isActive are immutable; restaurantId is not part
 // of the offer core schema so it is rejected by .strict() automatically)
 export const updateOfferSchema = offerCoreSchema
   .omit({ offerCode: true, isActive: true })
   .partial()
-  .strict();
+  .strict()
+  .superRefine(percentageMaxRefine);
 
 // Toggle Offer Active
 export const toggleOfferActiveSchema = z

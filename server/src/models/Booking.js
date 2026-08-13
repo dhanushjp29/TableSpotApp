@@ -302,6 +302,16 @@ bookingSchema.index({
 });
 
 bookingSchema.index({ userId: 1, bookingDateTime: -1 });
+bookingSchema.index(
+  { sourcePaymentId: 1 },
+  {
+    unique: true,
+    name: "booking_source_payment_unique_partial",
+    partialFilterExpression: {
+      sourcePaymentId: { $type: "objectId" },
+    },
+  }
+);
 
 bookingSchema.index({ tableId: 1, bookingStatus: 1 });
 

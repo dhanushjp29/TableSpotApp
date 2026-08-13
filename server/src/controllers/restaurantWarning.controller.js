@@ -40,7 +40,6 @@ export const getById = async (req, res) => {
     const owned = await Restaurant.exists({
       _id: warning.restaurantId,
       ownerId: req.user._id,
-      isDeleted: false,
     });
     if (!owned) {
       throw new ApiError(

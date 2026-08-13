@@ -4,6 +4,7 @@ import { ZodError } from "zod";
 import ApiError from "../utils/ApiError.js";
 
 const errorHandler = (error, _req, res, _next) => {
+  const isProduction = String(process.env.NODE_ENV || "").toLowerCase() === "production";
   const statusCode =
     error instanceof ApiError
       ? error.statusCode
@@ -19,8 +20,9 @@ const errorHandler = (error, _req, res, _next) => {
   let errors = [];
 
   if (error instanceof ApiError) {
-    message = error.message;
-    errors = error.errors || [];
+    const exposeApiError = !isProduction || error.statusCode < 500;
+    message = exposeApiError ? error.message : "Service temporarily unavailable.";
+    errors = exposeApiError ? error.errors || [] : [];
   } else if (error instanceof ZodError) {
     errors = error.issues.map((issue) => ({
       path: issue.path.join("."),
@@ -43,7 +45,7 @@ const errorHandler = (error, _req, res, _next) => {
       : "Validation failed.";
   } else if (error instanceof mongoose.Error.CastError) {
     message = `Invalid ${error.path}.`;
-  } else if (error?.message) {
+  } else if (!isProduction && error?.message) {
     message = error.message;
   }
 

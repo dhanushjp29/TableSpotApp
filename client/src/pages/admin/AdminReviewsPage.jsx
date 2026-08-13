@@ -240,15 +240,15 @@ export default function AdminReviewsPage() {
             return (
               <Card key={rev._id} className="p-5 transition-all hover:-translate-y-px hover:shadow-md border border-border">
                 <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 text-primary font-bold">
+                  <div className="flex min-w-0 items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-bold">
                       {userObj?.fullName?.[0] || "U"}
                     </div>
-                    <div>
-                      <h4 className="font-semibold text-text text-sm">
+                    <div className="min-w-0">
+                      <h4 className="truncate font-semibold text-text text-sm">
                         {userObj?.fullName || "Verified Customer"}
                       </h4>
-                      <p className="text-xs text-muted">
+                      <p className="break-words text-xs text-muted">
                         {userObj?.email ? `${userObj.email} · ` : ""}
                         {rev.reviewCode}
                         {" · "}
@@ -257,7 +257,7 @@ export default function AdminReviewsPage() {
                     </div>
                   </div>
 
-                  <div className="flex flex-col items-end gap-1.5">
+                  <div className="flex shrink-0 flex-col items-end gap-1.5">
                     <Rating value={rev.rating || 5} size={16} />
                     <Badge variant={STATUS_VARIANT[rev.status] || "default"}>
                       {rev.status || "Pending"}

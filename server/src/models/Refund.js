@@ -93,6 +93,30 @@ const refundSchema = new mongoose.Schema(
       trim: true,
     },
 
+    idempotencyFingerprint: {
+      type: String,
+      default: "",
+      trim: true,
+      maxlength: 64,
+    },
+
+    processingClaimToken: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
+    processingAttempt: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+
+    reconciliationRequiredAt: {
+      type: Date,
+      default: null,
+    },
+
     requestedAt: {
       type: Date,
       default: null,
@@ -197,10 +221,10 @@ refundSchema.index({
 });
 
 refundSchema.index(
-  { idempotencyKey: 1 },
+  { bookingId: 1, idempotencyKey: 1 },
   {
     unique: true,
-    name: "refund_idempotency_unique_partial",
+    name: "refund_booking_idempotency_unique_partial",
     partialFilterExpression: {
       idempotencyKey: { $type: "string" },
     },

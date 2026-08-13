@@ -327,9 +327,9 @@ export function CustomerBookingsPage() {
                   </Badge>
                 </div>
 
-                <div className="mt-4 flex items-center justify-between border-t border-gray-100 pt-3">
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-gray-100 pt-3">
                   <span className="text-xs font-mono text-muted">{booking.bookingCode || `Ref: ${booking._id}`}</span>
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
                     {booking.bookingStatus === "Completed" &&
                       booking.billId &&
                       typeof booking.billId === "object" && (

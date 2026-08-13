@@ -6,7 +6,7 @@ import {
   openRazorpayCheckout,
 } from "../utils/razorpay.js";
 
-const IS_ORDER_MOCK = import.meta.env.VITE_RAZORPAY_ORDER_MOCK === "true";
+import { IS_RAZORPAY_ORDER_MOCK as IS_ORDER_MOCK } from "../config/runtime.js";
 
 const getErrorMessage = (err, fallback) =>
   err?.response?.data?.message || err?.message || fallback;

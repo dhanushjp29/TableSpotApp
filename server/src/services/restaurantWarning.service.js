@@ -213,6 +213,21 @@ export const issueWarning = async ({
     throw new ApiError(404, "Related report not found.");
   }
 
+  if (
+    report &&
+    String(report.restaurantId) !== String(restaurantId)
+  ) {
+    throw new ApiError(
+      400,
+      "The related report belongs to a different restaurant."
+    );
+  }
+
+  const effectiveExpiry = defaultExpiresAt(expiresAt, expiresInDays);
+  if (effectiveExpiry.getTime() <= Date.now()) {
+    throw new ApiError(400, "Warning expiry must be in the future.");
+  }
+
   const warningCode = await generateCode(
     RestaurantWarning,
     "warningCode",
@@ -229,7 +244,7 @@ export const issueWarning = async ({
     reason: String(reason).trim(),
     issuedBy,
     issuedAt: new Date(),
-    expiresAt: defaultExpiresAt(expiresAt, expiresInDays),
+    expiresAt: effectiveExpiry,
     status: WARNING_STATUS.ACTIVE,
     relatedReportId: report?._id || null,
   });
@@ -268,6 +283,17 @@ export const updateWarning = async ({
   const warning = await getWarningOrThrow(warningId);
   const previousLevel = warning.level;
   const previousExpiry = warning.expiresAt;
+
+  if (updates.status === WARNING_STATUS.EXPIRED) {
+    throw new ApiError(400, "Warnings cannot be manually set to EXPIRED.");
+  }
+
+  if (
+    updates.expiresAt &&
+    new Date(updates.expiresAt).getTime() <= Date.now()
+  ) {
+    throw new ApiError(400, "Warning expiry must be in the future.");
+  }
 
   const applyingClear =
     updates.status === WARNING_STATUS.CLEARED && warning.status === WARNING_STATUS.ACTIVE;

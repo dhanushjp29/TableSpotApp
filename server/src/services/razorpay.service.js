@@ -1,11 +1,13 @@
 import Razorpay from "razorpay";
 import crypto from "crypto";
 import ApiError from "../utils/ApiError.js";
+import { isRazorpayMockEnabled } from "../config/razorpay.js";
 
 const isOnboardingMock = () =>
-  process.env.RAZORPAY_ONBOARDING_MOCK === "true";
+  isRazorpayMockEnabled("RAZORPAY_ONBOARDING_MOCK");
 
-const isOrderMock = () => process.env.RAZORPAY_ORDER_MOCK === "true";
+const isOrderMock = () =>
+  isRazorpayMockEnabled("RAZORPAY_ORDER_MOCK");
 
 // Initialize Razorpay client lazily to avoid crashing if env variables are not set during boot
 let razorpayInstance = null;
@@ -35,7 +37,12 @@ const getRazorpayInstance = () => {
  * @param {string} [razorpayAccountId] - Owner's Razorpay Account ID if transferring directly
  * @returns {Promise<object>} The created Razorpay Order object
  */
-export const createPaymentOrder = async ({ bookingId, amount, razorpayAccountId }) => {
+export const createPaymentOrder = async ({
+  bookingId,
+  amount,
+  razorpayAccountId,
+  receipt = "",
+}) => {
     // RAZORPAY_ORDER_MOCK=true short-circuits the real gateway call (the
     // sandbox key used in automated tests does not support live orders) so the
     // full payment-first flow can be exercised deterministically. It MUST be
@@ -49,7 +56,7 @@ export const createPaymentOrder = async ({ bookingId, amount, razorpayAccountId 
             id: `order_mock_${bookingId.toString().substring(0, 8)}_${uniqueSuffix}`,
             amount: amountInPaise,
             currency: "INR",
-            receipt: `rcpt_bk_${bookingId.toString().substring(0, 14)}`,
+            receipt: receipt || `rcpt_bk_${bookingId.toString().substring(0, 14)}`,
             status: "created",
             notes: {
                 bookingId: bookingId.toString(),
@@ -76,7 +83,7 @@ export const createPaymentOrder = async ({ bookingId, amount, razorpayAccountId 
     const options = {
         amount: amountInPaise,
         currency: "INR",
-        receipt: `rcpt_bk_${bookingId.toString().substring(0, 14)}`,
+        receipt: receipt || `rcpt_bk_${bookingId.toString().substring(0, 14)}`,
         notes: {
             bookingId: bookingId.toString(),
         },
@@ -103,6 +110,24 @@ export const createPaymentOrder = async ({ bookingId, amount, razorpayAccountId 
 };
 
 /**
+ * Recover an order created before the application lost the response. Razorpay
+ * supports filtering orders by receipt, which lets retries recover the same
+ * gateway order without creating another one.
+ */
+export const findPaymentOrderByReceipt = async ({ receipt }) => {
+    if (!receipt || isOrderMock()) return null;
+
+    const razorpay = getRazorpayInstance();
+
+    try {
+        const result = await razorpay.orders.all({ receipt, count: 10 });
+        return (result?.items || []).find((order) => order.receipt === receipt) || null;
+    } catch (error) {
+        throw new ApiError(502, "Razorpay order recovery is temporarily unavailable.");
+    }
+};
+
+/**
  * Initiate a Razorpay refund against a captured payment.
  *
  * RAZORPAY_REFUND_MOCK=true short-circuits the real gateway call so that
@@ -119,7 +144,7 @@ export const createRefundForPayment = async ({
   amount,
   refundCode,
 }) => {
-  if (process.env.RAZORPAY_REFUND_MOCK === "true") {
+  if (isRazorpayMockEnabled("RAZORPAY_REFUND_MOCK")) {
     return {
       id: `rgd_${refundCode}`,
       status: "processed",

@@ -939,8 +939,11 @@ export function CreateRestaurantForm({ restaurant = null, onSuccess, onCancel })
       <div className="rounded-lg border border-gray-100 p-4">
         <div className="space-y-1.5">
           {operatingHours.map((hour) => (
-            <div key={hour.day} className="flex items-center gap-2">
-              <label className="flex w-32 shrink-0 items-center gap-1.5 text-xs font-medium text-text">
+            <div
+              key={hour.day}
+              className="flex flex-col gap-2 sm:flex-row sm:items-center"
+            >
+              <label className="flex w-full shrink-0 items-center gap-1.5 text-xs font-medium text-text sm:w-32">
                 <input
                   type="checkbox"
                   checked={hour.isOpen}
@@ -955,7 +958,7 @@ export function CreateRestaurantForm({ restaurant = null, onSuccess, onCancel })
                 value={hour.open}
                 disabled={!hour.isOpen}
                 onChange={(e) => updateHour(hour.day, "open", e.target.value)}
-                className="w-36"
+                className="w-full sm:w-36"
                 placeholder="Open"
               />
               <span className="text-xs text-muted">to</span>
@@ -963,7 +966,7 @@ export function CreateRestaurantForm({ restaurant = null, onSuccess, onCancel })
                 value={hour.close}
                 disabled={!hour.isOpen}
                 onChange={(e) => updateHour(hour.day, "close", e.target.value)}
-                className="w-36"
+                className="w-full sm:w-36"
                 placeholder="Close"
               />
             </div>

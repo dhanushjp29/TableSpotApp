@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { io } from "socket.io-client";
 import { addNotification, setSocketEvent } from "../store/slices/notificationSlice.js";
+import { SOCKET_URL } from "../config/runtime.js";
 
-const SOCKET_URL = import.meta.env.VITE_SOCKET_URL || "http://localhost:5000";
 
 export function useSocket() {
   const dispatch = useDispatch();

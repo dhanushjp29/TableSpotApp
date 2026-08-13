@@ -121,7 +121,7 @@ function ReportForm({ onClose, restaurantId, restaurantName, onSuccess }) {
         <label className="mb-2 block text-sm font-medium text-text">
           Severity
         </label>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           {SEVERITIES.map((sev) => (
             <button
               key={sev}

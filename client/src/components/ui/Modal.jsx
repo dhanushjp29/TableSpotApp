@@ -47,7 +47,7 @@ function Modal({
         onClick={(e) => e.stopPropagation()}
       >
         {title && (
-          <div className="flex items-center justify-between border-b border-border bg-surface-secondary/35 px-6 py-4">
+          <div className="flex items-center justify-between border-b border-border bg-surface-secondary/35 px-4 py-4 sm:px-6">
             <h2 className="text-lg font-bold tracking-tight text-text">{title}</h2>
             <button
               onClick={onClose}
@@ -58,9 +58,9 @@ function Modal({
             </button>
           </div>
         )}
-        <div className="flex-1 overflow-y-auto px-6 py-6">{children}</div>
+        <div className="flex-1 overflow-x-hidden overflow-y-auto px-4 py-5 sm:px-6 sm:py-6">{children}</div>
         {footer && (
-          <div className="flex justify-end gap-3 border-t border-border bg-surface-secondary/25 px-6 py-4">
+          <div className="flex flex-wrap justify-end gap-3 border-t border-border bg-surface-secondary/25 px-4 py-4 sm:px-6">
             {footer}
           </div>
         )}

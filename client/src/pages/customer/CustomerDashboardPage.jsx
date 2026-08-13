@@ -248,7 +248,7 @@ export default function CustomerDashboardPage() {
 
       {/* Recommended Restaurants */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-xl font-bold text-text flex items-center gap-2">
               <Compass size={20} className="text-primary" />
@@ -295,7 +295,7 @@ export default function CustomerDashboardPage() {
 
       {/* Recommended Dishes */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-xl font-bold text-text flex items-center gap-2">
               <Star size={20} className="text-amber-500" />
@@ -337,7 +337,7 @@ export default function CustomerDashboardPage() {
 
       {/* Recent Bookings */}
       <div className="space-y-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="text-xl font-bold text-text">Recent Bookings</h2>
             <p className="text-xs text-muted">Your latest reservations and quick actions</p>
@@ -428,11 +428,11 @@ export default function CustomerDashboardPage() {
                     </Badge>
                   </div>
 
-                  <div className="mt-4 flex items-center justify-between border-t border-border pt-3">
+                  <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-border pt-3">
                     <span className="text-xs font-mono text-muted">
                       {booking.bookingCode || `ID: ${booking._id.slice(-6)}`}
                     </span>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       {restaurant && (
                         <Button
                           variant="ghost"

@@ -74,7 +74,13 @@ export const fetchRestaurantById = (restaurantId) => async (dispatch) => {
   dispatch(setError(null));
   try {
     const response = await restaurantApi.getById(restaurantId);
-    dispatch(setCurrentRestaurant(response.data?.restaurant || response.data));
+    const payload = response.data?.data || response.data;
+    dispatch(
+      setCurrentRestaurant({
+        ...(payload?.restaurant || payload),
+        offers: payload?.offers || [],
+      })
+    );
     return response;
   } catch (error) {
     dispatch(

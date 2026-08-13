@@ -1,5 +1,7 @@
 import { Check, ChevronDown, Search, X } from "lucide-react";
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
+import { usePopupPosition } from "../ui/usePopupPosition.js";
 
 function SearchableSelect({
   label,
@@ -16,6 +18,7 @@ function SearchableSelect({
   const [highlightedIndex, setHighlightedIndex] = useState(0);
   const rootRef = useRef(null);
   const listRef = useRef(null);
+  const { triggerRef, popupRef, popupStyle } = usePopupPosition(open, 320, 280);
 
   const selected = useMemo(
     () => options.find((opt) => opt.value === value) || null,
@@ -24,13 +27,15 @@ function SearchableSelect({
 
   useEffect(() => {
     const handleClickOutside = (event) => {
-      if (rootRef.current && !rootRef.current.contains(event.target)) {
+      const isInsideRoot = rootRef.current?.contains(event.target);
+      const isInsidePopup = popupRef.current?.contains(event.target);
+      if (!isInsideRoot && !isInsidePopup) {
         setOpen(false);
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
+  }, [popupRef]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -86,7 +91,7 @@ function SearchableSelect({
   return (
     <div ref={rootRef} className={`relative w-full ${className}`}>
       {label && <label className="input-label">{label}</label>}
-      <div className="relative">
+      <div ref={triggerRef} className="relative">
         <Search
           size={16}
           className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted"
@@ -126,39 +131,48 @@ function SearchableSelect({
         />
       </div>
 
-      {open && (
-        <ul
-          role="listbox"
-          ref={listRef}
-          className="dropdown-popup absolute z-30 mt-1 max-h-60 w-full overflow-auto"
-        >
-          {filtered.length === 0 ? (
-            <li className="px-3.5 py-2.5 text-sm text-muted">
-              No results found
-            </li>
-          ) : (
-            filtered.map((opt, index) => {
-              const isSelected = opt.value === value;
-              const isHighlighted = index === highlightedIndex;
-              return (
-                <li key={opt.key ?? opt.label} role="option" aria-selected={isSelected}>
-                  <button
-                    type="button"
-                    onMouseEnter={() => setHighlightedIndex(index)}
-                    onClick={() => select(opt)}
-                    className={`flex w-full items-center justify-between gap-2 px-3.5 py-2 text-left text-sm transition-colors ${
-                      isHighlighted ? "bg-primary/5 text-primary" : "text-text"
-                    }`}
-                  >
-                    <span className="truncate">{opt.label}</span>
-                    {isSelected && <Check size={15} className="shrink-0 text-primary" />}
-                  </button>
-                </li>
-              );
-            })
-          )}
-        </ul>
-      )}
+      {open &&
+        createPortal(
+          <ul
+            role="listbox"
+            ref={listRef}
+            style={{
+              position: "fixed",
+              zIndex: 1000,
+              ...popupStyle,
+              width: triggerRef.current?.getBoundingClientRect().width || "100%",
+              maxHeight: Math.min(popupStyle.maxHeight, 280),
+            }}
+            className="dropdown-popup max-h-60 overflow-auto"
+          >
+            {filtered.length === 0 ? (
+              <li className="px-3.5 py-2.5 text-sm text-muted">
+                No results found
+              </li>
+            ) : (
+              filtered.map((opt, index) => {
+                const isSelected = opt.value === value;
+                const isHighlighted = index === highlightedIndex;
+                return (
+                  <li key={opt.key ?? opt.label} role="option" aria-selected={isSelected}>
+                    <button
+                      type="button"
+                      onMouseEnter={() => setHighlightedIndex(index)}
+                      onClick={() => select(opt)}
+                      className={`flex w-full items-center justify-between gap-2 px-3.5 py-2 text-left text-sm transition-colors ${
+                        isHighlighted ? "bg-primary/5 text-primary" : "text-text"
+                      }`}
+                    >
+                      <span className="truncate">{opt.label}</span>
+                      {isSelected && <Check size={15} className="shrink-0 text-primary" />}
+                    </button>
+                  </li>
+                );
+              })
+            )}
+          </ul>,
+          document.body
+        )}
 
       {error && <p className="input-error">{error}</p>}
     </div>

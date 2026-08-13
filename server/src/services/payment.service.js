@@ -3,15 +3,18 @@ import Bill from "../models/Bill.js";
 import Payment from "../models/Payment.js";
 import { addBillPayment } from "./bill.service.js";
 import { createBookingFromPayment } from "./booking.service.js";
+import { releaseBookingHolds } from "./bookingHold.service.js";
 import { createAuditLog } from "./auditLog.service.js";
 import { createNotification } from "./notification.service.js";
 import { sendPaymentEventEmail } from "./businessEmail.service.js";
 import {
   BOOKING_STATUS,
+  PAYMENT_BOOKING_STATUS,
   PAYMENT_METHOD,
   PAYMENT_STATUS,
   PAYMENT_TRANSACTION_STATUS,
 } from "../utils/constants.js";
+import ApiError from "../utils/ApiError.js";
 import { getIO } from "../sockets/socket.handler.js";
 
 const roundAmount = (value) => Math.round(Number(value || 0) * 100) / 100;
@@ -20,6 +23,48 @@ const formatAmount = (value) =>
   `₹${roundAmount(value).toLocaleString("en-IN", {
     maximumFractionDigits: 2,
   })}`;
+
+const releasePaymentFirstHold = async (paymentRecord) => {
+  if (!paymentRecord?.bookingData || !paymentRecord.reservationHoldToken) {
+    return;
+  }
+
+  try {
+    await releaseBookingHolds({
+      tableIds: (paymentRecord.bookingData.tables || []).map(
+        (entry) => entry.tableId
+      ),
+      holdToken: paymentRecord.reservationHoldToken,
+    });
+  } catch (releaseError) {
+    console.error("Failed to release payment-first booking hold", {
+      paymentId: String(paymentRecord._id),
+      reason: releaseError.message,
+    });
+  }
+};
+
+const markBookingReconciliationRequired = async ({ paymentRecord, error }) => {
+  paymentRecord.bookingCreationStatus =
+    PAYMENT_BOOKING_STATUS.FAILED_REQUIRES_RECONCILIATION;
+  paymentRecord.bookingFailureReason = String(
+    error?.message || "Booking creation failed"
+  ).slice(0, 1000);
+  paymentRecord.bookingFailureAt = new Date();
+  await paymentRecord.save();
+
+  console.error("Payment-to-booking reconciliation required", {
+    paymentId: String(paymentRecord._id),
+    razorpayOrderId: paymentRecord.razorpayOrderId,
+    razorpayPaymentId: paymentRecord.razorpayPaymentId,
+    reservationId: paymentRecord.bookingId
+      ? String(paymentRecord.bookingId)
+      : null,
+    restaurantId: String(paymentRecord.restaurantId),
+    customerId: String(paymentRecord.customerId),
+    reason: paymentRecord.bookingFailureReason,
+  });
+};
 
 /**
  * Resolve the human-friendly reference label and the notification link target
@@ -137,11 +182,23 @@ export const handlePaymentCaptured = async ({
 
       return { duplicate: true, paymentRecord };
     }
+
+    // A previously captured payment without a linked booking is recoverable.
+    // Leave the gateway status captured and retry booking materialization.
+    paymentRecord.bookingCreationStatus = PAYMENT_BOOKING_STATUS.PENDING;
+    paymentRecord.bookingFailureReason = "";
+    paymentRecord.bookingFailureAt = null;
+    await paymentRecord.save();
   }
 
   paymentRecord.razorpayPaymentId = razorpayPaymentId;
   paymentRecord.paymentStatus = PAYMENT_TRANSACTION_STATUS.CAPTURED;
   paymentRecord.paymentMethod = paymentMethod || PAYMENT_METHOD.CARD;
+  if (paymentRecord.bookingData && !paymentRecord.bookingId) {
+    paymentRecord.bookingCreationStatus = PAYMENT_BOOKING_STATUS.PENDING;
+  } else if (paymentRecord.bookingId) {
+    paymentRecord.bookingCreationStatus = PAYMENT_BOOKING_STATUS.SUCCEEDED;
+  }
   await paymentRecord.save();
 
   try {
@@ -172,12 +229,53 @@ export const handlePaymentCaptured = async ({
     ? await Booking.findById(paymentRecord.bookingId)
     : null;
 
-  if (!booking && paymentRecord.bookingData) {
-    const created = await createBookingFromPayment({ paymentRecord });
-    booking = created.booking;
+  if (!booking && !paymentRecord.bookingData && !paymentRecord.billId) {
+    await markBookingReconciliationRequired({
+      paymentRecord,
+      error: new Error("Captured payment has no booking snapshot or linked booking."),
+    });
+    throw new ApiError(
+      409,
+      "Payment was captured, but the booking could not be confirmed. Our team will reconcile this payment."
+    );
+  }
 
-    paymentRecord.bookingId = booking._id;
-    await paymentRecord.save();
+  if (!booking && paymentRecord.bookingData) {
+    try {
+      const created = await createBookingFromPayment({ paymentRecord });
+      booking = created.booking;
+
+      paymentRecord.bookingId = booking._id;
+      paymentRecord.bookingCreationStatus = PAYMENT_BOOKING_STATUS.SUCCEEDED;
+      paymentRecord.bookingFailureReason = "";
+      paymentRecord.bookingFailureAt = null;
+      await paymentRecord.save();
+    } catch (error) {
+      // A booking may have been inserted before a later side effect failed or
+      // before a concurrent verification request completed. Reuse it when it
+      // exists; otherwise persist a durable reconciliation state.
+      const recoveredBooking = await Booking.findOne({
+        sourcePaymentId: paymentRecord._id,
+        isDeleted: false,
+      });
+
+      await releasePaymentFirstHold(paymentRecord);
+
+      if (recoveredBooking) {
+        booking = recoveredBooking;
+        paymentRecord.bookingId = recoveredBooking._id;
+        paymentRecord.bookingCreationStatus = PAYMENT_BOOKING_STATUS.SUCCEEDED;
+        paymentRecord.bookingFailureReason = "";
+        paymentRecord.bookingFailureAt = null;
+        await paymentRecord.save();
+      } else {
+        await markBookingReconciliationRequired({ paymentRecord, error });
+        throw new ApiError(
+          409,
+          "Payment was captured, but the booking could not be confirmed. Our team will reconcile this payment."
+        );
+      }
+    }
   }
 
   if (booking && !booking.isDeleted) {
@@ -281,6 +379,29 @@ export const handlePaymentCaptured = async ({
 };
 
 /**
+ * Durable candidates for an operator or future reconciliation worker. This
+ * intentionally does not initiate a refund because refund concurrency is a
+ * separate production task.
+ */
+export const findPaymentsRequiringBookingReconciliation = async ({
+  limit = 100,
+} = {}) =>
+  Payment.find({
+    paymentStatus: PAYMENT_TRANSACTION_STATUS.CAPTURED,
+    bookingCreationStatus: {
+      $in: [
+        PAYMENT_BOOKING_STATUS.PENDING,
+        PAYMENT_BOOKING_STATUS.FAILED_REQUIRES_RECONCILIATION,
+        null,
+      ],
+    },
+    bookingId: null,
+    bookingData: { $ne: null },
+  })
+    .sort({ bookingFailureAt: 1 })
+    .limit(Math.min(Math.max(Number(limit) || 100, 1), 500));
+
+/**
  * Mark a Razorpay payment as failed (only if not already captured).
  */
 export const handlePaymentFailed = async ({ razorpayOrderId, razorpayPaymentId = "" }) => {
@@ -337,4 +458,3 @@ export const handlePaymentFailed = async ({ razorpayOrderId, razorpayPaymentId =
 
   return paymentRecord;
 };
-import { releaseBookingHolds } from "./bookingHold.service.js";

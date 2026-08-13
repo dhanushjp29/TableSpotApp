@@ -256,7 +256,7 @@ function RestaurantDiscoveryMap({
     return (
       <div
         className={`flex items-center justify-center bg-gray-50 rounded-xl ${className}`}
-        style={{ minHeight: "650px" }}
+        style={{ minHeight: "min(650px, 55vh)" }}
       >
         <div className="text-center">
           <MapPin size={32} className="mx-auto text-muted" />
@@ -271,13 +271,13 @@ function RestaurantDiscoveryMap({
   return (
     <div
       className={`relative rounded-xl overflow-hidden ${className}`}
-      style={{ minHeight: "650px" }}
+      style={{ minHeight: "min(650px, 55vh)" }}
     >
       <MapContainer
         center={[13.0827, 80.2707]}
         zoom={12}
         scrollWheelZoom
-        style={{ height: "100%", width: "100%", minHeight: "650px" }}
+        style={{ height: "100%", width: "100%", minHeight: "min(650px, 55vh)" }}
         ref={mapRef}
         attributionControl={false}
       >
@@ -322,8 +322,8 @@ function RestaurantDiscoveryMap({
               }}
               zIndexOffset={isSelected ? 1000 : 0}
             >
-              <Popup maxWidth={340} className="tablespot-popup">
-                <div className="w-[310px]">
+              <Popup maxWidth={300} className="tablespot-popup">
+                <div className="w-[min(300px,calc(100vw-56px))]">
                   <div className="relative h-28 overflow-hidden bg-gray-100">
                     {restaurant.coverImage ? (
                       <img

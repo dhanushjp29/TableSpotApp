@@ -157,3 +157,10 @@ export const getIO = () => {
     }
     return io;
 };
+
+export const closeSocket = async () => {
+    if (io) {
+        await new Promise((resolve) => io.close(resolve));
+        io = undefined;
+    }
+};

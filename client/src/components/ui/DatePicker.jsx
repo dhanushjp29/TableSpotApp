@@ -150,7 +150,7 @@ function DatePicker({
           ref={popupRef}
           role="dialog"
           style={{ position: "fixed", ...popupStyle, width: 300 }}
-          className="dropdown-popup z-[1000] max-h-[80vh] overflow-y-auto p-3"
+          className="dropdown-popup z-[1000] max-h-[80vh] max-w-[calc(100vw-24px)] overflow-y-auto p-3"
         >
           <div className="mb-2 flex items-center justify-between">
             <button

@@ -178,7 +178,7 @@ export default function OwnerReviewsPage() {
 
       {/* Summary Stat Card */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-        <Card className="p-5 flex items-center gap-4 border border-amber-200/70 bg-gradient-to-br from-amber-500/10 to-orange-500/5 shadow-sm">
+        <Card className="p-5 flex items-center gap-4 border border-amber-200/70 bg-linear-to-br from-amber-500/10 to-orange-500/5 shadow-sm">
           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-amber-500 text-white font-bold text-2xl shadow-md">
             {avgRating}
           </div>
@@ -237,7 +237,7 @@ export default function OwnerReviewsPage() {
         </div>
 
         {/* Star Rating Filter */}
-        <div className="flex items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           <span className="text-xs font-semibold text-muted mr-1">Filter:</span>
           {[0, 5, 4, 3, 2, 1].map((s) => (
             <button

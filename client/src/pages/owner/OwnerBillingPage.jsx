@@ -2073,15 +2073,15 @@ export default function OwnerBillingPage() {
             </div>
 
             <div className="space-y-1 text-xs border-b border-border pb-2">
-              <div className="flex justify-between gap-2"><span>Bill Type:</span><span>{activeReceiptBill.billType === "WALK_IN" ? "Walk-in" : "Online Booking"}</span></div>
-              <div className="flex justify-between gap-2"><span>Restaurant:</span><span>{activeReceiptBill.restaurantId?.restaurantName || "-"}</span></div>
-              <div className="flex justify-between gap-2"><span>Customer:</span><span>{activeReceiptBill.customerName || activeReceiptBill.bookingId?.userId?.fullName || "Guest"}</span></div>
-              <div className="flex justify-between gap-2"><span>Email:</span><span>{activeReceiptBill.customerEmail || activeReceiptBill.bookingId?.userId?.email || "-"}</span></div>
-              <div className="flex justify-between gap-2"><span>Booking number:</span><span>{activeReceiptBill.billType === "WALK_IN" ? "Walk-in / -" : (activeReceiptBill.bookingId?.bookingCode || "-")}</span></div>
-              <div className="flex justify-between gap-2"><span>Phone:</span><span>{activeReceiptBill.customerPhone || activeReceiptBill.bookingId?.userId?.phoneNumber || "-"}</span></div>
-              <div className="flex justify-between gap-2"><span>Table:</span><span>{activeReceiptBill.tableId?.tableCode ?? activeReceiptBill.tableId?.tableNumber ?? activeReceiptBill.bookingId?.tableId?.tableCode ?? activeReceiptBill.bookingId?.tableId?.tableNumber ?? "-"}</span></div>
-              {activeReceiptBill.billType !== "WALK_IN" && <div className="flex justify-between gap-2"><span>Booking date/time:</span><span>{activeReceiptBill.bookingId?.bookingDateTime ? formatDateTime(new Date(activeReceiptBill.bookingId.bookingDateTime)) : "-"}</span></div>}
-              <div className="flex justify-between gap-2"><span>Bill No:</span><span>{activeReceiptBill.billCode || activeReceiptBill._id}</span></div>
+              <div className="flex justify-between gap-2"><span className="shrink-0">Bill Type:</span><span className="truncate text-right">{activeReceiptBill.billType === "WALK_IN" ? "Walk-in" : "Online Booking"}</span></div>
+              <div className="flex justify-between gap-2"><span className="shrink-0">Restaurant:</span><span className="truncate text-right">{activeReceiptBill.restaurantId?.restaurantName || "-"}</span></div>
+              <div className="flex justify-between gap-2"><span className="shrink-0">Customer:</span><span className="truncate text-right">{activeReceiptBill.customerName || activeReceiptBill.bookingId?.userId?.fullName || "Guest"}</span></div>
+              <div className="flex justify-between gap-2"><span className="shrink-0">Email:</span><span className="min-w-0 break-all text-right">{activeReceiptBill.customerEmail || activeReceiptBill.bookingId?.userId?.email || "-"}</span></div>
+              <div className="flex justify-between gap-2"><span className="shrink-0">Booking number:</span><span className="truncate text-right">{activeReceiptBill.billType === "WALK_IN" ? "Walk-in / -" : (activeReceiptBill.bookingId?.bookingCode || "-")}</span></div>
+              <div className="flex justify-between gap-2"><span className="shrink-0">Phone:</span><span className="truncate text-right">{activeReceiptBill.customerPhone || activeReceiptBill.bookingId?.userId?.phoneNumber || "-"}</span></div>
+              <div className="flex justify-between gap-2"><span className="shrink-0">Table:</span><span className="truncate text-right">{activeReceiptBill.tableId?.tableCode ?? activeReceiptBill.tableId?.tableNumber ?? activeReceiptBill.bookingId?.tableId?.tableCode ?? activeReceiptBill.bookingId?.tableId?.tableNumber ?? "-"}</span></div>
+              {activeReceiptBill.billType !== "WALK_IN" && <div className="flex justify-between gap-2"><span className="shrink-0">Booking date/time:</span><span className="truncate text-right">{activeReceiptBill.bookingId?.bookingDateTime ? formatDateTime(new Date(activeReceiptBill.bookingId.bookingDateTime)) : "-"}</span></div>}
+              <div className="flex justify-between gap-2"><span className="shrink-0">Bill No:</span><span className="min-w-0 break-all text-right">{activeReceiptBill.billCode || activeReceiptBill._id}</span></div>
             </div>
 
             <div className="space-y-1 text-xs">
@@ -2103,10 +2103,10 @@ export default function OwnerBillingPage() {
               <div className="space-y-1 border-t border-border pt-2 text-xs">
                 {activeReceiptBill.orderedItems.map((item, idx) => (
                   <div key={idx} className="flex justify-between gap-2">
-                    <span className="truncate">
+                    <span className="min-w-0 truncate">
                       {item.quantity} x {item.foodName} ({item.variantName || "Regular"})
                     </span>
-                    <span>₹{item.totalPrice ?? item.unitPrice ?? 0}</span>
+                    <span className="shrink-0">₹{item.totalPrice ?? item.unitPrice ?? 0}</span>
                   </div>
                 ))}
               </div>

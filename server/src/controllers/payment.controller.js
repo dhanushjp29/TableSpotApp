@@ -18,6 +18,7 @@ import {
 import { computeOfferDiscount, validateClaimedOfferForBooking } from "../services/offer.service.js";
 import {
   acquireBookingHolds,
+  findActiveHoldByToken,
   releaseBookingHolds,
 } from "../services/bookingHold.service.js";
 import {
@@ -29,11 +30,14 @@ import ApiError from "../utils/ApiError.js";
 import asyncHandler from "../utils/asyncHandler.js";
 import {
   BOOKING_PAYMENT_POLICY,
+  PAYMENT_BOOKING_STATUS,
+  PAYMENT_ORDER_STATUS,
   PAYMENT_PURPOSE,
   PAYMENT_STATUS,
   PAYMENT_METHOD,
   PAYMENT_METHOD_VALUES,
   PAYMENT_TRANSACTION_STATUS,
+  RAZORPAY_ACCOUNT_STATUS,
   USER_ROLE,
 } from "../utils/constants.js";
 import { getOwnedRestaurantIds } from "../middleware/ownership.js";
@@ -63,6 +67,330 @@ const PURPOSE_LABELS = {
 };
 
 const roundAmount = (value) => Math.round(Number(value || 0) * 100) / 100;
+
+const getConnectedOwnerPaymentAccount = async (restaurant) => {
+  const owner = await User.findById(restaurant.ownerId).select(
+    "_id bookingStatus razorpayAccountId razorpayAccountStatus"
+  );
+
+  if (
+    !owner?.razorpayAccountId ||
+    owner.razorpayAccountStatus !== RAZORPAY_ACCOUNT_STATUS.CONNECTED
+  ) {
+    throw new ApiError(
+      400,
+      "This restaurant's owner does not have a connected Razorpay payment account."
+    );
+  }
+
+  return {
+    owner,
+    razorpayAccountId: owner.razorpayAccountId,
+  };
+};
+
+const releasePaymentFirstHold = async (paymentRecord) => {
+  if (!paymentRecord?.bookingData || !paymentRecord.reservationHoldToken) {
+    return;
+  }
+
+  try {
+    await releaseBookingHolds({
+      tableIds: (paymentRecord.bookingData.tables || []).map(
+        (entry) => entry.tableId
+      ),
+      holdToken: paymentRecord.reservationHoldToken,
+    });
+  } catch (releaseError) {
+    console.error("Failed to release payment-first booking hold", {
+      paymentId: String(paymentRecord._id),
+      reason: releaseError.message,
+    });
+  }
+};
+
+const ensurePaymentFirstHold = async ({ paymentRecord }) => {
+  if (!paymentRecord?.bookingData || !paymentRecord.reservationHoldToken) {
+    return paymentRecord;
+  }
+
+  const tableIds = (paymentRecord.bookingData.tables || []).map(
+    (entry) => entry.tableId
+  );
+  const activeHold = await findActiveHoldByToken({
+    tableIds,
+    holdToken: paymentRecord.reservationHoldToken,
+  });
+  if (activeHold) return paymentRecord;
+
+  const bookingAt = new Date(paymentRecord.bookingData.bookingDateTime);
+  const bookingEnd = new Date(
+    bookingAt.getTime() +
+      (Number(paymentRecord.bookingData.expectedDuration) || 120) * 60 * 1000
+  );
+  const holdToken = new mongoose.Types.ObjectId().toString();
+  const hold = await acquireBookingHolds({
+    restaurantId: paymentRecord.restaurantId,
+    tables: paymentRecord.bookingData.tables || [],
+    bookingAt,
+    bookingEnd,
+    customerId: paymentRecord.customerId,
+    holdToken,
+    ttlMinutes: 15,
+  });
+
+  const updated = await Payment.findOneAndUpdate(
+    { _id: paymentRecord._id },
+    { $set: { reservationHoldToken: hold.holdToken } },
+    { new: true }
+  );
+  if (!updated) {
+    await releaseBookingHolds({
+      tableIds: hold.tableIds,
+      holdToken: hold.holdToken,
+    });
+    throw new ApiError(409, "Payment order recovery could not be completed.");
+  }
+  return updated;
+};
+
+const stableSerialize = (value) => {
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableSerialize(value[key])}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value ?? null);
+};
+
+const buildOrderFingerprint = (payload) =>
+  crypto
+    .createHash("sha256")
+    .update(stableSerialize(payload))
+    .digest("hex");
+
+const buildOrderReceipt = ({ customerId, idempotencyKey }) =>
+  `rcpt_idem_${crypto
+    .createHash("sha256")
+    .update(`${customerId}:${idempotencyKey}`)
+    .digest("hex")
+    .slice(0, 24)}`;
+
+const paymentOrderResponse = (paymentRecord) => ({
+  order: {
+    id: paymentRecord.razorpayOrderId,
+    amount: Math.round(Number(paymentRecord.amount) * 100),
+    currency: paymentRecord.currency,
+  },
+  razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+  paymentId: paymentRecord._id,
+});
+
+const resolveExistingIdempotentPayment = async ({
+  paymentRecord,
+  fingerprint,
+}) => {
+  if (
+    paymentRecord.idempotencyFingerprint &&
+    paymentRecord.idempotencyFingerprint !== fingerprint
+  ) {
+    throw new ApiError(
+      409,
+      "This idempotency key was already used with a different payment request."
+    );
+  }
+
+  if (
+    paymentRecord.orderCreationStatus === PAYMENT_ORDER_STATUS.CREATED &&
+    paymentRecord.razorpayOrderId
+  ) {
+    return { paymentRecord, shouldCreate: false };
+  }
+
+  const recoveredOrder = await razorpayService.findPaymentOrderByReceipt({
+    receipt: paymentRecord.orderReceipt,
+  });
+
+  if (recoveredOrder?.id) {
+    const updated = await Payment.findOneAndUpdate(
+      { _id: paymentRecord._id, razorpayOrderId: null },
+      {
+        $set: {
+          razorpayOrderId: recoveredOrder.id,
+          orderCreationStatus: PAYMENT_ORDER_STATUS.CREATED,
+          orderCreationError: "",
+        },
+      },
+      { new: true }
+    );
+    return { paymentRecord: updated || paymentRecord, shouldCreate: false };
+  }
+
+  if (
+    paymentRecord.orderCreationStatus === PAYMENT_ORDER_STATUS.PROCESSING ||
+    paymentRecord.orderCreationStatus === PAYMENT_ORDER_STATUS.RECOVERY_REQUIRED
+  ) {
+    if (paymentRecord.orderCreationStatus === PAYMENT_ORDER_STATUS.PROCESSING) {
+      await Payment.updateOne(
+        { _id: paymentRecord._id, orderCreationStatus: PAYMENT_ORDER_STATUS.PROCESSING },
+        {
+          $set: {
+            orderCreationStatus: PAYMENT_ORDER_STATUS.RECOVERY_REQUIRED,
+            orderCreationError: "Previous order creation ended before local completion.",
+          },
+        }
+      );
+    }
+    throw new ApiError(
+      409,
+      "Payment order creation is still being recovered. Please retry shortly."
+    );
+  }
+
+  if (paymentRecord.orderCreationStatus === PAYMENT_ORDER_STATUS.FAILED_RETRYABLE) {
+    const attemptId = new mongoose.Types.ObjectId().toString();
+    const claimed = await Payment.findOneAndUpdate(
+      {
+        _id: paymentRecord._id,
+        orderCreationStatus: PAYMENT_ORDER_STATUS.FAILED_RETRYABLE,
+      },
+      {
+        $set: {
+          orderCreationStatus: PAYMENT_ORDER_STATUS.PROCESSING,
+          orderCreationAttemptId: attemptId,
+          orderCreationStartedAt: new Date(),
+          orderCreationError: "",
+        },
+      },
+      { new: true }
+    );
+
+    if (claimed) return { paymentRecord: claimed, shouldCreate: true, attemptId };
+  }
+
+  throw new ApiError(409, "Payment order creation could not be safely retried.");
+};
+
+const reservePaymentOrder = async ({
+  paymentData,
+  idempotencyKey,
+  fingerprint,
+  receipt,
+}) => {
+  const attemptId = new mongoose.Types.ObjectId().toString();
+  const insertData = {
+    ...paymentData,
+    idempotencyKey,
+    idempotencyFingerprint: fingerprint,
+    orderReceipt: receipt,
+    orderCreationStatus: PAYMENT_ORDER_STATUS.PROCESSING,
+    orderCreationAttemptId: attemptId,
+    orderCreationStartedAt: new Date(),
+    orderCreationError: "",
+    razorpayOrderId: null,
+  };
+
+  let paymentRecord;
+  try {
+    paymentRecord = await Payment.findOneAndUpdate(
+      { customerId: paymentData.customerId, idempotencyKey },
+      { $setOnInsert: insertData },
+      { new: true, upsert: true }
+    );
+  } catch (error) {
+    if (error?.code !== 11000) throw error;
+    paymentRecord = await Payment.findOne({
+      customerId: paymentData.customerId,
+      idempotencyKey,
+    });
+  }
+
+  if (!paymentRecord) {
+    throw new ApiError(500, "Unable to reserve payment order creation.");
+  }
+
+  if (
+    paymentRecord.orderCreationAttemptId === attemptId &&
+    paymentRecord.orderCreationStatus === PAYMENT_ORDER_STATUS.PROCESSING
+  ) {
+    return { paymentRecord, shouldCreate: true, attemptId };
+  }
+
+  return resolveExistingIdempotentPayment({ paymentRecord, fingerprint });
+};
+
+const createReservedRazorpayOrder = async ({
+  paymentRecord,
+  attemptId,
+  bookingId,
+  amount,
+  razorpayAccountId,
+}) => {
+  let order;
+  try {
+    order = await razorpayService.createPaymentOrder({
+      bookingId,
+      amount,
+      razorpayAccountId,
+      receipt: paymentRecord.orderReceipt,
+    });
+  } catch (error) {
+    await Payment.updateOne(
+      { _id: paymentRecord._id, orderCreationAttemptId: attemptId },
+      {
+        $set: {
+          orderCreationStatus: PAYMENT_ORDER_STATUS.FAILED_RETRYABLE,
+          orderCreationError: String(error?.message || "Order creation failed").slice(0, 1000),
+        },
+      }
+    );
+    throw error;
+  }
+
+  let updated;
+  try {
+    updated = await Payment.findOneAndUpdate(
+      {
+        _id: paymentRecord._id,
+        orderCreationAttemptId: attemptId,
+        orderCreationStatus: PAYMENT_ORDER_STATUS.PROCESSING,
+      },
+      {
+        $set: {
+          razorpayOrderId: order.id,
+          orderCreationStatus: PAYMENT_ORDER_STATUS.CREATED,
+          orderCreationError: "",
+        },
+      },
+      { new: true }
+    );
+  } catch (error) {
+    await Payment.updateOne(
+      { _id: paymentRecord._id, orderCreationAttemptId: attemptId },
+      {
+        $set: {
+          orderCreationStatus: PAYMENT_ORDER_STATUS.RECOVERY_REQUIRED,
+          orderCreationError: "Razorpay order was created but local payment state could not be updated.",
+        },
+      }
+    );
+    throw new ApiError(
+      409,
+      "Razorpay order was created but payment state requires recovery."
+    );
+  }
+
+  if (!updated) {
+    throw new ApiError(
+      409,
+      "Razorpay order was created but payment state requires recovery."
+    );
+  }
+
+  return updated;
+};
 
 const buildSummary = (transactions) => {
   const totalPaid = roundAmount(
@@ -191,34 +519,6 @@ export const createOrder = asyncHandler(async (req, res) => {
         throw new ApiError(400, "This booking has already been paid.");
     }
 
-    // Idempotency: reuse an existing order for the same key/booking/purpose
-    if (idempotencyKey && String(idempotencyKey).trim() !== "") {
-      const existing = await Payment.findOne({
-        idempotencyKey: String(idempotencyKey).trim(),
-      });
-
-      if (existing) {
-        if (
-          String(existing.bookingId) !== String(booking._id) ||
-          existing.paymentPurpose !== purpose
-        ) {
-          throw new ApiError(409, "Idempotency key already used for another payment.");
-        }
-
-        return res.status(200).json(
-          new ApiResponse(200, "Razorpay payment order already exists.", {
-            order: {
-              id: existing.razorpayOrderId,
-              amount: existing.amount,
-              currency: existing.currency,
-            },
-            razorpayKeyId: process.env.RAZORPAY_KEY_ID,
-            paymentId: existing._id,
-          })
-        );
-      }
-    }
-
     const restaurant = booking.restaurantId;
     if (!restaurant) {
         throw new ApiError(404, "Restaurant not found for this booking.");
@@ -280,40 +580,86 @@ export const createOrder = asyncHandler(async (req, res) => {
       }
     }
 
-    const razorpayAccountId = restaurant.razorpayAccountId;
+    const normalizedIdempotencyKey = String(idempotencyKey || "").trim();
 
-    // Create order with Razorpay Service
-    const order = await razorpayService.createPaymentOrder({
-        bookingId: booking._id,
-        amount: amountToCharge,
-        razorpayAccountId,
+    // User.razorpayAccountId is the canonical owner account. The restaurant
+    // copy is intentionally not used because it may be stale after an owner
+    // reconnects a different Razorpay account.
+    const { razorpayAccountId: ownerRazorpayAccountId } =
+      await getConnectedOwnerPaymentAccount(restaurant);
+
+    const fingerprint = buildOrderFingerprint({
+      customerId: String(booking.userId),
+      bookingId: String(booking._id),
+      restaurantId: String(restaurant._id),
+      purpose,
+      amount: amountToCharge,
+      billId: billId ? String(billId) : null,
     });
+    const receipt = normalizedIdempotencyKey
+      ? buildOrderReceipt({
+          customerId: String(booking.userId),
+          idempotencyKey: normalizedIdempotencyKey,
+        })
+      : "";
 
-    // Save standalone Payment record in Pending state
-    const paymentRecord = await Payment.create({
+    const paymentData = {
         bookingId: booking._id,
         customerId: booking.userId,
         ownerId: restaurant.ownerId,
         restaurantId: restaurant._id,
         billId,
         paymentPurpose: purpose,
-        idempotencyKey: String(idempotencyKey || "").trim() || null,
-        razorpayOrderId: order.id,
         amount: amountToCharge,
         currency: "INR",
         paymentStatus: PAYMENT_TRANSACTION_STATUS.PENDING,
-    });
+        bookingCreationStatus: PAYMENT_BOOKING_STATUS.SUCCEEDED,
+    };
+
+    let paymentRecord;
+    if (normalizedIdempotencyKey) {
+      const reservation = await reservePaymentOrder({
+        paymentData,
+        idempotencyKey: normalizedIdempotencyKey,
+        fingerprint,
+        receipt,
+      });
+
+      if (!reservation.shouldCreate) {
+        return res.status(200).json(
+          new ApiResponse(200, "Razorpay payment order already exists.", paymentOrderResponse(reservation.paymentRecord))
+        );
+      }
+
+      paymentRecord = await createReservedRazorpayOrder({
+        paymentRecord: reservation.paymentRecord,
+        attemptId: reservation.attemptId,
+        bookingId: booking._id,
+        amount: amountToCharge,
+        razorpayAccountId: ownerRazorpayAccountId,
+      });
+    } else {
+      const order = await razorpayService.createPaymentOrder({
+        bookingId: booking._id,
+        amount: amountToCharge,
+        razorpayAccountId: ownerRazorpayAccountId,
+      });
+      paymentRecord = await Payment.create({
+        ...paymentData,
+        razorpayOrderId: order.id,
+        orderCreationStatus: PAYMENT_ORDER_STATUS.CREATED,
+      });
+      return res.status(200).json(
+        new ApiResponse(200, "Razorpay payment order generated successfully.", {
+          order: { id: order.id, amount: order.amount, currency: order.currency },
+          razorpayKeyId: process.env.RAZORPAY_KEY_ID,
+          paymentId: paymentRecord._id,
+        })
+      );
+    }
 
     res.status(200).json(
-        new ApiResponse(200, "Razorpay payment order generated successfully.", {
-            order: {
-                id: order.id,
-                amount: order.amount,
-                currency: order.currency,
-            },
-            razorpayKeyId: process.env.RAZORPAY_KEY_ID,
-            paymentId: paymentRecord._id,
-        })
+        new ApiResponse(200, "Razorpay payment order generated successfully.", paymentOrderResponse(paymentRecord))
     );
 });
 
@@ -357,9 +703,8 @@ const createPaymentFirstOrder = async ({
       throw new ApiError(403, "This restaurant is not verified for bookings.");
     }
 
-    const owner = await User.findById(restaurant.ownerId).select(
-      "bookingStatus"
-    );
+    const { owner, razorpayAccountId: ownerRazorpayAccountId } =
+      await getConnectedOwnerPaymentAccount(restaurant);
 
     if (owner?.bookingStatus === "BOOKING_RESTRICTED") {
       throw new ApiError(
@@ -393,17 +738,6 @@ const createPaymentFirstOrder = async ({
     const bookingEnd = new Date(
       bookingAt.getTime() + (Number(bookingData.expectedDuration) || 120) * 60 * 1000
     );
-    const holdToken = new mongoose.Types.ObjectId().toString();
-    const hold = await acquireBookingHolds({
-      restaurantId: restaurant._id,
-      tables: bookingData.tables || [],
-      bookingAt,
-      bookingEnd,
-      customerId: req.user._id,
-      holdToken,
-      ttlMinutes: 15,
-    });
-
     // Compute the required advance from server-side food prices (never the
     // client-supplied price).
     const orderedFoods = await validateAndResolveOrderedFoods({
@@ -449,46 +783,8 @@ const createPaymentFirstOrder = async ({
       );
     }
 
-    // Idempotency: reuse an existing order for the same key/purpose
-    if (idempotencyKey && String(idempotencyKey).trim() !== "") {
-      const existing = await Payment.findOne({
-        idempotencyKey: String(idempotencyKey).trim(),
-      });
-
-      if (existing) {
-        if (existing.paymentPurpose !== purpose || existing.bookingId) {
-          throw new ApiError(
-            409,
-            "Idempotency key already used for another payment."
-          );
-        }
-
-        return res.status(200).json(
-          new ApiResponse(200, "Razorpay payment order already exists.", {
-            order: {
-              id: existing.razorpayOrderId,
-              amount: existing.amount,
-              currency: existing.currency,
-            },
-            razorpayKeyId: process.env.RAZORPAY_KEY_ID,
-            paymentId: existing._id,
-          })
-        );
-      }
-    }
-
-    const razorpayAccountId = restaurant.razorpayAccountId;
-
-    // Receipt identifier uses the restaurant id — no booking exists yet.
-    const order = await razorpayService.createPaymentOrder({
-      bookingId: restaurant._id,
-      amount: amountToCharge,
-      razorpayAccountId,
-    });
-
-    const paymentRecord = await Payment.create({
-      bookingId: null,
-      bookingData: {
+    const normalizedIdempotencyKey = String(idempotencyKey || "").trim();
+    const bookingSnapshot = {
         restaurantId: restaurant._id,
         tables: (bookingData.tables || []).map((entry) => ({
           tableId: entry.tableId,
@@ -505,30 +801,162 @@ const createPaymentFirstOrder = async ({
           quantity: Number(item.quantity),
           price: Number(item.price || 0),
         })),
-      },
-      reservationHoldToken: hold.holdToken,
+      };
+    const fingerprint = buildOrderFingerprint({
+      customerId: String(req.user._id),
+      purpose,
+      amount: amountToCharge,
+      bookingData: bookingSnapshot,
+    });
+    const receipt = normalizedIdempotencyKey
+      ? buildOrderReceipt({
+          customerId: String(req.user._id),
+          idempotencyKey: normalizedIdempotencyKey,
+        })
+      : "";
+
+    const paymentDataForReservation = {
+      bookingId: null,
+      bookingData: bookingSnapshot,
       customerId: req.user._id,
       ownerId: restaurant.ownerId,
       restaurantId: restaurant._id,
       billId: null,
       paymentPurpose: purpose,
-      idempotencyKey: String(idempotencyKey || "").trim() || null,
-      razorpayOrderId: order.id,
       amount: amountToCharge,
       currency: "INR",
       paymentStatus: PAYMENT_TRANSACTION_STATUS.PENDING,
+      bookingCreationStatus: PAYMENT_BOOKING_STATUS.PENDING,
+    };
+
+    if (normalizedIdempotencyKey) {
+      const existing = await Payment.findOne({
+        customerId: req.user._id,
+        idempotencyKey: normalizedIdempotencyKey,
+      });
+
+      if (existing) {
+        let reservation = await resolveExistingIdempotentPayment({
+          paymentRecord: existing,
+          fingerprint,
+        });
+
+        reservation.paymentRecord = await ensurePaymentFirstHold({
+          paymentRecord: reservation.paymentRecord,
+        });
+
+        if (reservation.shouldCreate) {
+          const paymentRecord = await createReservedRazorpayOrder({
+            paymentRecord: reservation.paymentRecord,
+            attemptId: reservation.attemptId,
+            bookingId: restaurant._id,
+            amount: amountToCharge,
+            razorpayAccountId: ownerRazorpayAccountId,
+          });
+          return res.status(200).json(
+            new ApiResponse(200, "Razorpay payment order generated successfully.", paymentOrderResponse(paymentRecord))
+          );
+        }
+
+        return res.status(200).json(
+          new ApiResponse(200, "Razorpay payment order already exists.", paymentOrderResponse(reservation.paymentRecord))
+        );
+      }
+    }
+
+    const holdToken = new mongoose.Types.ObjectId().toString();
+    const hold = await acquireBookingHolds({
+      restaurantId: restaurant._id,
+      tables: bookingData.tables || [],
+      bookingAt,
+      bookingEnd,
+      customerId: req.user._id,
+      holdToken,
+      ttlMinutes: 15,
     });
 
-    res.status(200).json(
-      new ApiResponse(200, "Razorpay payment order generated successfully.", {
-        order: {
-          id: order.id,
-          amount: order.amount,
-          currency: order.currency,
+    let paymentRecord;
+    try {
+    if (normalizedIdempotencyKey) {
+      const reservation = await reservePaymentOrder({
+        paymentData: {
+          ...paymentDataForReservation,
+          reservationHoldToken: hold.holdToken,
         },
-        razorpayKeyId: process.env.RAZORPAY_KEY_ID,
-        paymentId: paymentRecord._id,
-      })
+        idempotencyKey: normalizedIdempotencyKey,
+        fingerprint,
+        receipt,
+      });
+
+      if (!reservation.shouldCreate) {
+        await releaseBookingHolds({ tableIds: hold.tableIds, holdToken: hold.holdToken });
+        reservation.paymentRecord = await ensurePaymentFirstHold({
+          paymentRecord: reservation.paymentRecord,
+        });
+        return res.status(200).json(
+          new ApiResponse(200, "Razorpay payment order already exists.", paymentOrderResponse(reservation.paymentRecord))
+        );
+      }
+
+      paymentRecord = await createReservedRazorpayOrder({
+        paymentRecord: reservation.paymentRecord,
+        attemptId: reservation.attemptId,
+        bookingId: restaurant._id,
+        amount: amountToCharge,
+        razorpayAccountId: ownerRazorpayAccountId,
+      });
+    } else {
+      let order;
+      try {
+        order = await razorpayService.createPaymentOrder({
+          bookingId: restaurant._id,
+          amount: amountToCharge,
+          razorpayAccountId: ownerRazorpayAccountId,
+        });
+      } catch (error) {
+        await releaseBookingHolds({ tableIds: hold.tableIds, holdToken: hold.holdToken });
+        throw error;
+      }
+
+      try {
+        paymentRecord = await Payment.create({
+          ...paymentDataForReservation,
+          reservationHoldToken: hold.holdToken,
+          razorpayOrderId: order.id,
+          orderCreationStatus: PAYMENT_ORDER_STATUS.CREATED,
+        });
+      } catch (error) {
+      try {
+        await releaseBookingHolds({
+          tableIds: hold.tableIds,
+          holdToken: hold.holdToken,
+        });
+      } catch (releaseError) {
+        console.error("Failed to release hold after payment record failure", {
+          holdToken: hold.holdToken,
+          reason: releaseError.message,
+        });
+      }
+      throw error;
+      }
+    }
+    } catch (error) {
+      try {
+        await releaseBookingHolds({
+          tableIds: hold.tableIds,
+          holdToken: hold.holdToken,
+        });
+      } catch (releaseError) {
+        console.error("Failed to release hold after idempotent order failure", {
+          holdToken: hold.holdToken,
+          reason: releaseError.message,
+        });
+      }
+      throw error;
+    }
+
+    res.status(200).json(
+      new ApiResponse(200, "Razorpay payment order generated successfully.", paymentOrderResponse(paymentRecord))
     );
   }
 
@@ -586,11 +1014,14 @@ export const verifyPayment = asyncHandler(async (req, res) => {
         }
     }
 
-    // Idempotency: a payment already captured for this Razorpay payment id
-    // should not be processed twice.
+    // Idempotency: a payment already captured and linked to a booking should
+    // not be processed twice. A captured payment-first record without a
+    // booking must continue through materialization so customer retries can
+    // recover it instead of returning a false success.
     if (
       paymentRecord.paymentStatus === PAYMENT_TRANSACTION_STATUS.CAPTURED &&
-      paymentRecord.razorpayPaymentId === razorpay_payment_id
+      paymentRecord.razorpayPaymentId === razorpay_payment_id &&
+      paymentRecord.bookingId
     ) {
       const linkedBooking = paymentRecord.bookingId
         ? await Booking.findById(paymentRecord.bookingId)
@@ -619,6 +1050,7 @@ export const verifyPayment = asyncHandler(async (req, res) => {
             paymentRecord.paymentStatus === PAYMENT_TRANSACTION_STATUS.FAILED;
         paymentRecord.paymentStatus = PAYMENT_TRANSACTION_STATUS.FAILED;
         await paymentRecord.save();
+        await releasePaymentFirstHold(paymentRecord);
 
         // Notify once — only when this marks the first transition to FAILED,
         // so the webhook's payment.failed event cannot double-notify.

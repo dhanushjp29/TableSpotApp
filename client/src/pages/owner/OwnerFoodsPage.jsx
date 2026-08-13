@@ -328,14 +328,14 @@ function FoodForm({
       </div>
 
       <div>
-        <div className="flex items-end justify-between gap-2">
+        <div className="flex flex-wrap items-end justify-between gap-2">
           <label className="input-label mb-1">Pricing</label>
-          <div className="flex items-end gap-2">
+          <div className="flex flex-wrap items-end gap-2">
             <Select
               label="Currency"
               value={currency}
               onChange={(e) => setCurrency(e.target.value)}
-              className="w-36 mb-2"
+              className="w-full sm:w-36 mb-2"
             >
               {CURRENCY_OPTIONS.map((opt) => (
                 <option key={opt.code} value={opt.code}>
@@ -357,7 +357,10 @@ function FoodForm({
         </div>
         <div className="space-y-2">
           {fields.map((field, index) => (
-            <div key={field.id} className="flex items-center gap-2">
+            <div
+              key={field.id}
+              className="flex flex-col gap-2 sm:flex-row sm:items-center"
+            >
               <input
                 {...register(`variants.${index}.variantName`)}
                 readOnly={index === 0}
@@ -366,12 +369,12 @@ function FoodForm({
                     ? "Base variant name is fixed."
                     : undefined
                 }
-                className={`input-field flex-1 ${
+                className={`input-field min-w-0 flex-1 ${
                   index === 0 ? "bg-gray-100 text-muted" : ""
                 }`}
                 placeholder="Variant name (e.g. Half / Full)"
               />
-              <div className="relative">
+              <div className="relative w-full sm:w-auto">
                 <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-sm text-muted">
                   {CURRENCY_SYMBOLS[currency] || currency}
                 </span>
@@ -380,7 +383,7 @@ function FoodForm({
                   min={0}
                   step="0.01"
                   {...register(`variants.${index}.price`)}
-                  className="input-field w-32 pl-8"
+                  className="input-field w-full pl-8 sm:w-32"
                   placeholder="Price"
                 />
               </div>
@@ -480,11 +483,14 @@ function FoodForm({
           <>
             <div className="mt-3 space-y-2">
               {schedules.map((schedule, index) => (
-                <div key={index} className="flex items-center gap-2">
+                <div
+                  key={index}
+                  className="flex flex-col gap-2 sm:flex-row sm:items-center"
+                >
                   <Select
                     value={schedule.day}
                     onChange={(e) => updateSchedule(index, "day", e.target.value)}
-                    className="w-36 shrink-0"
+                    className="w-full sm:w-36 sm:shrink-0"
                   >
                     {WEEKDAY_VALUES.map((d) => (
                       <option key={d} value={d}>
@@ -497,14 +503,14 @@ function FoodForm({
                     onChange={(e) =>
                       updateSchedule(index, "startTime", e.target.value)
                     }
-                    className="w-36"
+                    className="w-full sm:w-36"
                   />
                   <TimePicker
                     value={schedule.endTime}
                     onChange={(e) =>
                       updateSchedule(index, "endTime", e.target.value)
                     }
-                    className="w-36"
+                    className="w-full sm:w-36"
                   />
                   <Button
                     type="button"
