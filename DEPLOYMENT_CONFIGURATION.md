@@ -42,9 +42,11 @@ Create a Render Web Service with:
 
 The server listens on `process.env.PORT`; no production port is hardcoded.
 
-Set the backend environment variables listed in `server/src/.env.example`. In particular, use the real Netlify origin for `CLIENT_URL`, optional comma-separated additional origins in `CLIENT_ORIGINS`, an Atlas URI for `MONGODB_URI`, live Razorpay credentials, and explicit `false` values for all three Razorpay mock flags.
+Set the backend environment variables listed in `server/src/.env.example`. In particular, use the real Netlify origin for `CLIENT_URL`, optional comma-separated additional origins in `CLIENT_ORIGINS`, an Atlas URI for `MONGODB_URI`, Razorpay credentials matching `RAZORPAY_MODE` (`live`/`rzp_live_...`, or temporarily `test`/`rzp_test_...`), and explicit `false` values for all three Razorpay mock flags.
 
-Required Render variables: `NODE_ENV=production`, `PORT`, `MONGODB_URI`, `CLIENT_URL`, `ACCESS_TOKEN_SECRET`, `ACCESS_TOKEN_EXPIRES_IN`, `REFRESH_TOKEN_SECRET`, `REFRESH_TOKEN_EXPIRES_IN`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_ORDER_MOCK=false`, `RAZORPAY_REFUND_MOCK=false`, and `RAZORPAY_ONBOARDING_MOCK=false`.
+Required Render variables: `NODE_ENV=production`, `PORT`, `MONGODB_URI`, `CLIENT_URL`, `ACCESS_TOKEN_SECRET`, `ACCESS_TOKEN_EXPIRES_IN`, `REFRESH_TOKEN_SECRET`, `REFRESH_TOKEN_EXPIRES_IN`, `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`, `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`, `RAZORPAY_MODE` (`test` or `live`; defaults to `live` when unset), `RAZORPAY_KEY_ID`, `RAZORPAY_KEY_SECRET`, `RAZORPAY_WEBHOOK_SECRET`, `RAZORPAY_ORDER_MOCK=false`, `RAZORPAY_REFUND_MOCK=false`, and `RAZORPAY_ONBOARDING_MOCK=false`.
+
+> **Temporary test mode on Render:** `RAZORPAY_MODE=test` lets the deployed server use real Razorpay **TEST** keys (`rzp_test_...`). This is intended for exercising the real gateway on Render before go-live and must be switched back to `RAZORPAY_MODE=live` with `rzp_live_...` keys afterwards. Mock modes (`RAZORPAY_*_MOCK`) remain disabled in both modes.
 
 Optional, documented tuning/configuration variables: `CLIENT_ORIGINS`, `COOKIE_DOMAIN`, `MONGODB_SERVER_SELECTION_TIMEOUT_MS`, `MONGODB_CONNECT_TIMEOUT_MS`, `SALT_ROUNDS`, `MAX_FILE_SIZE_BYTES`, `MAX_UPLOAD_FILES`, `WARNING_JOB_INTERVAL_MS`, `TABLE_STATUS_JOB_INTERVAL_MS`, `DEADLINE_JOB_INTERVAL_MS`, and `OFFER_JOB_INTERVAL_MS`.
 
@@ -79,7 +81,7 @@ The server requires the following in production: `MONGODB_URI`, `CLIENT_URL`, `A
 
 `CLIENT_ORIGINS` may contain additional comma-separated HTTPS frontend origins. `COOKIE_DOMAIN` is optional and should normally be left unset unless the deployment explicitly requires a shared parent domain. Timeout and operational tuning variables are documented in `server/src/.env.example`.
 
-The server rejects production startup when frontend URLs are invalid or non-HTTPS, MongoDB is local, JWT secrets are shorter than 32 characters, Razorpay uses a test key, or any mock flag is enabled/missing.
+The server rejects production startup when frontend URLs are invalid or non-HTTPS, MongoDB is local, JWT secrets are shorter than 32 characters, the Razorpay key does not match `RAZORPAY_MODE` (`rzp_live_` by default, `rzp_test_` when `RAZORPAY_MODE=test`), or any mock flag is enabled/missing.
 
 The client requires `VITE_API_URL` and `VITE_SOCKET_URL` for production builds. Development retains localhost fallbacks. Never put server secrets in `VITE_*` variables.
 
@@ -98,5 +100,5 @@ The client requires `VITE_API_URL` and `VITE_SOCKET_URL` for production builds. 
 2. Configure the frontend with the deployed backend HTTPS API and Socket.io URLs.
 3. Deploy the backend and wait for `GET /health` to return `200`.
 4. Register the exact Razorpay webhook URL and secret.
-5. Deploy the frontend and test authentication, cookies, Socket.io, email, uploads, and Razorpay test-mode flows with production mock flags disabled.
+5. Deploy the frontend and test authentication, cookies, Socket.io, email, uploads, and Razorpay test-mode flows with production mock flags disabled. Real-gateway testing on Render uses `RAZORPAY_MODE=test` + `rzp_test_...` keys; flip to `RAZORPAY_MODE=live` + `rzp_live_...` keys before real revenue.
 6. Run the Fix #7 MongoDB audit/migration procedure only against the approved database backup and maintenance window; never run it automatically during server startup.

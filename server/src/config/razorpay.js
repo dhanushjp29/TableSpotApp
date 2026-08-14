@@ -7,6 +7,18 @@ const MOCK_FLAGS = [
 const parseBoolean = (value) =>
   String(value ?? "").trim().toLowerCase() === "true";
 
+/**
+ * Razorpay key mode: "test" or "live". Defaults to "live" so a production
+ * deployment without an explicit RAZORPAY_MODE keeps the strict live-key
+ * requirement. Throws on any other explicit value.
+ */
+export const getRazorpayMode = () => {
+  const mode = String(process.env.RAZORPAY_MODE || "").trim().toLowerCase();
+  if (!mode) return "live";
+  if (mode === "test" || mode === "live") return mode;
+  throw new Error(`RAZORPAY_MODE must be "test" or "live"; received "${mode}".`);
+};
+
 export const assertRazorpayMockModesSafe = () => {
   if (String(process.env.NODE_ENV || "").trim().toLowerCase() !== "production") {
     return;

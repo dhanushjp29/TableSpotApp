@@ -1,6 +1,7 @@
 import dotenv from "dotenv";
 import path from "path";
 import { fileURLToPath } from "url";
+import { getRazorpayMode } from "./razorpay.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -65,8 +66,15 @@ export const assertProductionEnvironment = () => {
     }
   }
 
-  if (!String(process.env.RAZORPAY_KEY_ID).startsWith("rzp_live_")) {
-    throw new Error("Production RAZORPAY_KEY_ID must be a live Razorpay key.");
+  const razorpayMode = getRazorpayMode();
+  const expectedRazorpayKeyPrefix =
+    razorpayMode === "test" ? "rzp_test_" : "rzp_live_";
+  if (!String(process.env.RAZORPAY_KEY_ID).startsWith(expectedRazorpayKeyPrefix)) {
+    throw new Error(
+      razorpayMode === "test"
+        ? "Production RAZORPAY_MODE=test requires RAZORPAY_KEY_ID to be a Razorpay test key (rzp_test_...)."
+        : 'Production RAZORPAY_KEY_ID must be a live Razorpay key (rzp_live_...) unless RAZORPAY_MODE is set to "test".'
+    );
   }
 
   for (const name of ["RAZORPAY_ORDER_MOCK", "RAZORPAY_REFUND_MOCK", "RAZORPAY_ONBOARDING_MOCK"]) {

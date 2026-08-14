@@ -551,7 +551,8 @@ tablespot/
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` | SMTP transport | prod: yes | `smtp.gmail.com` / `587` / `false` |
 | `MAIL_FROM` | From address | prod: yes | `no-reply@example.com` |
 | `SUPPORT_EMAIL` / `SUPPORT_PHONE` | Shown in email footers | no (defaults `tablespotapp@gmail.com`, `+916374428721`) | |
-| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Razorpay API credentials (prod must be `rzp_live_...`) | prod: yes | `rzp_test_xxxxxxxx` |
+| `RAZORPAY_MODE` | Razorpay key mode (`test` or `live`; defaults to `live`) | prod: no (default `live`) | `test` | `live` |
+| `RAZORPAY_KEY_ID` / `RAZORPAY_KEY_SECRET` | Razorpay API credentials (prod with `RAZORPAY_MODE=live` must be `rzp_live_...`; `RAZORPAY_MODE=test` allows `rzp_test_...`) | prod: yes | `rzp_test_xxxxxxxx` |
 | `RAZORPAY_WEBHOOK_SECRET` | Webhook HMAC secret | prod: yes | |
 | `RAZORPAY_ORDER_MOCK` / `RAZORPAY_REFUND_MOCK` / `RAZORPAY_ONBOARDING_MOCK` | Mock payment modes | prod: must be `false` | `false` |
 | `SALT_ROUNDS` | bcrypt cost | no (default 10) | `12` |
@@ -645,7 +646,7 @@ The suites set `NODE_ENV=test` (email sending is skipped), fast bcrypt (`SALT_RO
 The current deployment configuration is documented in **[`DEPLOYMENT_CONFIGURATION.md`](./DEPLOYMENT_CONFIGURATION.md)**: client on **Netlify** (Vite build, `client/dist`, `_redirects` SPA fallback), server on **Render** (root dir `server`, `npm start`, health check `/health`, `PORT` from env), database **MongoDB Atlas**, payments **Razorpay**.
 
 Key production requirements enforced by `server/src/config/env.js` at startup:
-- All required variables present; `CLIENT_URL` HTTPS; `MONGODB_URI` not localhost; JWT secrets ≥ 32 chars; `RAZORPAY_KEY_ID` starts with `rzp_live_`; all three Razorpay mock flags `false`.
+- All required variables present; `CLIENT_URL` HTTPS; `MONGODB_URI` not localhost; JWT secrets ≥ 32 chars; `RAZORPAY_KEY_ID` matches `RAZORPAY_MODE` (`rzp_live_` by default, `rzp_test_` when `RAZORPAY_MODE=test`); all three Razorpay mock flags `false`.
 - The production Razorpay webhook URL must be registered exactly as `https://<backend-host>/api/v1/payments/webhook/razorpay`.
 - `server/src/scripts/PRODUCTION_MONGODB_MIGRATION.md` + `node scripts/production-migration.mjs` document the read-only audit and one-time index/backfill migration procedure for an existing production database.
 
@@ -673,7 +674,7 @@ Key production requirements enforced by `server/src/config/env.js` at startup:
 
 | Symptom | Likely cause / fix |
 |---|---|
-| Server exits at startup with "Failed to start server" | Production guards: missing env vars, localhost `MONGODB_URI`, non-HTTPS `CLIENT_URL`, short JWT secrets, test Razorpay key, or a Razorpay mock flag set to `true` in production. See `config/env.js` + `config/razorpay.js`. |
+| Server exits at startup with "Failed to start server" | Production guards: missing env vars, localhost `MONGODB_URI`, non-HTTPS `CLIENT_URL`, short JWT secrets, Razorpay key not matching `RAZORPAY_MODE` (default `live` requires `rzp_live_`, `test` requires `rzp_test_`), or a Razorpay mock flag set to `true` in production. See `config/env.js` + `config/razorpay.js`. |
 | `Origin is not allowed by TableSpot CORS policy` | Frontend origin not in `CLIENT_URL` / `CLIENT_ORIGINS`. Add the origin (production) or run the client on `localhost:5173` (dev). |
 | Booking creation returns 409 on a `PAY_TO_BOOK` restaurant | Direct booking create is blocked; the customer must use the payment-first flow (`create-order` → pay → verify). |
 | "You cannot make tables available for new bookings while refunds are pending" (409) | The owner has unresolved refunds; resolve/confirm/dispute them or wait for the deadline. |
@@ -694,7 +695,7 @@ Key production requirements enforced by `server/src/config/env.js` at startup:
 - [ ] `NODE_ENV=production`; `CLIENT_URL` is HTTPS and matches the deployed frontend origin.
 - [ ] `MONGODB_URI` points to Atlas (not localhost) with a least-privilege user; backup taken.
 - [ ] JWT secrets ≥ 32 chars and unique between access/refresh; token expiries sensible.
-- [ ] Cloudinary + SMTP + Razorpay credentials valid; `RAZORPAY_KEY_ID` starts with `rzp_live_`.
+- [ ] Cloudinary + SMTP + Razorpay credentials valid; `RAZORPAY_MODE` set (`live` with `rzp_live_` keys, or temporarily `test` with `rzp_test_` keys).
 - [ ] `RAZORPAY_ORDER_MOCK`, `RAZORPAY_REFUND_MOCK`, `RAZORPAY_ONBOARDING_MOCK` all `false`.
 - [ ] Webhook registered at exact URL `https://<backend-host>/api/v1/payments/webhook/razorpay` with the correct secret; test with Razorpay test events.
 - [ ] Client built with `VITE_API_URL`/`VITE_SOCKET_URL` HTTPS URLs; `VITE_RAZORPAY_ORDER_MOCK=false`.

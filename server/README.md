@@ -137,7 +137,8 @@ All variables are read from `server/src/.env` (loaded by `src/config/env.js`).
 | `SMTP_USER` | prod | — | SMTP auth user (also used as default `MAIL_FROM`). |
 | `SMTP_PASS` | prod | — | SMTP auth password. |
 | `MAIL_FROM` | prod | — | `From:` address for transactional email. |
-| `RAZORPAY_KEY_ID` | prod | — | Razorpay key; **must start with `rzp_live_` in production**. |
+| `RAZORPAY_MODE` | prod | `live` | Key mode: `test` or `live`. `test` allows `rzp_test_` keys; `live` requires `rzp_live_`. Defaults to `live` when omitted. |
+| `RAZORPAY_KEY_ID` | prod | — | Razorpay key; **must start with `rzp_test_` when `RAZORPAY_MODE=test`, `rzp_live_` otherwise, in production**. |
 | `RAZORPAY_KEY_SECRET` | prod | — | Razorpay secret. |
 | `RAZORPAY_WEBHOOK_SECRET` | prod | — | Razorpay webhook signature secret. |
 | `SALT_ROUNDS` | — | `12` | bcrypt cost for passwords / OTPs / session hashes. |
@@ -159,7 +160,7 @@ When `NODE_ENV=production` the server **throws at boot** if any of the following
 - `MONGODB_URI` contains `localhost` / `127.0.0.1` / `0.0.0.0`.
 - `CLIENT_URL` is not a valid absolute URL with `https:`.
 - `ACCESS_TOKEN_SECRET` or `REFRESH_TOKEN_SECRET` is shorter than 32 characters.
-- `RAZORPAY_KEY_ID` does not start with `rzp_live_`.
+- `RAZORPAY_KEY_ID` does not match `RAZORPAY_MODE` (`rzp_live_` by default, `rzp_test_` when `RAZORPAY_MODE=test`).
 - Any of `RAZORPAY_ORDER_MOCK`, `RAZORPAY_REFUND_MOCK`, `RAZORPAY_ONBOARDING_MOCK` is not exactly `false`.
 
 Additional guard (`config/razorpay.js`): constructing the Razorpay client throws if any mock flag is `true` while `NODE_ENV=production`.
@@ -748,8 +749,9 @@ Reference runbook: `../DEPLOYMENT_CONFIGURATION.md` (Render + MongoDB Atlas + Ra
 
 | Symptom | Likely cause / fix |
 |---|---|
-| Server won't boot in production | Boot asserts fail — check every required env var, HTTPS `CLIENT_URL`, non-local `MONGODB_URI`, ≥32-char secrets, `rzp_live_` key, all mock flags `false`. |
-| `RAZORPAY_KEY_ID must be a live Razorpay key` | The key must start `rzp_live_` in production; use `rzp_test_*` only in development. |
+| Server won't boot in production | Boot asserts fail — check every required env var, HTTPS `CLIENT_URL`, non-local `MONGODB_URI`, ≥32-char secrets, `RAZORPAY_MODE`/key match, all mock flags `false`. |
+| `RAZORPAY_KEY_ID must be a live Razorpay key` | `RAZORPAY_MODE` is `live` (or unset) but the key starts `rzp_test_`. Use `rzp_live_*`, or temporarily set `RAZORPAY_MODE=test` with an `rzp_test_*` key (test keys only, mocks stay disabled). |
+| `RAZORPAY_MODE=test requires … rzp_test_` | `RAZORPAY_MODE=test` with a live key — use a real `rzp_test_*` key. |
 | `… must be explicitly set to false in production` | One of `RAZORPAY_ORDER_MOCK` / `RAZORPAY_REFUND_MOCK` / `RAZORPAY_ONBOARDING_MOCK` is not `false`. |
 | Webhook signature verification fails | Ensure the webhook route receives the **raw** body (it is mounted before `express.json()`); verify `RAZORPAY_WEBHOOK_SECRET` matches the Razorpay dashboard. |
 | Booking hold never frees | Confirm `deadlineCron` is running (interval `DEADLINE_JOB_INTERVAL_MS`) and the hold TTL passed. |
