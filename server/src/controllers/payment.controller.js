@@ -1258,7 +1258,8 @@ export const getHistory = asyncHandler(async (req, res) => {
             transactions.push({
                 type: "payment",
                 source: "offline",
-                paymentId: `${bill._id}:${index}`,
+              paymentId: `${bill._id}:${index}`,
+              billId: bill._id,
                 purpose,
                 amount: roundAmount(entry.amount),
                 method: entry.paymentMethod,

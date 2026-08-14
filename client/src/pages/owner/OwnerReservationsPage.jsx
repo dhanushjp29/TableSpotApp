@@ -461,6 +461,7 @@ export default function OwnerReservationsPage() {
                       successMessage="Booking confirmation PDF downloaded."
                       filename={bookingReceiptFilename}
                       fetchData={async () => ({ booking: b })}
+                      serverReceipt={({ booking }) => ({ type: "booking", id: booking._id })}
                       renderDocument={({ booking }) => (
                         <BookingPdf booking={booking} view="owner" />
                       )}

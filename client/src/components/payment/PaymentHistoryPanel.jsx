@@ -201,6 +201,10 @@ function TransactionRow({ transaction, role }) {
           }
           filename={isRefund ? refundReceiptFilename : paymentReceiptFilename}
           fetchData={() => fetchPaymentReceiptData(transaction)}
+          serverReceipt={() => ({
+            type: isRefund ? "refund" : transaction.source === "offline" ? "bill" : "payment",
+            id: isRefund ? transaction.refundId : transaction.source === "offline" ? transaction.billId : transaction.paymentId,
+          })}
           renderDocument={({ transaction: t, booking, bill, refund }) =>
             isRefund ? (
               <RefundPdf refund={refund} booking={booking} bill={bill} view={role} />

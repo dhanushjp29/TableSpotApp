@@ -420,6 +420,7 @@ function RefundsPanel({ role = "owner", title, subtitle }) {
                       successMessage="Refund receipt PDF downloaded."
                       filename={refundReceiptFilename}
                       fetchData={() => fetchRefundReceiptData(refund._id, refund)}
+                      serverReceipt={() => ({ type: "refund", id: refund._id })}
                       renderDocument={({ refund: r, booking, bill }) => (
                         <RefundPdf refund={r} booking={booking} bill={bill} view={role} />
                       )}

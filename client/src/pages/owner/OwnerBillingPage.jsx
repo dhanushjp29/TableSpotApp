@@ -51,7 +51,7 @@ import { fetchRestaurants } from "../../store/slices/restaurantSlice.js";
 import { fetchTablesByRestaurant } from "../../store/slices/tableSlice.js";
 import { exportBillsToExcel } from "../../utils/billingExport.js";
 import { formatDate, formatDateTime } from "../../utils/formatDate.js";
-import { renderPdfBlob } from "../../utils/pdf/pdfGenerator.js";
+import { receiptApi } from "../../api/receipt.api.js";
 
 const WALK_IN_PAY_METHODS = [
   { value: "Cash", label: "Cash", icon: Banknote },
@@ -784,14 +784,8 @@ export default function OwnerBillingPage() {
   }, [routeBillId, bills]);
 
   const createReceiptPdfBlob = async (receiptBill = activeReceiptBill) => {
-    const element =
-      document.getElementById("receipt-pdf-area") ||
-      document.getElementById("receipt-print-area-print");
-    if (!element || !receiptBill) throw new Error("Receipt is not ready");
-    return renderPdfBlob({
-      element,
-      filename: `${receiptBill.billCode || "tablespot-receipt"}.pdf`,
-    });
+    if (!receiptBill?._id) throw new Error("Receipt is not ready");
+    return receiptApi.download("bill", receiptBill._id);
   };
 
   const downloadReceiptPdf = async (receiptBill = activeReceiptBill) => {
@@ -801,7 +795,7 @@ export default function OwnerBillingPage() {
         const url = URL.createObjectURL(blob);
         const link = document.createElement("a");
         link.href = url;
-        link.download = `${receiptBill.billCode || "tablespot-receipt"}.pdf`;
+        link.download = `TableSpot-Receipt-${receiptBill.billCode || "bill"}.pdf`;
         document.body.appendChild(link);
         link.click();
         link.remove();
@@ -822,7 +816,7 @@ export default function OwnerBillingPage() {
         if (!printWindow) {
           const link = document.createElement("a");
           link.href = url;
-          link.download = `${receiptBill?.billCode || "tablespot-receipt"}.pdf`;
+          link.download = `TableSpot-Receipt-${receiptBill?.billCode || "bill"}.pdf`;
           document.body.appendChild(link);
           link.click();
           link.remove();

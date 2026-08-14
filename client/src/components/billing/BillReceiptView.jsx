@@ -3,7 +3,8 @@ import { useSelector } from "react-redux";
 import toast from "react-hot-toast";
 import { Download, Receipt, Sparkles } from "lucide-react";
 import { formatDate, formatDateTime } from "../../utils/formatDate.js";
-import { renderPdfBlob, downloadBlob } from "../../utils/pdf/pdfGenerator.js";
+import { downloadBlob } from "../../utils/pdf/pdfGenerator.js";
+import { receiptApi } from "../../api/receipt.api.js";
 import BillReceiptPrint from "./BillReceiptPrint.jsx";
 import Button from "../ui/Button.jsx";
 import { useDownloadLoader } from "../../hooks/useDownloadLoader.js";
@@ -21,13 +22,12 @@ export default function BillReceiptView({ bill, id = "receipt-print-area" }) {
   const { runDownload } = useDownloadLoader();
 
   const downloadReceiptPdf = async () => {
-    const element = document.getElementById(`${id}-print`);
-    if (!element) return;
+    if (!bill?._id) return;
     setDownloading(true);
     try {
       await runDownload(async () => {
-        const filename = `${bill?.billCode || "tablespot-receipt"}.pdf`;
-        const blob = await renderPdfBlob({ element, filename });
+        const filename = `TableSpot-Receipt-${bill?.billCode || "bill"}.pdf`;
+        const blob = await receiptApi.download("bill", bill._id);
         downloadBlob(blob, filename);
         toast.success("Receipt PDF downloaded.");
       });

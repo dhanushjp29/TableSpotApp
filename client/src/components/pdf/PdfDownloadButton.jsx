@@ -9,6 +9,7 @@ import toast from "react-hot-toast";
 import Button from "../ui/Button.jsx";
 import { renderPdfBlob, downloadBlob, PDF_RENDER_WIDTH } from "../../utils/pdf/pdfGenerator.js";
 import { useDownloadLoader } from "../../hooks/useDownloadLoader.js";
+import { receiptApi } from "../../api/receipt.api.js";
 
 const RENDER_SETTLE_MS = 300;
 
@@ -24,6 +25,7 @@ export default function PdfDownloadButton({
   errorMessage = "Unable to generate the PDF.",
   disabled = false,
   className = "",
+  serverReceipt = null,
 }) {
   const [isBusy, setIsBusy] = useState(false);
   const rootIdRef = useRef(null);
@@ -42,6 +44,14 @@ export default function PdfDownloadButton({
           const data = await fetchData();
           const fileName =
             typeof filename === "function" ? filename(data) : filename;
+
+          if (serverReceipt) {
+            const receipt = typeof serverReceipt === "function" ? serverReceipt(data) : serverReceipt;
+            const blob = await receiptApi.download(receipt.type, receipt.id);
+            downloadBlob(blob, fileName);
+            toast.success(successMessage);
+            return;
+          }
 
           const rootId =
             rootIdRef.current ||

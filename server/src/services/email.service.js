@@ -1,6 +1,15 @@
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import nodemailer from "nodemailer";
 
 import ApiError from "../utils/ApiError.js";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Resolved once at module load so the file is read only once per process.
+const LOGO_PATH = path.resolve(__dirname, "../../../client/public/blacklogo.png");
 
 let transporter;
 
@@ -32,6 +41,15 @@ const getTransporter = () => {
       user: SMTP_USER,
       pass: SMTP_PASS,
     },
+    pool: true,
+    maxConnections: 5,
+    maxMessages: 100,
+    // Fail fast when the hosting network blocks outbound SMTP. These values
+    // make the underlying connection problem observable instead of allowing
+    // a transactional flow to hang for several minutes.
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
 
   return transporter;
@@ -47,6 +65,8 @@ const normalizeAttachments = (attachments = []) =>
       path: attachment.path,
       cid: attachment.cid,
       encoding: attachment.encoding,
+      contentDisposition: attachment.contentDisposition,
+      headers: attachment.headers,
     }))
     .filter(
       (attachment) =>
@@ -54,6 +74,26 @@ const normalizeAttachments = (attachments = []) =>
         attachment.path ||
         attachment.cid
     );
+
+/** Return the transparent PNG as an unnamed inline CID part. */
+const buildLogoAttachment = () => {
+  try {
+    if (!fs.existsSync(LOGO_PATH)) return null;
+    return {
+      // Explicitly suppress Nodemailer's generated attachment-1.png name.
+      // The CID part remains available to the HTML but is not a downloadable
+      // logo attachment in clients such as Gmail.
+      filename: false,
+      content: fs.readFileSync(LOGO_PATH),
+      cid: "tablespot-logo",
+      contentType: "image/png",
+      contentDisposition: "inline",
+      headers: { "X-Attachment-Id": "tablespot-logo" },
+    };
+  } catch {
+    return null;
+  }
+};
 
 export const sendEmail = async ({
   to,
@@ -67,6 +107,12 @@ export const sendEmail = async ({
   attachments = [],
 }) => {
   try {
+    // Never touch real SMTP transports during automated test runs; the e2e
+    // suites only use placeholder recipient addresses (e.g. *.example.test).
+    if (process.env.NODE_ENV === "test") {
+      return { messageId: "test-noop", accepted: [], rejected: [], response: "test environment: send skipped" };
+    }
+
     const transporterInstance = getTransporter();
 
     const mailOptions = {
@@ -89,7 +135,13 @@ export const sendEmail = async ({
       mailOptions.replyTo = replyTo;
     }
 
-    const normalizedAttachments = normalizeAttachments(attachments);
+    const allAttachments = [...attachments];
+    if (html.includes("cid:tablespot-logo") && !allAttachments.some((attachment) => attachment?.cid === "tablespot-logo")) {
+      const logo = buildLogoAttachment();
+      if (logo) allAttachments.push(logo);
+    }
+
+    const normalizedAttachments = normalizeAttachments(allAttachments);
 
     if (normalizedAttachments.length > 0) {
       mailOptions.attachments = normalizedAttachments;
@@ -97,6 +149,6 @@ export const sendEmail = async ({
 
     return await transporterInstance.sendMail(mailOptions);
   } catch (error) {
-    throw new ApiError(500, error.message || "Failed to send email.");
+    throw new ApiError(500, `SMTP send failed${error.code ? ` (${error.code})` : ""}: ${error.message || "Unknown transport error."}`);
   }
 };

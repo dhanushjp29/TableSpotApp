@@ -43,7 +43,7 @@ export default function BookingConfirmationPage() {
   return <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-8">
     <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
       <div className="flex items-center gap-3"><CheckCircle className="text-success" size={28} /><div><h1 className="text-2xl font-bold text-text">Booking confirmation</h1><p className="text-sm text-muted">Your reservation details are below.</p></div></div>
-      <div className="flex flex-wrap gap-2"><PdfDownloadButton size="sm" filename={bookingReceiptFilename} fetchData={async () => ({ booking })} renderDocument={({ booking: data }) => <BookingPdf booking={data} view="customer" />} /><Button size="sm" variant="outline" onClick={handleShare}><Share2 size={15} /> Share</Button></div>
+      <div className="flex flex-wrap gap-2"><PdfDownloadButton size="sm" filename={bookingReceiptFilename} fetchData={async () => ({ booking })} serverReceipt={({ booking: data }) => ({ type: "booking", id: data._id })} renderDocument={({ booking: data }) => <BookingPdf booking={data} view="customer" />} /><Button size="sm" variant="outline" onClick={handleShare}><Share2 size={15} /> Share</Button></div>
     </div>
     <BookingDetailsSummary booking={booking} offerRecipient={booking.offerRecipient} />
     {advanceAmount > 0 && paymentActive && <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-primary/20 bg-primary/5 p-4"><p className="text-sm font-medium text-text">Advance payment required: {formatCurrency(advanceAmount)}</p><Button isLoading={isPaying} onClick={() => payAdvance({ bookingId, onSuccess: fetchBooking, onDismiss: fetchBooking })}>Pay advance</Button></div>}

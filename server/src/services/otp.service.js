@@ -9,6 +9,9 @@ import generateOTP from "../utils/generateOTP.js";
 import { sendEmail } from "./email.service.js";
 import { compileTemplate } from "../utils/templateParser.js";
 
+const SUPPORT_EMAIL = process.env.SUPPORT_EMAIL || "tablespotapp@gmail.com";
+const SUPPORT_PHONE = process.env.SUPPORT_PHONE || "+916374428721";
+
 export const sendOTP = async ({ email, purpose, userId = null }) => {
   // Generate OTP
   const otp = generateOTP();
@@ -60,12 +63,18 @@ export const sendOTP = async ({ email, purpose, userId = null }) => {
     html = compileTemplate("verify-email", {
       NAME: user?.fullName || "User",
       OTP: otp,
+      SUPPORT_EMAIL,
+      SUPPORT_PHONE,
+      CLIENT_URL: process.env.CLIENT_URL || "",
       YEAR: currentYear
     });
   } else if (purpose === OTP_PURPOSE.PASSWORD_RESET) {
     html = compileTemplate("forgot-password", {
       NAME: user?.fullName || "User",
       OTP: otp,
+      SUPPORT_EMAIL,
+      SUPPORT_PHONE,
+      CLIENT_URL: process.env.CLIENT_URL || "",
       YEAR: currentYear
     });
   }
