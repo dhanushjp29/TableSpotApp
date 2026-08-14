@@ -57,6 +57,7 @@ export const ROUTES = {
   ADMIN_RESTAURANTS: "/admin/restaurants",
   ADMIN_REVIEWS: "/admin/reviews",
   ADMIN_REPORTS: "/admin/reports",
+  ADMIN_RECONCILIATION: "/admin/reconciliations",
   ADMIN_NOTIFICATIONS: "/admin/notifications",
   ADMIN_PROFILE: "/admin/profile",
 };

@@ -6,6 +6,8 @@ import {
   OWNER_BOOKING_STATUS_VALUES,
   RAZORPAY_ACCOUNT_STATUS,
   RAZORPAY_ACCOUNT_STATUS_VALUES,
+  RAZORPAY_ACCOUNT_CREATION_STATUS,
+  RAZORPAY_ACCOUNT_CREATION_STATUS_VALUES,
   USER_ROLE,
   USER_ROLE_VALUES,
 } from "../utils/constants.js";
@@ -68,10 +70,34 @@ const userSchema = new mongoose.Schema(
       trim: true,
     },
 
+    razorpayProductId: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+
     razorpayAccountStatus: {
       type: String,
       enum: RAZORPAY_ACCOUNT_STATUS_VALUES,
       default: RAZORPAY_ACCOUNT_STATUS.NOT_CONNECTED,
+    },
+
+    razorpayAccountCreationStatus: {
+      type: String,
+      enum: RAZORPAY_ACCOUNT_CREATION_STATUS_VALUES,
+      default: RAZORPAY_ACCOUNT_CREATION_STATUS.IDLE,
+    },
+
+    razorpayAccountCreationAttemptId: {
+      type: String,
+      default: "",
+      select: false,
+    },
+
+    razorpayAccountCreationStartedAt: {
+      type: Date,
+      default: null,
+      select: false,
     },
 
     bookingStatus: {
@@ -154,6 +180,14 @@ const userSchema = new mongoose.Schema(
   },
   {
     timestamps: true,
+  }
+);
+
+userSchema.index(
+  { razorpayAccountId: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { razorpayAccountId: { $type: "string", $gt: "" } },
   }
 );
 

@@ -1,6 +1,6 @@
 # TableSpot production MongoDB migration
 
-`production-migration.mjs` is a standalone, read-only-by-default audit and migration utility. It does not delete records, rewrite non-null refund counters, process refunds, or run webhook reconciliation.
+`production-migration.mjs` is a standalone, read-only-by-default audit and migration utility. It does not delete records, rewrite non-null refund counters, process refunds, or run webhook/reconciliation workers.
 
 ## Preconditions
 
@@ -26,6 +26,9 @@ The first and last commands are read-only audits. `--migrate` only:
 - creates/verifies the compound customer-scoped payment idempotency index;
 - creates/verifies the sparse Razorpay order index;
 - creates/verifies the booking-scoped refund idempotency index;
+- creates/verifies the payment-scoped refund idempotency index (used by reconciliation auto-refunds that have no booking);
+- creates/verifies the `Refund.paymentId` index;
+- creates/verifies the `Reconciliation` collection indexes (unique paymentId, worker candidates, status/created, restaurant/created);
 - creates/verifies the unique Razorpay webhook event index.
 
 The migration refuses to create the required indexes when duplicate data blocks them. Resolve duplicates manually, without deleting records, then rerun the audit and migration.
@@ -47,7 +50,7 @@ The old/global `payment_idempotency_unique_partial` index is reported but not dr
 
 ## Verification and rollout
 
-After migration, rerun the read-only audit and verify the four required named indexes, zero blocking duplicate groups, refund-counter mismatches reviewed, and no new unresolved payment/webhook references. Check application health and configuration, then exercise a Razorpay test-mode order, capture, booking materialization, duplicate order retry, duplicate webhook delivery, refund retry, and refund concurrency path.
+After migration, rerun the read-only audit and verify the required named indexes, zero blocking duplicate groups, refund-counter mismatches reviewed, and no new unresolved payment/webhook references. Check application health and configuration, then exercise a Razorpay test-mode order, capture, booking materialization, duplicate order retry, duplicate webhook delivery, refund retry, refund concurrency path, and the payment-reconciliation worker (booking creation, refund, and manual-review outcomes) with `RECONCILIATION_WORKER` and related knobs at their intended production values.
 
 ## Rollback
 

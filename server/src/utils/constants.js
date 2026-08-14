@@ -501,6 +501,16 @@ export const RAZORPAY_ACCOUNT_STATUS_VALUES = [
   RAZORPAY_ACCOUNT_STATUS.CONNECTED,
 ];
 
+export const RAZORPAY_ACCOUNT_CREATION_STATUS = {
+  IDLE: "Idle",
+  PROCESSING: "Processing",
+};
+
+export const RAZORPAY_ACCOUNT_CREATION_STATUS_VALUES = [
+  RAZORPAY_ACCOUNT_CREATION_STATUS.IDLE,
+  RAZORPAY_ACCOUNT_CREATION_STATUS.PROCESSING,
+];
+
 // ===============================
 // Payment Purpose
 // ===============================
@@ -729,6 +739,63 @@ export const MAX_REPORT_ADMIN_NOTES_LENGTH = 1000;
 // ===============================
 // Code Prefixes
 // ===============================
+
+// ===============================
+// Payment Reconciliation Worker
+// ===============================
+
+// State machine for a captured Payment whose booking materialization could not
+// be completed. The Payment record stays the financial source of truth; the
+// Reconciliation record only tracks worker/admin recovery progress.
+export const RECONCILIATION_STATUS = {
+  PENDING: "PENDING",
+  PROCESSING: "PROCESSING",
+  RESOLVED_BOOKING: "RESOLVED_BOOKING",
+  RESOLVED_REFUND: "RESOLVED_REFUND",
+  MANUAL_REVIEW: "MANUAL_REVIEW",
+  FAILED_RETRYABLE: "FAILED_RETRYABLE",
+};
+
+export const RECONCILIATION_STATUS_VALUES = Object.values(
+  RECONCILIATION_STATUS
+);
+
+// Final outcome of a reconciliation, independent of the status value that
+// carried it there (e.g. RESOLVED_REFUND with REFUND_INITIATED vs
+// REFUND_COMPLETED).
+export const RECONCILIATION_RESOLUTION = {
+  BOOKING_CREATED: "BOOKING_CREATED",
+  BOOKING_REUSED: "BOOKING_REUSED",
+  REFUND_INITIATED: "REFUND_INITIATED",
+  REFUND_COMPLETED: "REFUND_COMPLETED",
+  CLOSED_MANUALLY: "CLOSED_MANUALLY",
+};
+
+export const RECONCILIATION_RESOLUTION_VALUES = Object.values(
+  RECONCILIATION_RESOLUTION
+);
+
+// Why a reconciliation moved to MANUAL_REVIEW. Never stored with secrets.
+export const RECONCILIATION_MANUAL_REASON = {
+  PAYMENT_NOT_FOUND: "PAYMENT_NOT_FOUND",
+  PAYMENT_NOT_CAPTURED: "PAYMENT_NOT_CAPTURED",
+  SNAPSHOT_INVALID: "SNAPSHOT_INVALID",
+  CUSTOMER_INVALID: "CUSTOMER_INVALID",
+  RESTAURANT_INVALID: "RESTAURANT_INVALID",
+  TABLE_INVALID: "TABLE_INVALID",
+  OFFER_INVALID: "OFFER_INVALID",
+  REFUND_AMBIGUOUS: "REFUND_AMBIGUOUS",
+  ALREADY_REFUNDED: "ALREADY_REFUNDED",
+  NO_REFUNDABLE_AMOUNT: "NO_REFUNDABLE_AMOUNT",
+  BOOKING_TIME_PASSED: "BOOKING_TIME_PASSED",
+  TABLE_UNAVAILABLE: "TABLE_UNAVAILABLE",
+  MAX_ATTEMPTS: "MAX_ATTEMPTS",
+  UNEXPECTED: "UNEXPECTED",
+};
+
+export const RECONCILIATION_MANUAL_REASON_VALUES = Object.values(
+  RECONCILIATION_MANUAL_REASON
+);
 
 export const CODE_PREFIX = {
   USER: "USR",

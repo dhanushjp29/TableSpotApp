@@ -42,7 +42,7 @@ export default function BookingDetailPage() {
     if (!booking?.refundId || !booking.refundStatus || booking.refundStatus === "NOT_REQUIRED") { dispatch(clearCurrentRefund()); return; }
     dispatch(fetchRefundById(booking.refundId)).catch(() => {});
   }, [dispatch, booking?.refundId, booking?.refundStatus]);
-  useEffect(() => subscribeToBookingUpdates("all", (updated) => { if (String(updated._id) === String(bookingId)) dispatch(setCurrentBooking(updated)); }), [dispatch, bookingId]);
+  useEffect(() => subscribeToBookingUpdates("all", (updated) => { if (String(updated._id) === String(bookingId)) dispatch(setCurrentBooking(updated)); }, fetchBooking), [dispatch, bookingId, fetchBooking]);
 
   if (isLoading) return <div className="mx-auto max-w-5xl px-4 py-8"><div className="card p-6"><SkeletonText lines={10} /></div></div>;
   if (error) return <div className="mx-auto max-w-5xl px-4 py-8"><ErrorState title="Unable to load booking" description={error} onRetry={fetchBooking} /></div>;

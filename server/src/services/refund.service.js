@@ -37,6 +37,9 @@ const buildRefundFingerprint = ({ amount, reason, refundMethod }) =>
 const buildAutomaticRefundKey = ({ bookingId, reason }) =>
   `auto:${bookingId}:${reason}`;
 
+const buildPaymentRefundKey = ({ paymentId, reason }) =>
+  `auto:pay:${paymentId}:${reason}`;
+
 const claimRefundForProcessing = async ({
   refundId,
   processedBy,
@@ -327,10 +330,17 @@ export const getRefundById = async ({ refundId }) => {
 };
 
 /**
- * Create a refund record for a booking.
+ * Create a refund record.
+ *
+ * Two shapes are supported:
+ * - Booking refunds (existing flow): pass `booking` (and `restaurant`).
+ * - Payment-scoped refunds (reconciliation of a captured payment whose booking
+ *   never materialized): pass `payment` instead of `booking`. The amount is
+ *   always supplied by the caller and never derived from untrusted input.
  */
 export const createRefund = async ({
-  booking,
+  booking = null,
+  payment = null,
   restaurant,
   amount,
   reason,
@@ -344,19 +354,29 @@ export const createRefund = async ({
     throw new ApiError(400, "Refund amount must be greater than zero.");
   }
 
+  if (!booking && !payment) {
+    throw new ApiError(400, "A booking or a payment is required for a refund.");
+  }
+  if (booking && payment) {
+    throw new ApiError(400, "A refund must target exactly one of booking or payment.");
+  }
+
+  const targetId = booking ? booking._id : payment._id;
+  const defaultKey = booking
+    ? buildAutomaticRefundKey({ bookingId: booking._id, reason })
+    : buildPaymentRefundKey({ paymentId: payment._id, reason });
   const normalizedIdempotencyKey =
-    String(idempotencyKey || "").trim() ||
-    buildAutomaticRefundKey({ bookingId: booking._id, reason });
+    String(idempotencyKey || "").trim() || defaultKey;
   const idempotencyFingerprint = buildRefundFingerprint({
     amount: normalizedAmount,
     reason,
     refundMethod,
   });
 
-  const existing = await Refund.findOne({
-    bookingId: booking._id,
-    idempotencyKey: normalizedIdempotencyKey,
-  });
+  const existingQuery = booking
+    ? { bookingId: booking._id, idempotencyKey: normalizedIdempotencyKey }
+    : { paymentId: payment._id, idempotencyKey: normalizedIdempotencyKey };
+  const existing = await Refund.findOne(existingQuery);
   if (existing) {
     if (
       existing.idempotencyFingerprint &&
@@ -385,11 +405,12 @@ export const createRefund = async ({
   try {
     refund = await Refund.create({
       refundCode,
-      bookingId: booking._id,
-      billId: booking.billId || null,
-      restaurantId: booking.restaurantId,
-      ownerId: restaurant.ownerId,
-      customerId: booking.userId,
+      bookingId: booking ? booking._id : null,
+      paymentId: payment ? payment._id : null,
+      billId: booking?.billId || null,
+      restaurantId: booking ? booking.restaurantId : payment.restaurantId,
+      ownerId: booking ? restaurant.ownerId : payment.ownerId,
+      customerId: booking ? booking.userId : payment.customerId,
       amount: normalizedAmount,
       reason,
       remarks: String(remarks || "").trim(),
@@ -403,10 +424,7 @@ export const createRefund = async ({
     });
   } catch (error) {
     if (error?.code !== 11000) throw error;
-    refund = await Refund.findOne({
-      bookingId: booking._id,
-      idempotencyKey: normalizedIdempotencyKey,
-    });
+    refund = await Refund.findOne(existingQuery);
     if (!refund) throw error;
     if (refund.idempotencyFingerprint !== idempotencyFingerprint) {
       throw new ApiError(
@@ -575,16 +593,20 @@ export const processRefund = async ({
     return refund;
   }
 
-  const payment = await Payment.findOne({
-    bookingId: refund.bookingId,
-    paymentStatus: PAYMENT_TRANSACTION_STATUS.CAPTURED,
-  }).sort({ createdAt: -1 });
+  const payment = refund.paymentId
+    ? await Payment.findById(refund.paymentId)
+    : await Payment.findOne({
+        bookingId: refund.bookingId,
+        paymentStatus: PAYMENT_TRANSACTION_STATUS.CAPTURED,
+      }).sort({ createdAt: -1 });
 
   if (!payment || !payment.razorpayPaymentId) {
     refund.refundStatus = REFUND_STATUS.REFUND_FAILED;
     refund.failedAt = new Date();
     refund.failureReason =
-      "No captured Razorpay payment was found for this booking.";
+      refund.paymentId
+        ? "The captured Razorpay payment for this refund could not be found."
+        : "No captured Razorpay payment was found for this booking.";
     await refund.save();
     await syncBookingRefundStatus(refund);
     emitRefundUpdate(refund);

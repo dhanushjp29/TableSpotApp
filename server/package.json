@@ -5,7 +5,11 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon src/server.js",
-    "start": "node src/server.js"
+    "start": "node src/server.js",
+    "test:booking-holds": "node tests/bookingHold.runtime.test.mjs",
+    "test:booking-api": "node tests/booking.api.e2e.test.mjs",
+    "test:payment-api": "node tests/payment.api.e2e.test.mjs",
+    "test:payment-account": "node tests/paymentAccount.runtime.test.mjs"
   },
   "keywords": [],
   "author": "",
@@ -32,6 +36,7 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "nodemon": "^3.1.14"
+    "nodemon": "^3.1.14",
+    "socket.io-client": "^4.8.3"
   }
 }

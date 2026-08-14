@@ -13,7 +13,7 @@ import { createBillPdf, createBookingPdf, createPaymentPdf, createRefundPdf } fr
 
 const escapeHtml = (input) => String(input ?? "—").replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]));
 const money = (input) => `INR ${Number(input || 0).toLocaleString("en-IN", { maximumFractionDigits: 2 })}`;
-const details = (rows) => rows.filter(([, content]) => content !== undefined && content !== null && content !== "").map(([label, content]) => `<div style="margin:0 0 10px;"><span style="display:inline-block;min-width:145px;color:#6b7280;font-size:13px;">${escapeHtml(label)}</span><strong style="color:#111827;font-size:13px;">${escapeHtml(content)}</strong></div>`).join("");
+const details = (rows = []) => rows.filter(([, content]) => content !== undefined && content !== null && content !== "").map(([label, content]) => `<div style="margin:0 0 10px;"><span style="display:inline-block;min-width:145px;color:#6b7280;font-size:13px;">${escapeHtml(label)}</span><strong style="color:#111827;font-size:13px;">${escapeHtml(content)}</strong></div>`).join("");
 
 const claimDelivery = async ({ eventKey, recipient, template }) => {
   if (!recipient) return null;

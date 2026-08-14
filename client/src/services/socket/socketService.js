@@ -3,6 +3,27 @@ import { SOCKET_URL } from "../../config/runtime.js";
 
 
 let socket = null;
+const subscriptions = new Map();
+let hasConnected = false;
+
+const subscriptionKey = (type, restaurantId) =>
+  `${type}:${restaurantId && restaurantId !== "all" ? restaurantId : "all"}`;
+
+const emitSubscription = ({ type, restaurantId }) => {
+  if (!socket) return;
+
+  socket.emit(`subscribe:${type}`, {
+    restaurantId:
+      restaurantId && restaurantId !== "all" ? restaurantId : undefined,
+  });
+};
+
+const restoreSubscriptions = () => {
+  subscriptions.forEach((subscription) => {
+    emitSubscription(subscription);
+    subscription.onReconnect?.();
+  });
+};
 
 export function getSocket() {
   if (!socket) {
@@ -10,6 +31,15 @@ export function getSocket() {
       autoConnect: false,
       transports: ["websocket"],
       withCredentials: true,
+    });
+
+    socket.on("connect", () => {
+      if (hasConnected) {
+        // Socket.IO rooms are connection-scoped. Rejoin them and refresh from
+        // the API so missed events never become the client-side truth.
+        restoreSubscriptions();
+      }
+      hasConnected = true;
     });
   }
   return socket;
@@ -38,26 +68,55 @@ export function disconnectSocket() {
   }
 }
 
-export function subscribeToBookingUpdates(restaurantId, handler) {
+const subscribe = ({ type, restaurantId, handler, onReconnect }) => {
   const s = ensureSocketConnected();
-  s.emit("subscribe:bookings", {
-    restaurantId: restaurantId && restaurantId !== "all" ? restaurantId : undefined,
-  });
-  s.off("booking:updated", handler);
-  s.on("booking:updated", handler);
-  return () => {
-    s.off("booking:updated", handler);
+  const eventName = type === "bookings" ? "booking:updated" : "table:updated";
+  const key = subscriptionKey(type, restaurantId);
+  const existing = subscriptions.get(key) || {
+    type,
+    restaurantId,
+    handlers: new Set(),
+    onReconnect: null,
   };
+  existing.handlers.add(handler);
+  existing.onReconnect = onReconnect || existing.onReconnect;
+  subscriptions.set(key, existing);
+
+  emitSubscription(existing);
+  s.off(eventName, handler);
+  s.on(eventName, handler);
+
+  return () => {
+    s.off(eventName, handler);
+    const current = subscriptions.get(key);
+    if (!current) return;
+    current.handlers.delete(handler);
+    if (current.handlers.size === 0) {
+      subscriptions.delete(key);
+    }
+  };
+};
+
+export function subscribeToBookingUpdates(restaurantId, handler, onReconnect) {
+  return subscribe({ type: "bookings", restaurantId, handler, onReconnect });
 }
 
-export function subscribeToTableUpdates(restaurantId, handler) {
+export function subscribeToTableUpdates(restaurantId, handler, onReconnect) {
+  return subscribe({ type: "tables", restaurantId, handler, onReconnect });
+}
+
+/**
+ * Subscribe to reconciliation status updates. The backend emits
+ * `payment:reconciliationUpdated` to the `restaurant_<id>` and `user_<id>`
+ * rooms, so the caller must be joined to the relevant room to receive it.
+ * Returns an unsubscribe function. Duplicate listeners are removed before
+ * adding, so re-subscribing never stacks handlers.
+ */
+export function subscribeToReconciliationUpdates(handler) {
   const s = ensureSocketConnected();
-  s.emit("subscribe:tables", {
-    restaurantId: restaurantId && restaurantId !== "all" ? restaurantId : undefined,
-  });
-  s.off("table:updated", handler);
-  s.on("table:updated", handler);
+  s.off("payment:reconciliationUpdated", handler);
+  s.on("payment:reconciliationUpdated", handler);
   return () => {
-    s.off("table:updated", handler);
+    s.off("payment:reconciliationUpdated", handler);
   };
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { useDispatch, useSelector, useStore } from "react-redux";
 import {
@@ -77,7 +77,7 @@ export function CustomerBookingsPage() {
       reviewData: null,
     });
 
-  const refreshBookingReviews = async (bookingList) => {
+  const refreshBookingReviews = useCallback(async (bookingList) => {
     const reviewLookups = (bookingList || [])
       .map((booking) => {
         const restaurant =
@@ -101,9 +101,9 @@ export function CustomerBookingsPage() {
         return acc;
       }, {})
     );
-  };
+  }, []);
 
-  const reloadBookings = async () => {
+  const reloadBookings = useCallback(async () => {
     try {
       const response = await dispatch(fetchBookings());
       await refreshBookingReviews(response.data?.bookings || []);
@@ -113,7 +113,7 @@ export function CustomerBookingsPage() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [dispatch, refreshBookingReviews]);
 
   useEffect(() => {
     let isMounted = true;
@@ -147,9 +147,9 @@ export function CustomerBookingsPage() {
           meta: store.getState().reservation.meta,
         })
       );
-    });
+    }, reloadBookings);
     return unsubscribe;
-  }, [dispatch, store]);
+  }, [dispatch, reloadBookings, store]);
 
   const handleCancelBooking = async (bookingId) => {
     if (!window.confirm("Are you sure you want to cancel this booking?")) return;

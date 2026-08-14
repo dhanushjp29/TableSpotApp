@@ -1,5 +1,6 @@
 import { Router } from "express";
 
+import adminReconciliationRoutes from "./adminReconciliation.routes.js";
 import analyticsRoutes from "./analytics.routes.js";
 import authRoutes from "./auth.routes.js";
 import billRoutes from "./bill.routes.js";
@@ -37,6 +38,7 @@ apiRouter.use("/restaurant-reviews", restaurantReviewRoutes);
 apiRouter.use("/food-reviews", foodReviewRoutes);
 apiRouter.use("/payments", paymentRoutes);
 apiRouter.use("/refunds", refundRoutes);
+apiRouter.use("/admin/payments/reconciliation", adminReconciliationRoutes);
 apiRouter.use("/jobs", jobRoutes);
 apiRouter.use("/uploads", uploadRoutes);
 

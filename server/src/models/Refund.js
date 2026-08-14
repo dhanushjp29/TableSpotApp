@@ -18,7 +18,16 @@ const refundSchema = new mongoose.Schema(
     bookingId: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "Booking",
-      required: true,
+      default: null,
+    },
+
+    // Set only for payment-scoped refunds (reconciliation of a captured
+    // payment whose booking never materialized). A refund has exactly one of
+    // bookingId or paymentId.
+    paymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+      default: null,
     },
 
     billId: {
@@ -230,6 +239,19 @@ refundSchema.index(
     },
   }
 );
+
+refundSchema.index(
+  { paymentId: 1, idempotencyKey: 1 },
+  {
+    unique: true,
+    name: "refund_payment_idempotency_unique_partial",
+    partialFilterExpression: {
+      idempotencyKey: { $type: "string" },
+    },
+  }
+);
+
+refundSchema.index({ paymentId: 1 });
 
 refundSchema.index({ deadlineAt: 1 });
 

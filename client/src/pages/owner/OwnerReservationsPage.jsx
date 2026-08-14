@@ -112,7 +112,7 @@ export default function OwnerReservationsPage() {
 
     const unsubscribe = subscribeToBookingUpdates(selectedRestaurant || "all", () => {
       fetchReservations();
-    });
+    }, fetchReservations);
     return unsubscribe;
   }, [dispatch, selectedRestaurant]);
 

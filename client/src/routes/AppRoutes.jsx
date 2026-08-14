@@ -61,6 +61,7 @@ import {
 } from "../pages/admin/AdminPlaceholderPages.jsx";
 import AdminRestaurantsPage from "../pages/admin/AdminRestaurantsPage.jsx";
 import AdminReviewsPage from "../pages/admin/AdminReviewsPage.jsx";
+import AdminReconciliationPage from "../pages/admin/AdminReconciliationPage.jsx";
 
 // Lazy-loaded route components (for performance)
 const RestaurantDetailsLazy = lazy(() =>
@@ -197,6 +198,7 @@ function AppRoutes() {
         <Route path={ROUTES.ADMIN_RESTAURANTS} element={<AdminRestaurantsPage />} />
         <Route path={ROUTES.ADMIN_REVIEWS} element={<AdminReviewsPage />} />
         <Route path={ROUTES.ADMIN_REPORTS} element={<AdminReportsPage />} />
+        <Route path={ROUTES.ADMIN_RECONCILIATION} element={<AdminReconciliationPage />} />
         <Route path={ROUTES.ADMIN_NOTIFICATIONS} element={<NotificationsPage />} />
         <Route path={ROUTES.ADMIN_PROFILE} element={<ProfilePage />} />
       </Route>

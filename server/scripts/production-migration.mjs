@@ -6,6 +6,7 @@ import { fileURLToPath } from "url";
 import Payment from "../src/models/Payment.js";
 import Booking from "../src/models/Booking.js";
 import Refund from "../src/models/Refund.js";
+import Reconciliation from "../src/models/Reconciliation.js";
 import WebhookEvent from "../src/models/WebhookEvent.js";
 import User from "../src/models/User.js";
 import Restaurant from "../src/models/Restaurant.js";
@@ -54,7 +55,7 @@ const printSection = (title, value) => {
 const listIndexes = async (model) => model.collection.listIndexes().toArray();
 
 const auditIndexes = async () => {
-  const collections = { Payment, Booking, Refund, WebhookEvent, User, Restaurant, Session, OTP };
+  const collections = { Payment, Booking, Refund, Reconciliation, WebhookEvent, User, Restaurant, Session, OTP };
   const result = {};
   for (const [name, model] of Object.entries(collections)) {
     result[name] = await listIndexes(model);
@@ -95,6 +96,11 @@ const auditDuplicates = async () => {
       Refund,
       { bookingId: "$bookingId", idempotencyKey: "$idempotencyKey" },
       { idempotencyKey: { $type: "string" } }
+    ),
+    paymentRefundIdempotency: await duplicateGroups(
+      Refund,
+      { paymentId: "$paymentId", idempotencyKey: "$idempotencyKey" },
+      { paymentId: { $ne: null }, idempotencyKey: { $type: "string" } }
     ),
     refundGatewayId: await duplicateGroups(
       Refund,
@@ -261,11 +267,36 @@ const auditOperationalStates = async () => {
   printSection("Operational state audit", { paymentStates, invalidAmounts, capturedWithoutOrder, failedPaymentsWithBooking, webhookStates, staleWebhookEvents, failedWebhooks, unknownWebhooks, webhookReferencesMissingPayment });
 };
 
+const auditReconciliationCandidates = async () => {
+  const candidates = await Payment.find({
+    paymentStatus: PAYMENT_TRANSACTION_STATUS.CAPTURED,
+    bookingId: null,
+    bookingCreationStatus: {
+      $in: ["PENDING", "FAILED_REQUIRES_RECONCILIATION", null],
+    },
+  })
+    .select("_id razorpayOrderId customerId restaurantId amount bookingCreationStatus bookingFailureReason bookingFailureAt createdAt")
+    .limit(SAMPLE_LIMIT)
+    .lean();
+
+  const alreadyTracked = await Reconciliation.find({})
+    .select("paymentId status resolutionReason nextAttemptAt")
+    .limit(SAMPLE_LIMIT)
+    .lean();
+
+  printSection("Reconciliation candidate audit", {
+    capturedWithoutBookingCandidates: candidates,
+    trackedReconciliationRows: alreadyTracked,
+    totalTracked: await Reconciliation.countDocuments({}),
+  });
+};
+
 const assertNoDuplicatesForRequiredIndexes = async (duplicates) => {
   const blocking = [
     "paymentIdempotency",
     "paymentRazorpayOrder",
     "refundIdempotency",
+    "paymentRefundIdempotency",
     "webhookEventId",
   ].filter((key) => duplicates[key]?.length);
   if (blocking.length) {
@@ -278,6 +309,12 @@ const createRequiredIndexes = async () => {
     [Payment.collection, { customerId: 1, idempotencyKey: 1 }, { unique: true, name: "payment_customer_idempotency_unique_partial", partialFilterExpression: { idempotencyKey: { $type: "string" } } }],
     [Payment.collection, { razorpayOrderId: 1 }, { unique: true, sparse: true, name: "payment_razorpay_order_unique" }],
     [Refund.collection, { bookingId: 1, idempotencyKey: 1 }, { unique: true, name: "refund_booking_idempotency_unique_partial", partialFilterExpression: { idempotencyKey: { $type: "string" } } }],
+    [Refund.collection, { paymentId: 1, idempotencyKey: 1 }, { unique: true, name: "refund_payment_idempotency_unique_partial", partialFilterExpression: { idempotencyKey: { $type: "string" } } }],
+    [Refund.collection, { paymentId: 1 }, { name: "refund_payment_id" }],
+    [Reconciliation.collection, { paymentId: 1 }, { unique: true, name: "reconciliation_payment_unique" }],
+    [Reconciliation.collection, { status: 1, nextAttemptAt: 1, processingStartedAt: 1 }, { name: "reconciliation_worker_candidates" }],
+    [Reconciliation.collection, { status: 1, createdAt: -1 }, { name: "reconciliation_status_created" }],
+    [Reconciliation.collection, { restaurantId: 1, createdAt: -1 }, { name: "reconciliation_restaurant_created" }],
     [WebhookEvent.collection, { eventId: 1 }, { unique: true, name: "razorpay_webhook_event_unique" }],
   ];
 
@@ -317,6 +354,7 @@ const main = async () => {
   const refundAccounting = await auditRefundAccounting();
   await auditRelationships();
   await auditOperationalStates();
+  await auditReconciliationCandidates();
 
   if (mode === "migrate") {
     await assertNoDuplicatesForRequiredIndexes(duplicates);

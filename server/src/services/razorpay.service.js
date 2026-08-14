@@ -3,11 +3,61 @@ import crypto from "crypto";
 import ApiError from "../utils/ApiError.js";
 import { isRazorpayMockEnabled } from "../config/razorpay.js";
 
+/**
+ * Where a linked account holder completes KYC and manages their payout
+ * account. The Route API has no per-account hosted onboarding URL, so this
+ * dashboard is the honest target for "complete onboarding".
+ */
+export const RAZORPAY_DASHBOARD_URL = "https://dashboard.razorpay.com/";
+
 const isOnboardingMock = () =>
   isRazorpayMockEnabled("RAZORPAY_ONBOARDING_MOCK");
 
 const isOrderMock = () =>
   isRazorpayMockEnabled("RAZORPAY_ORDER_MOCK");
+
+/**
+ * Extract a diagnostic summary from any Razorpay failure shape (SDK thrown
+ * objects, gateway error bodies, or plain Error instances). Never falls back
+ * to "Unknown error".
+ */
+const describeRazorpayError = (error = {}) => {
+  const body =
+    error?.error ||
+    error?.response?.data?.error ||
+    error?.response?.data ||
+    {};
+  return {
+    statusCode: Number(
+      error?.statusCode || error?.status || error?.response?.status || 0
+    ),
+    code: body?.code || "",
+    description: body?.description || error?.message || "",
+    source: body?.source || "",
+    step: body?.step || "",
+    reason: body?.reason || "",
+    field: body?.field || "",
+  };
+};
+
+/**
+ * Log the full gateway diagnostic server-side and throw a safe ApiError. The
+ * client never receives gateway internals (codes, descriptions, metadata) —
+ * only a fixed message appropriate for the failure class.
+ */
+const throwRazorpayError = (operation, safeMessage, error) => {
+  const detail = describeRazorpayError(error);
+  console.error(`Razorpay ${operation} failed`, {
+    statusCode: detail.statusCode || undefined,
+    code: detail.code || undefined,
+    description: detail.description || undefined,
+    source: detail.source || undefined,
+    step: detail.step || undefined,
+    reason: detail.reason || undefined,
+    field: detail.field || undefined,
+  });
+  throw new ApiError(detail.statusCode >= 500 ? 502 : 400, safeMessage);
+};
 
 // Initialize Razorpay client lazily to avoid crashing if env variables are not set during boot
 let razorpayInstance = null;
@@ -105,7 +155,11 @@ export const createPaymentOrder = async ({
         const order = await razorpay.orders.create(options);
         return order;
     } catch (error) {
-        throw new ApiError(500, `Razorpay Order Creation Failed: ${error.message}`);
+        throwRazorpayError(
+            "order creation",
+            "Razorpay order creation failed. Please try again later.",
+            error
+        );
     }
 };
 
@@ -123,7 +177,11 @@ export const findPaymentOrderByReceipt = async ({ receipt }) => {
         const result = await razorpay.orders.all({ receipt, count: 10 });
         return (result?.items || []).find((order) => order.receipt === receipt) || null;
     } catch (error) {
-        throw new ApiError(502, "Razorpay order recovery is temporarily unavailable.");
+        throwRazorpayError(
+            "order recovery",
+            "Razorpay order recovery is temporarily unavailable.",
+            error
+        );
     }
 };
 
@@ -151,20 +209,21 @@ export const createRefundForPayment = async ({
     };
   }
 
-  const razorpay = getRazorpayInstance();
+    const razorpay = getRazorpayInstance();
 
-  try {
-    const refund = await razorpay.payments.refund(razorpayPaymentId, {
-      amount: Math.round(Number(amount) * 100),
-      notes: { refundCode },
-    });
-    return refund;
-  } catch (error) {
-    throw new ApiError(
-      502,
-      `Razorpay Refund Failed: ${error.message}`
-    );
-  }
+    try {
+        const refund = await razorpay.payments.refund(razorpayPaymentId, {
+            amount: Math.round(Number(amount) * 100),
+            notes: { refundCode },
+        });
+        return refund;
+    } catch (error) {
+        throwRazorpayError(
+            "refund",
+            "Razorpay refund failed. Please try again later.",
+            error
+        );
+    }
 };
 
 /**
@@ -251,9 +310,10 @@ export const verifyWebhookSignature = ({ rawBody, signature }) => {
  */
 export const createPaymentAccount = async ({
     email,
-    contact,
+    phone,
     legalBusinessName,
     businessType = "individual",
+    registeredAddress = null,
 }) => {
     if (isOnboardingMock()) {
         return {
@@ -267,16 +327,44 @@ export const createPaymentAccount = async ({
 
     const razorpay = getRazorpayInstance();
 
+    const registered =
+        registeredAddress && String(registeredAddress.street1 || "").trim()
+            ? {
+                  street1: String(registeredAddress.street1).trim(),
+                  street2:
+                      String(registeredAddress.street2 || "").trim() || "NA",
+                  city: String(registeredAddress.city || "").trim(),
+                  state: String(registeredAddress.state || "")
+                      .trim()
+                      .toUpperCase(),
+                  postal_code: String(
+                      registeredAddress.postalCode || ""
+                  ).trim(),
+                  country:
+                      String(registeredAddress.country || "").trim() || "IN",
+              }
+            : {
+                  street1: String(legalBusinessName || "TableSpot").trim(),
+                  street2: "Update during KYC",
+                  city: "Bengaluru",
+                  state: "KARNATAKA",
+                  postal_code: "560001",
+                  country: "IN",
+              };
+
     try {
         const account = await razorpay.accounts.create({
             type: "route",
             email: String(email || "").trim(),
-            contact: String(contact || "").trim(),
+            phone: String(phone || "9999999999").trim(),
             legal_business_name: String(legalBusinessName || "").trim(),
             business_type: businessType,
             profile: {
                 category: "food",
-                subcategory: "restaurants",
+                subcategory: "restaurant",
+                addresses: {
+                    registered,
+                },
             },
             notes: {
                 source: "tablespot",
@@ -293,89 +381,130 @@ export const createPaymentAccount = async ({
             active,
         };
     } catch (error) {
-        const detail = error?.error?.description || error?.message || "Unknown error";
-        throw new ApiError(502, `Razorpay account creation failed: ${detail}`);
+        throwRazorpayError(
+            "account creation",
+            "Razorpay account creation failed. Please verify your details and try again.",
+            error
+        );
     }
 };
 
 /**
  * Fetch the current activation status of a Razorpay linked account.
- * @returns {Promise<{status: string, active: boolean}>}
+ *
+ * A linked account's `status` stays "created" forever — the real activation
+ * signal is the Route product configuration's `activation_status`, which
+ * becomes "activated" only after the holder completes KYC. The product
+ * configuration can be read directly when its id is known, otherwise the
+ * idempotent request endpoint returns the existing configuration.
+ *
+ * @param {string} accountId - Linked account id
+ * @param {string} [productId] - Route product id when known
+ * @returns {Promise<{id: string, status: string, active: boolean, activationStatus: string, productId: string}>}
  */
-export const getPaymentAccountStatus = async (accountId) => {
+export const getPaymentAccountStatus = async (accountId, productId = "") => {
     if (isOnboardingMock()) {
         return {
             id: accountId,
             status: "active",
             active: true,
+            activationStatus: "activated",
+            productId,
         };
     }
 
     const razorpay = getRazorpayInstance();
 
+    // Never send a leftover mock account id to the live gateway.
+    if (!isOnboardingMock() && String(accountId || "").startsWith("acc_mock_")) {
+        throw new ApiError(400, "Payment account is not connected.");
+    }
+
     try {
-        const account = await razorpay.accounts.fetch(accountId);
-        const active =
-            account.status === "active" ||
-            account.activation_details?.status === "active";
+        const product = productId
+            ? await razorpay.api.get({
+                  version: "v2",
+                  url: `/accounts/${accountId}/products/${productId}`,
+              })
+            : await razorpay.api.post({
+                  version: "v2",
+                  url: `/accounts/${accountId}/products`,
+                  data: {
+                      product_name: "route",
+                      tnc_accepted: true,
+                  },
+              });
+
+        const activationStatus = product?.activation_status || "requested";
+        const active = activationStatus === "activated";
 
         return {
-            id: account.id,
+            id: accountId,
             status: active ? "active" : "pending",
             active,
+            activationStatus,
+            productId: product?.id || productId,
         };
     } catch (error) {
-        const detail = error?.error?.description || error?.message || "Unknown error";
-        throw new ApiError(502, `Razorpay account status check failed: ${detail}`);
+        throwRazorpayError(
+            "account status check",
+            "Razorpay account status could not be checked. Please try again later.",
+            error
+        );
     }
 };
 
 /**
- * Generate a Razorpay onboarding link the owner uses to complete KYC and link
- * their payout account.
- * @returns {Promise<{url: string, status: string}>}
+ * Prepare the linked account for KYC onboarding.
+ *
+ * The Route API has no `account_link` endpoint (it returns 404). The correct
+ * post-creation step is to request the `route` product configuration, which
+ * generates the KYC requirements; the owner then completes KYC in the
+ * Razorpay dashboard. The request is idempotent — repeating it returns the
+ * existing product configuration.
+ * @returns {Promise<{url: string, status: string, activationStatus: string, productId: string}>}
  */
-export const createPaymentAccountOnboardingLink = async ({
-    accountId,
-    email,
-    contact,
-    businessName,
-}) => {
+export const createPaymentAccountOnboardingLink = async ({ accountId }) => {
     if (isOnboardingMock()) {
         return {
             url: `https://rzp.io/i/TableSpotOnboarding_${accountId}`,
             status: "created",
+            activationStatus: "requested",
+            productId: "",
         };
     }
 
     const razorpay = getRazorpayInstance();
 
+    // Never send a leftover mock account id to the live gateway.
+    if (!isOnboardingMock() && String(accountId || "").startsWith("acc_mock_")) {
+        throw new ApiError(400, "Payment account is not connected.");
+    }
+
     try {
-        const link = await razorpay.api.post({
+        const product = await razorpay.api.post({
             version: "v2",
-            url: `/accounts/${accountId}/account_link`,
+            url: `/accounts/${accountId}/products`,
             data: {
-                amount: 0,
-                currency: "INR",
-                customer: {
-                    name: String(businessName || "").trim(),
-                    email: String(email || "").trim(),
-                    contact: String(contact || "").trim(),
-                },
-                notify: {
-                    email: true,
-                    sms: false,
-                    whatsapp: false,
-                },
+                product_name: "route",
+                tnc_accepted: true,
             },
         });
 
+        const activationStatus = product?.activation_status || "requested";
+
         return {
-            url: link.url,
-            status: link.status,
+            url: RAZORPAY_DASHBOARD_URL,
+            status:
+                activationStatus === "activated" ? "active" : "pending",
+            activationStatus,
+            productId: product?.id || "",
         };
     } catch (error) {
-        const detail = error?.error?.description || error?.message || "Unknown error";
-        throw new ApiError(502, `Razorpay onboarding link generation failed: ${detail}`);
+        throwRazorpayError(
+            "onboarding",
+            "Razorpay onboarding could not be started. Please try again later.",
+            error
+        );
     }
 };

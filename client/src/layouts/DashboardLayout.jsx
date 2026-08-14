@@ -66,6 +66,7 @@ const roleNavConfig = {
     { to: ROUTES.ADMIN_RESTAURANTS, label: "Restaurants", icon: Building2 },
     { to: ROUTES.ADMIN_REVIEWS, label: "Reviews", icon: Star },
     { to: ROUTES.ADMIN_REPORTS, label: "Reports", icon: BarChart3 },
+    { to: ROUTES.ADMIN_RECONCILIATION, label: "Reconciliations", icon: RotateCcw },
     { to: ROUTES.ADMIN_NOTIFICATIONS, label: "Notifications", icon: Bell },
     { to: ROUTES.ADMIN_PROFILE, label: "Profile", icon: User },
   ],

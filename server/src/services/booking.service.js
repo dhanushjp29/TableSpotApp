@@ -870,16 +870,16 @@ export const createBooking = async ({
     throw error;
   }
 
-  try {
-    await Restaurant.findByIdAndUpdate(restaurant._id, {
-      $inc: { totalBookings: 1 },
-    });
-    await markTablesReservedAndNotify(resolvedSeats.tables);
-    await releaseBookingHolds({
-      tableIds: resolvedSeats.tableIds,
-      holdToken: hold.holdToken,
-    });
+  await Restaurant.findByIdAndUpdate(restaurant._id, {
+    $inc: { totalBookings: 1 },
+  });
+  await markTablesReservedAndNotify(resolvedSeats.tables);
+  await releaseBookingHolds({
+    tableIds: resolvedSeats.tableIds,
+    holdToken: hold.holdToken,
+  });
 
+  try {
     const io = getIO();
     io.to(`restaurant_${restaurant._id}`).emit("booking:created", {
       bookingId: booking._id,
@@ -896,7 +896,6 @@ export const createBooking = async ({
       .emit("booking:updated", populated);
   } catch (error) {
     console.error("Socket error on booking creation:", error);
-    throw error;
   }
 
   if (restaurant.ownerId) {

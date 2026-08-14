@@ -16,7 +16,6 @@ const buildConflictFilter = ({ start, end, requestedSeatIds = [], fullTable }) =
     return {
       $elemMatch: {
         ...overlap,
-        fullTable: true,
       },
     };
   }
@@ -30,6 +29,45 @@ const buildConflictFilter = ({ start, end, requestedSeatIds = [], fullTable }) =
     },
   };
 };
+
+const buildIndividualCapacityExpression = ({
+  start,
+  end,
+  requestedSeatCount,
+}) => ({
+  $lte: [
+    {
+      $add: [
+        requestedSeatCount,
+        {
+          $sum: {
+            $map: {
+              input: {
+                $filter: {
+                  input: { $ifNull: ["$bookingHolds", []] },
+                  as: "hold",
+                  cond: {
+                    $and: [
+                      { $lt: ["$$hold.bookingDateTime", end] },
+                      { $gt: ["$$hold.bookingEndTime", start] },
+                      { $gt: ["$$hold.expiresAt", new Date()] },
+                      { $ne: ["$$hold.fullTable", true] },
+                    ],
+                  },
+                },
+              },
+              as: "hold",
+              in: {
+                $size: { $ifNull: ["$$hold.seatIds", []] },
+              },
+            },
+          },
+        },
+      ],
+    },
+    "$capacity",
+  ],
+});
 
 const getHoldPayload = ({
   holdToken,
@@ -79,7 +117,7 @@ export const acquireBookingHolds = async ({
       _id: entry.tableId,
       restaurantId,
       isActive: true,
-    }).select("_id seatSelectionMode bookingHolds");
+    }).select("_id seatSelectionMode capacity bookingHolds");
 
     if (!table) {
       await releaseBookingHolds({ tableIds: acquiredTableIds, holdToken });
@@ -96,15 +134,25 @@ export const acquireBookingHolds = async ({
       fullTable,
     });
 
-    const updated = await RestaurantTable.findOneAndUpdate(
-      {
-        _id: table._id,
-        restaurantId,
-        isActive: true,
-        bookingHolds: {
-          $not: conflictFilter,
-        },
+    const holdQuery = {
+      _id: table._id,
+      restaurantId,
+      isActive: true,
+      bookingHolds: {
+        $not: conflictFilter,
       },
+    };
+
+    if (!fullTable) {
+      holdQuery.$expr = buildIndividualCapacityExpression({
+        start: bookingAt,
+        end: bookingEnd,
+        requestedSeatCount: (entry.seatIds || []).length,
+      });
+    }
+
+    const updated = await RestaurantTable.findOneAndUpdate(
+      holdQuery,
       {
         $push: {
           bookingHolds: getHoldPayload({

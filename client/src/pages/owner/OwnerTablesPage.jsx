@@ -1191,7 +1191,7 @@ function OwnerTablesPage() {
           meta: store.getState().table.meta,
         })
       );
-    });
+    }, fetchData);
     return unsubscribe;
   }, [dispatch, store]);
 

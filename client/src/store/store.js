@@ -13,6 +13,7 @@ import reportReducer from "./slices/reportSlice.js";
 import refundReducer from "./slices/refundSlice.js";
 import paymentReducer from "./slices/paymentSlice.js";
 import offerReducer from "./slices/offerSlice.js";
+import reconciliationReducer from "./slices/reconciliationSlice.js";
 
 export const store = configureStore({
   reducer: {
@@ -30,5 +31,6 @@ export const store = configureStore({
     refund: refundReducer,
     payment: paymentReducer,
     offer: offerReducer,
+    reconciliation: reconciliationReducer,
   },
 });

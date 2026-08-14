@@ -6,6 +6,10 @@ import { assertProductionEnvironment } from "./config/env.js";
 import { assertRazorpayMockModesSafe } from "./config/razorpay.js";
 import { startDeadlineCron } from "./services/deadlineCron.service.js";
 import { startOfferCron } from "./services/offerCron.service.js";
+import {
+  startReconciliationWorker,
+  stopReconciliationWorker,
+} from "./services/reconciliation.worker.js";
 import { startTableStatusScheduler } from "./services/tableStatusScheduler.service.js";
 import { startWarningCron } from "./services/warningCron.service.js";
 import { closeSocket, initSocket } from "./sockets/socket.handler.js";
@@ -25,6 +29,7 @@ const startServer = async () => {
     startTableStatusScheduler();
     startOfferCron();
     startWarningCron();
+    startReconciliationWorker();
 
     const activeServer = server.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
@@ -37,8 +42,9 @@ const startServer = async () => {
       console.log(`${signal} received. Shutting down gracefully...`);
       await new Promise((resolve) => activeServer.close(resolve));
       await closeSocket();
+      stopReconciliationWorker();
       await closeDatabase();
-      console.log("HTTP, Socket.io, and MongoDB connections closed.");
+      console.log("HTTP, Socket.io, reconciliation worker, and MongoDB connections closed.");
       process.exit(0);
     };
 
