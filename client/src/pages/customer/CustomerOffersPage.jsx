@@ -39,6 +39,7 @@ function CustomerOffersPage() {
   const meta = useSelector((state) => state.offer.meta);
   const restaurants = useSelector((state) => state.restaurant.restaurants);
   const isLoading = useSelector((state) => state.offer.isLoading);
+  const availableLoading = useSelector((state) => state.offer.availableLoading);
   const isSubmitting = useSelector((state) => state.offer.isSubmitting);
   const error = useSelector((state) => state.offer.error);
 
@@ -48,6 +49,7 @@ function CustomerOffersPage() {
   const [availablePage, setAvailablePage] = useState(1);
   const [claimingId, setClaimingId] = useState("");
   const [claimedRestaurantId, setClaimedRestaurantId] = useState("");
+  const [initialLoading, setInitialLoading] = useState(true);
 
   const claimedRestaurants = useMemo(() => {
     const byId = new Map();
@@ -94,7 +96,9 @@ function CustomerOffersPage() {
         page: availablePage,
         limit: AVAILABLE_LIMIT,
       })
-    ).catch(() => {});
+    )
+      .catch(() => {})
+      .finally(() => setInitialLoading(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [restaurantId, availablePage]);
 
@@ -133,11 +137,29 @@ function CustomerOffersPage() {
   const showErrorState =
     error && myOffers.length === 0 && availableOffers.length === 0;
 
-  if (isLoading && myOffers.length === 0 && availableOffers.length === 0) {
+  if (
+    initialLoading ||
+    (isLoading && myOffers.length === 0 && availableOffers.length === 0)
+  ) {
     return (
       <div className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="mb-6 space-y-3">
+          <Skeleton className="h-7 w-40" />
+          <Skeleton className="h-4 w-72 max-w-full" />
+        </div>
+        <div className="mb-10 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} className="card-theme overflow-hidden rounded-2xl p-0">
+              <Skeleton className="h-24 w-full rounded-none" />
+              <Skeleton className="mx-4 my-4 h-4 w-3/4" />
+            </div>
+          ))}
+        </div>
+        <div className="mb-3">
+          <Skeleton className="h-6 w-44" />
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_, i) => (
             <div key={i} className="card-theme overflow-hidden rounded-2xl p-0">
               <Skeleton className="h-24 w-full rounded-none" />
               <Skeleton className="mx-4 my-4 h-4 w-3/4" />
@@ -214,7 +236,7 @@ function CustomerOffersPage() {
           </div>
         </div>
 
-        {isLoading && availableOffers.length === 0 ? (
+        {availableLoading && availableOffers.length === 0 ? (
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
               {Array.from({ length: 3 }).map((_, i) => (
                 <div
@@ -267,7 +289,19 @@ function CustomerOffersPage() {
           </div>
         </div>
 
-        {filteredMyOffers.length === 0 ? (
+        {isLoading && filteredMyOffers.length === 0 ? (
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div
+                key={i}
+                className="card-theme overflow-hidden rounded-2xl p-0"
+              >
+                <Skeleton className="h-24 w-full rounded-none" />
+                <Skeleton className="mx-4 my-4 h-4 w-3/4" />
+              </div>
+            ))}
+          </div>
+        ) : filteredMyOffers.length === 0 ? (
           <EmptyState
             title={status ? "No offers in this state" : "No offers yet"}
             description={

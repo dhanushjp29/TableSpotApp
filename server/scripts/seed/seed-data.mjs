@@ -12,6 +12,7 @@ import { seedRefunds } from "./data/refunds.mjs";
 import { seedReports } from "./data/reports.mjs";
 import { seedWarnings } from "./data/warnings.mjs";
 import { seedReviews } from "./data/reviews.mjs";
+import { seedRatings } from "./data/ratings.mjs";
 import { seedNotifications } from "./data/notifications.mjs";
 import { seedAuditLogs } from "./data/audit-logs.mjs";
 import { seedReconciliations } from "./data/reconciliations.mjs";
@@ -123,6 +124,7 @@ const main = async () => {
     ["Reports", seedReports],
     ["Warnings", seedWarnings],
     ["Reviews", seedReviews],
+    ["Ratings", seedRatings],
     ["Notifications", seedNotifications],
     ["Audit Logs", seedAuditLogs],
     ["Reconciliations", seedReconciliations],
@@ -136,7 +138,9 @@ const main = async () => {
       const result = await seedFn(ctx);
       const created = result?.created ?? 0;
       summary.push({ label, created });
-      console.log(`[ok] ${label}: ${created} new records`);
+      const updated = typeof result?.updated === "number" ? result.updated : null;
+      const detail = updated !== null ? ` (${updated} recomputed)` : "";
+      console.log(`[ok] ${label}: ${created} new records${detail}`);
     } catch (error) {
       console.error(`[FAIL] ${label}: ${error.message}`);
       await disconnectDatabase();

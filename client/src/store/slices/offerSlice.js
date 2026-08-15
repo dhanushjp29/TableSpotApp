@@ -15,6 +15,7 @@ const initialState = {
   customersMeta: null,
   meta: null,
   isLoading: false,
+  availableLoading: false,
   isSubmitting: false,
   customersLoading: false,
   error: null,
@@ -26,6 +27,9 @@ const offerSlice = createSlice({
   reducers: {
     setLoading(state, action) {
       state.isLoading = action.payload;
+    },
+    setAvailableLoading(state, action) {
+      state.availableLoading = action.payload;
     },
     setSubmitting(state, action) {
       state.isSubmitting = action.payload;
@@ -80,6 +84,7 @@ const offerSlice = createSlice({
 
 export const {
   setLoading,
+  setAvailableLoading,
   setSubmitting,
   setCustomersLoading,
   setError,
@@ -241,6 +246,7 @@ export const toggleOfferActive = (offerId, isActive) => async (dispatch) => {
 
 export const fetchAvailableOffers = (params = {}) => async (dispatch) => {
   dispatch(setLoading(true));
+  dispatch(setAvailableLoading(true));
   dispatch(setError(null));
   try {
     const response = await offerApi.getAvailable(params);
@@ -258,6 +264,7 @@ export const fetchAvailableOffers = (params = {}) => async (dispatch) => {
     throw error;
   } finally {
     dispatch(setLoading(false));
+    dispatch(setAvailableLoading(false));
   }
 };
 

@@ -21,20 +21,18 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-const tablespotIcon = L.divIcon({
-  className: "tablespot-marker",
-  html: '<div class="tablespot-pin"></div>',
-  iconSize: [26, 26],
-  iconAnchor: [13, 26],
-  popupAnchor: [0, -30],
+const tablespotIcon = L.icon({
+  iconUrl: "/normal_map_pin.png",
+  iconSize: [30, 35],
+  iconAnchor: [15, 35],
+  popupAnchor: [0, -35],
 });
 
-const selectedTablespotIcon = L.divIcon({
-  className: "tablespot-marker",
-  html: '<div class="tablespot-pin tablespot-pin--selected"></div>',
-  iconSize: [36, 36],
-  iconAnchor: [18, 36],
-  popupAnchor: [0, -42],
+const selectedTablespotIcon = L.icon({
+  iconUrl: "/select_map_pin.png",
+  iconSize: [40, 47],
+  iconAnchor: [20, 46],
+  popupAnchor: [0, -46],
 });
 
 const userLocationIcon = L.divIcon({

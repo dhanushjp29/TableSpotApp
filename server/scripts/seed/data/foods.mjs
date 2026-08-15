@@ -274,8 +274,6 @@ export const seedFoods = async (ctx) => {
         isRecommended: spec.rec,
         isPopular: spec.pop,
         totalOrders: 0,
-        averageRating: 0,
-        totalReviews: 0,
         displayOrder: i + 1,
         isActive: true,
       };

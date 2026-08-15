@@ -18,8 +18,11 @@ function PublicLayout() {
   const { resolvedTheme } = useTheme();
   const { pathname } = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
-  const isRestaurantPage =
-    pathname === ROUTES.RESTAURANTS || pathname.startsWith("/restaurants/");
+  const isListingPage =
+    pathname === ROUTES.RESTAURANTS ||
+    pathname.startsWith("/restaurants/") ||
+    pathname === ROUTES.FOODS ||
+    pathname.startsWith("/foods/");
   const dashboardPath = roleDashboard[role] || ROUTES.CUSTOMER_DASHBOARD;
   const logo =
     resolvedTheme === "dark"
@@ -31,7 +34,7 @@ function PublicLayout() {
   }, [pathname]);
 
   const navLinkClasses = (isActive) =>
-    isRestaurantPage
+    isListingPage
       ? isActive
         ? "inline-flex items-center rounded-full bg-primary px-4 py-2 text-sm font-semibold text-white shadow-sm transition-colors"
         : "inline-flex items-center rounded-full px-4 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-primary"
@@ -48,7 +51,7 @@ function PublicLayout() {
     <div className="flex min-h-screen flex-col bg-background">
       <header
         className={`sticky top-0 z-40 border-b backdrop-blur-xl ${
-          isRestaurantPage
+          isListingPage
             ? "border-border bg-background/85"
             : "border-primary/20 bg-[rgba(74,11,22,.72)] shadow-[0_10px_32px_rgba(74,11,22,.14)]"
         }`}
@@ -65,7 +68,7 @@ function PublicLayout() {
 
           <nav
             data-joyride="main-navbar"
-            className={`hidden items-center md:flex ${isRestaurantPage ? "gap-2" : "gap-6"}`}
+            className={`hidden items-center md:flex ${isListingPage ? "gap-2" : "gap-6"}`}
           >
             <NavLink to={ROUTES.RESTAURANTS} className={({ isActive }) => navLinkClasses(isActive)}>
               Restaurants
@@ -80,7 +83,7 @@ function PublicLayout() {
                 <Link
                   to={dashboardPath}
                   className={
-                    isRestaurantPage
+                    isListingPage
                       ? "btn-outline text-sm"
                       : "text-sm font-medium text-text-secondary transition-colors hover:text-primary"
                   }
@@ -103,7 +106,7 @@ function PublicLayout() {
                 <Link
                   to={ROUTES.LOGIN}
                   className={
-                    isRestaurantPage
+                    isListingPage
                       ? "btn-outline text-sm"
                       : "text-sm font-medium text-text-secondary transition-colors hover:text-primary"
                   }
@@ -125,7 +128,7 @@ function PublicLayout() {
               aria-label="Toggle navigation menu"
               aria-expanded={mobileOpen}
               className={`inline-flex h-10 w-10 items-center justify-center rounded-xl border transition-all ${
-                isRestaurantPage
+                isListingPage
                   ? "border-border bg-surface text-text hover:bg-surface-hover"
                   : "border-white/15 bg-white/10 text-white hover:bg-white/20"
               }`}
