@@ -15,6 +15,7 @@ import {
 
 import Badge from "../../components/ui/Badge.jsx";
 import Button from "../../components/ui/Button.jsx";
+import Select from "../../components/ui/Select.jsx";
 import Card from "../../components/ui/Card.jsx";
 import ConfirmDialog from "../../components/ui/ConfirmDialog.jsx";
 import EmptyState from "../../components/ui/EmptyState.jsx";
@@ -212,10 +213,10 @@ export default function AdminReconciliationPage() {
 
       <div className="flex flex-wrap items-center gap-2">
         <label className="text-sm font-semibold text-muted">Status:</label>
-        <select
+        <Select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value)}
-          className="input-field w-56"
+          className="w-56"
         >
           <option value="">All statuses</option>
           {Object.entries(STATUS_META).map(([value, s]) => (
@@ -223,7 +224,7 @@ export default function AdminReconciliationPage() {
               {s.label}
             </option>
           ))}
-        </select>
+        </Select>
       </div>
 
       {isLoading ? (
