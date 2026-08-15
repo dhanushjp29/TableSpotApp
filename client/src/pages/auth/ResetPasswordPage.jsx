@@ -44,7 +44,7 @@ function ResetPasswordPage() {
   };
 
   return (
-    <div className="flex flex-1 items-center justify-center px-4 py-12">
+    <div className="relative z-10 flex flex-1 items-center justify-center px-4 py-12">
       <div className="w-full max-w-md">
         <div className="card p-8">
       <h1 className="text-2xl font-bold text-text">Reset Password</h1>

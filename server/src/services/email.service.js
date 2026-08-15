@@ -75,18 +75,39 @@ const normalizeAttachments = (attachments = []) =>
         attachment.cid
     );
 
-/** Return the transparent PNG as an unnamed inline CID part. */
+/** Detect common image MIME types from file magic bytes instead of assuming PNG. */
+const detectImageMime = (buffer) => {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
+  if (buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47) return "image/png";
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return "image/jpeg";
+  if (buffer[0] === 0x47 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x38) return "image/gif";
+  if (buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46) return "image/webp";
+  if (buffer[0] === 0x42 && buffer[1] === 0x4d) return "image/bmp";
+  if (buffer[0] === 0x00 && buffer[1] === 0x00 && buffer[2] === 0x01 && buffer[3] === 0x00) return "image/x-icon";
+  const head = buffer.slice(0, 512).toString("utf8");
+  if (/^\s*(<\?xml|<!--|<svg)/i.test(head)) return "image/svg+xml";
+  return null;
+};
+
+/**
+ * Return the transparent PNG as an unnamed inline CID part.
+ *
+ * This inline resource is only used by the nodemailer/SMTP path. Brevo's
+ * transactional API cannot embed inline images, so sendViaBrevo references the
+ * logo via a hosted URL instead and never includes it in payload.attachment.
+ */
 const buildLogoAttachment = () => {
   try {
     if (!fs.existsSync(LOGO_PATH)) return null;
+    const content = fs.readFileSync(LOGO_PATH);
     return {
       // Explicitly suppress Nodemailer's generated attachment-1.png name.
       // The CID part remains available to the HTML but is not a downloadable
       // logo attachment in clients such as Gmail.
       filename: false,
-      content: fs.readFileSync(LOGO_PATH),
+      content,
       cid: "tablespot-logo",
-      contentType: "image/png",
+      contentType: detectImageMime(content) || "image/png",
       contentDisposition: "inline",
       headers: { "X-Attachment-Id": "tablespot-logo" },
     };
@@ -180,10 +201,70 @@ const redactSecret = (value, secret) => {
   return String(value ?? "").split(secret).join("[REDACTED]");
 };
 
+const MIME_EXTENSIONS = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/gif": "gif",
+  "image/webp": "webp",
+  "image/bmp": "bmp",
+  "image/svg+xml": "svg",
+  "image/x-icon": "ico",
+  "image/vnd.microsoft.icon": "ico",
+  "application/pdf": "pdf",
+  "text/plain": "txt",
+  "text/html": "html",
+  "application/json": "json",
+};
+
+const extensionForMimeType = (contentType) => {
+  const mime = String(contentType || "").split(";")[0].trim().toLowerCase();
+  if (MIME_EXTENSIONS[mime]) return MIME_EXTENSIONS[mime];
+  const match = mime.match(/^[a-z0-9.+-]+\/([a-z0-9.+-]+)$/);
+  return match ? match[1].replace(/^x-/, "") : "";
+};
+
+/** Brevo derives each attachment's MIME type from its filename extension. */
+const brevoAttachmentName = (attachment) => {
+  if (typeof attachment.filename === "string" && attachment.filename) return attachment.filename;
+  if (typeof attachment.name === "string" && attachment.name) return attachment.name;
+  if (attachment.cid) {
+    const ext =
+      extensionForMimeType(attachment.contentType) ||
+      extensionForMimeType(detectImageMime(resolveAttachmentContent(attachment)) || "");
+    return ext ? `${attachment.cid}.${ext}` : attachment.cid;
+  }
+  return "attachment";
+};
+
+/** Publicly hosted logo URL used by Brevo emails (Brevo cannot embed CID images). */
+const BRANDING_LOGO_DEFAULT_URL = "https://tablespot.netlify.app/blacklogo.png";
+
+const getBrandingLogoUrl = () => {
+  const configured = String(process.env.BRANDING_LOGO_URL || "").trim();
+  return configured || BRANDING_LOGO_DEFAULT_URL;
+};
+
 const sendViaBrevo = async (apiKey, mailOptions, attachments) => {
   const { from, to, cc, bcc, replyTo, subject, html, text } = mailOptions;
 
   const sender = parseSender(from);
+
+  // Brevo's transactional email API has no inline/CID image mechanism: an
+  // `attachment` object only accepts `content` and `name` (plus an optional
+  // `url`), so anything in that array is delivered as a downloadable file.
+  // Inline resources such as the TableSpot logo are therefore referenced as a
+  // hosted image URL in the HTML instead of being attached as a file.
+  const inlineAttachments = attachments.filter((attachment) => attachment.cid);
+  const regularAttachments = attachments.filter((attachment) => !attachment.cid);
+
+  let htmlContent = html;
+  if (inlineAttachments.length && htmlContent) {
+    const brandingLogoUrl = getBrandingLogoUrl();
+    for (const attachment of inlineAttachments) {
+      htmlContent = htmlContent.split(`cid:${attachment.cid}`).join(brandingLogoUrl);
+    }
+  }
+
   const payload = {
     sender: {
       name: sender.name || "TableSpot",
@@ -193,26 +274,20 @@ const sendViaBrevo = async (apiKey, mailOptions, attachments) => {
     subject,
   };
 
-  if (html) payload.htmlContent = html;
+  if (htmlContent) payload.htmlContent = htmlContent;
   if (text) payload.textContent = text;
   if (cc) payload.cc = toRecipients(cc);
   if (bcc) payload.bcc = toRecipients(bcc);
   if (replyTo) payload.replyTo = { email: parseSender(replyTo).email };
 
-  if (attachments.length) {
-    payload.attachment = attachments
+  if (regularAttachments.length) {
+    payload.attachment = regularAttachments
       .map((attachment) => {
         const content = resolveAttachmentContent(attachment);
         if (!content) return null;
         return {
           content: toBase64(content),
-          name:
-            attachment.filename ||
-            attachment.name ||
-            (attachment.cid ? attachment.cid : "attachment"),
-          disposition:
-            attachment.contentDisposition === "inline" ? "inline" : "attachment",
-          cid: attachment.cid || undefined,
+          name: brevoAttachmentName(attachment),
         };
       })
       .filter(Boolean);
