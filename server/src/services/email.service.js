@@ -95,6 +95,165 @@ const buildLogoAttachment = () => {
   }
 };
 
+/**
+ * Email delivery provider switch.
+ *
+ * Render's free tier blocks outbound SMTP (ports 25/465/587), so production
+ * uses Brevo's HTTPS transactional API instead. Set EMAIL_PROVIDER=brevo with
+ * BREVO_API_KEY. When EMAIL_PROVIDER is unset (or "smtp"), the legacy
+ * nodemailer SMTP path is used and local development keeps working unchanged.
+ */
+
+const getEmailProvider = () => {
+  const provider = String(process.env.EMAIL_PROVIDER || "smtp").trim().toLowerCase();
+
+  if (provider === "smtp") {
+    return null;
+  }
+
+  if (provider === "brevo") {
+    if (!process.env.BREVO_API_KEY) {
+      throw new ApiError(500, "EMAIL_PROVIDER=brevo requires BREVO_API_KEY.");
+    }
+    return { name: "brevo", apiKey: process.env.BREVO_API_KEY };
+  }
+
+  throw new ApiError(
+    500,
+    `Unsupported EMAIL_PROVIDER "${provider}". Use "smtp" or "brevo".`
+  );
+};
+
+const fetchWithTimeout = async (url, options, timeoutMs = 15000) => {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+};
+
+/** Extract `{ name, email }` from "Name <email>" or a plain "email". */
+const parseSender = (value) => {
+  const text = String(value || "").trim();
+  const match = text.match(/^([^<]+)\s*<([^>]+)>/);
+  if (match) {
+    return { name: match[1].trim(), email: match[2].trim() };
+  }
+  return { name: "", email: text };
+};
+
+/** Brevo recipients expect an array of `{ email }` objects. */
+const toRecipients = (value) => {
+  const entries = Array.isArray(value) ? value : String(value || "").split(",");
+  return entries
+    .map((entry) => {
+      if (entry && typeof entry === "object" && entry.email) {
+        return { email: String(entry.email).trim() };
+      }
+      const { email } = parseSender(entry);
+      return email ? { email } : null;
+    })
+    .filter(Boolean);
+};
+
+const toBase64 = (content) => {
+  if (Buffer.isBuffer(content)) return content.toString("base64");
+  return Buffer.from(String(content ?? "")).toString("base64");
+};
+
+/** Nodemailer allows path-only attachments; Brevo needs the bytes inline. */
+const resolveAttachmentContent = (attachment) => {
+  if (attachment.content || attachment.buffer) {
+    return attachment.content || attachment.buffer;
+  }
+  if (attachment.path) {
+    return fs.readFileSync(attachment.path);
+  }
+  return null;
+};
+
+/** Never let the API key leak into logs or surfaced error messages. */
+const redactSecret = (value, secret) => {
+  if (!secret) return String(value ?? "");
+  return String(value ?? "").split(secret).join("[REDACTED]");
+};
+
+const sendViaBrevo = async (apiKey, mailOptions, attachments) => {
+  const { from, to, cc, bcc, replyTo, subject, html, text } = mailOptions;
+
+  const sender = parseSender(from);
+  const payload = {
+    sender: {
+      name: sender.name || "TableSpot",
+      email: sender.email,
+    },
+    to: toRecipients(to),
+    subject,
+  };
+
+  if (html) payload.htmlContent = html;
+  if (text) payload.textContent = text;
+  if (cc) payload.cc = toRecipients(cc);
+  if (bcc) payload.bcc = toRecipients(bcc);
+  if (replyTo) payload.replyTo = { email: parseSender(replyTo).email };
+
+  if (attachments.length) {
+    payload.attachment = attachments
+      .map((attachment) => {
+        const content = resolveAttachmentContent(attachment);
+        if (!content) return null;
+        return {
+          content: toBase64(content),
+          name:
+            attachment.filename ||
+            attachment.name ||
+            (attachment.cid ? attachment.cid : "attachment"),
+          disposition:
+            attachment.contentDisposition === "inline" ? "inline" : "attachment",
+          cid: attachment.cid || undefined,
+        };
+      })
+      .filter(Boolean);
+  }
+
+  let response;
+  try {
+    response = await fetchWithTimeout("https://api.brevo.com/v3/smtp/email", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "api-key": apiKey,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (error) {
+    console.error("Brevo email request failed:", redactSecret(error.message, apiKey));
+    throw new ApiError(500, "Email provider request failed. The email was not sent.");
+  }
+
+  if (!response.ok) {
+    const detail = await response.text();
+    console.error(`Brevo email API error (${response.status}):`, redactSecret(detail, apiKey));
+    throw new ApiError(500, `Brevo API error (${response.status}): ${redactSecret(detail, apiKey)}`);
+  }
+
+  let messageId = null;
+  try {
+    const data = await response.json();
+    messageId = data?.messageId || null;
+  } catch {
+    // Success without a JSON body; messageId stays null.
+  }
+
+  return {
+    messageId,
+    accepted: toRecipients(to),
+    response: `Brevo accepted (${response.status})`,
+  };
+};
+
 export const sendEmail = async ({
   to,
   subject,
@@ -113,7 +272,7 @@ export const sendEmail = async ({
       return { messageId: "test-noop", accepted: [], rejected: [], response: "test environment: send skipped" };
     }
 
-    const transporterInstance = getTransporter();
+    const provider = getEmailProvider();
 
     const mailOptions = {
       from,
@@ -143,12 +302,22 @@ export const sendEmail = async ({
 
     const normalizedAttachments = normalizeAttachments(allAttachments);
 
+    if (provider?.name === "brevo") {
+      return await sendViaBrevo(provider.apiKey, mailOptions, normalizedAttachments);
+    }
+
+    const transporterInstance = getTransporter();
+
     if (normalizedAttachments.length > 0) {
       mailOptions.attachments = normalizedAttachments;
     }
 
     return await transporterInstance.sendMail(mailOptions);
   } catch (error) {
-    throw new ApiError(500, `SMTP send failed${error.code ? ` (${error.code})` : ""}: ${error.message || "Unknown transport error."}`);
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    console.error("Email send failed:", error.message || "Unknown transport error.");
+    throw new ApiError(500, `Email send failed${error.code ? ` (${error.code})` : ""}: ${error.message || "Unknown transport error."}`);
   }
 };

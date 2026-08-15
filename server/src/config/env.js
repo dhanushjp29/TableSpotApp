@@ -10,6 +10,15 @@ const __dirname = path.dirname(__filename);
 // read process.env during ESM module initialization.
 dotenv.config({ path: path.join(__dirname, "..", ".env") });
 
+const emailProvider = () =>
+  String(process.env.EMAIL_PROVIDER || "smtp").trim().toLowerCase();
+
+// "smtp" (default) needs SMTP credentials. "brevo" replaces them with a
+// BREVO_API_KEY and delivers over HTTPS, so SMTP vars are not required then.
+const emailVariables = emailProvider() === "brevo"
+  ? ["BREVO_API_KEY", "MAIL_FROM"]
+  : ["SMTP_HOST", "SMTP_PORT", "SMTP_USER", "SMTP_PASS", "MAIL_FROM"];
+
 const requiredProductionVariables = [
   "MONGODB_URI",
   "CLIENT_URL",
@@ -20,11 +29,7 @@ const requiredProductionVariables = [
   "CLOUDINARY_CLOUD_NAME",
   "CLOUDINARY_API_KEY",
   "CLOUDINARY_API_SECRET",
-  "SMTP_HOST",
-  "SMTP_PORT",
-  "SMTP_USER",
-  "SMTP_PASS",
-  "MAIL_FROM",
+  ...emailVariables,
   "RAZORPAY_KEY_ID",
   "RAZORPAY_KEY_SECRET",
   "RAZORPAY_WEBHOOK_SECRET",
