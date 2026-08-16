@@ -9,18 +9,20 @@ import { verifyBillAccess, verifyBookingAccess } from "../middleware/ownership.j
 import { createBillPdf, createBookingPdf, createPaymentPdf, createRefundPdf } from "../services/emailPdf.service.js";
 import { buildBillReceiptData, buildBookingReceiptData, buildPaymentReceiptData, buildRefundReceiptData } from "../services/receiptData.service.js";
 
+const getId = (value) => value?._id || value;
+
 const assertPaymentAccess = (req, payment) => {
   if (req.user.role === USER_ROLE.ADMIN) return;
-  const allowedId = req.user.role === USER_ROLE.CUSTOMER ? payment.customerId : payment.ownerId;
+  const allowedId = req.user.role === USER_ROLE.CUSTOMER ? getId(payment.customerId) : getId(payment.ownerId);
   if (String(allowedId) !== String(req.user._id)) throw new ApiError(403, "You do not have access to this payment receipt.");
 };
 
 const assertRefundAccess = async (req, refund) => {
   if (req.user.role === USER_ROLE.ADMIN) return;
-  const targetId = req.user.role === USER_ROLE.CUSTOMER ? refund.customerId : refund.ownerId;
+  const targetId = req.user.role === USER_ROLE.CUSTOMER ? getId(refund.customerId) : getId(refund.ownerId);
   if (String(targetId) !== String(req.user._id)) throw new ApiError(403, "You do not have access to this refund receipt.");
   if (req.user.role === USER_ROLE.OWNER) {
-    const restaurant = await Restaurant.findById(refund.restaurantId).select("ownerId");
+    const restaurant = await Restaurant.findById(getId(refund.restaurantId)).select("ownerId");
     if (!restaurant || String(restaurant.ownerId) !== String(req.user._id)) throw new ApiError(403, "You do not have access to this refund receipt.");
   }
 };
@@ -41,7 +43,7 @@ export const bill = async (req, res) => {
   const { bill } = await billService.getBillById({ billId: req.params.id });
   if (bill.bookingId?._id) await verifyBillAccess(req, bill.bookingId._id);
   else if (req.user.role !== USER_ROLE.ADMIN) {
-    const restaurant = await Restaurant.findById(bill.restaurantId).select("ownerId");
+    const restaurant = await Restaurant.findById(getId(bill.restaurantId)).select("ownerId");
     if (req.user.role !== USER_ROLE.OWNER || !restaurant || String(restaurant.ownerId) !== String(req.user._id)) throw new ApiError(403, "You do not have access to this bill receipt.");
   }
   const receiptData = buildBillReceiptData({ bill, booking: bill.bookingId || null });

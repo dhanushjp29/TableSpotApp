@@ -18,7 +18,7 @@ export const verifyBookingAccess = async (req, booking) => {
             throw new ApiError(403, "You can only access your own bookings.");
         }
     } else if (req.user.role === USER_ROLE.OWNER) {
-        const restaurant = await Restaurant.findById(booking.restaurantId).select("ownerId");
+        const restaurant = await Restaurant.findById(booking.restaurantId?._id || booking.restaurantId).select("ownerId");
         if (!restaurant || String(restaurant.ownerId) !== String(req.user._id)) {
             throw new ApiError(403, "You can only access bookings for your restaurants.");
         }
