@@ -31,6 +31,8 @@ import { SkeletonText } from "../../components/ui/Skeleton.jsx";
 import ErrorState from "../../components/ui/ErrorState.jsx";
 import { formatDate, formatTime } from "../../utils/formatDate.js";
 import { formatCurrency } from "../../utils/formatCurrency.js";
+import { IS_RAZORPAY_TEST_MODE } from "../../config/runtime.js";
+import { subscribeToTableUpdates } from "../../services/socket/socketService.js";
 
 const getLocalDateString = () => {
   const d = new Date();
@@ -42,7 +44,7 @@ const bookingSchema = z.object({
   bookingDate: z.string().min(1, "Date is required."),
   bookingTime: z.string().min(1, "Time is required."),
   numberOfGuests: z.number().int().min(1, "At least 1 guest is required."),
-  tableId: z.string().min(1, "Please select a table."),
+  tableId: z.string().min(1, "Select Table"),
   specialRequest: z.string().max(500).optional(),
 });
 
@@ -67,6 +69,7 @@ function BookingPage() {
   const [fullTableSelections, setFullTableSelections] = useState({});
   const [preOrder, setPreOrder] = useState({});
   const [selectedOfferId, setSelectedOfferId] = useState("");
+  const [testPaymentRequest, setTestPaymentRequest] = useState(null);
 
   const foods = useMemo(
     () =>
@@ -120,22 +123,60 @@ function BookingPage() {
       return;
     }
 
-    let cancelled = false;
-    const timer = setTimeout(async () => {
-      setIsAvailabilityLoading(true);
-      setSeatSelections({});
-      setFullTableSelections({});
-      setValue("tableId", "");
+    // Do not leave the previous date/time's tables selectable while the new
+    // availability request is being prepared. This prevents a stale table
+    // selection from reaching payment and being rejected by the server.
+    setIsAvailabilityLoading(true);
+    setAvailability([]);
+    setSeatSelections({});
+    setFullTableSelections({});
+    setValue("tableId", "");
 
+    let cancelled = false;
+    const applyAvailability = (nextTables, resetSelection = false) => {
+      if (cancelled) return;
+      setAvailability(nextTables);
+
+      if (resetSelection) return;
+
+      // A live hold can arrive while the customer is on this page. Remove
+      // only selections that are no longer available and preserve the rest.
+      setFullTableSelections((previous) => {
+        const next = { ...previous };
+        Object.keys(next).forEach((tableId) => {
+          const table = nextTables.find(
+            (item) => String(item.table?._id) === String(tableId)
+          );
+          if (!table?.available) delete next[tableId];
+        });
+        return next;
+      });
+      setSeatSelections((previous) => {
+        const next = {};
+        Object.entries(previous).forEach(([tableId, seatIds]) => {
+          const table = nextTables.find(
+            (item) => String(item.table?._id) === String(tableId)
+          );
+          const freeSeatIds = new Set(
+            (table?.freeSeatIds || []).map(String)
+          );
+          const remaining = (table?.available ? seatIds : []).filter((id) =>
+            freeSeatIds.has(String(id))
+          );
+          if (remaining.length > 0) next[tableId] = remaining;
+        });
+        return next;
+      });
+    };
+
+    const loadAvailability = async (resetSelection = false) => {
       try {
         const res = await tableApi.getAvailability(restaurantId, {
           datetime,
           duration: 120,
           guests: guestCount,
         });
-        if (!cancelled) {
-          setAvailability(res.data?.tables || []);
-        }
+        applyAvailability(res.data?.tables || [], resetSelection);
       } catch {
         if (!cancelled) {
           setAvailability([]);
@@ -145,11 +186,18 @@ function BookingPage() {
           setIsAvailabilityLoading(false);
         }
       }
-    }, 300);
+    };
+
+    const timer = setTimeout(() => loadAvailability(true), 300);
+    const unsubscribe = subscribeToTableUpdates(
+      restaurantId,
+      () => loadAvailability(false)
+    );
 
     return () => {
       cancelled = true;
       clearTimeout(timer);
+      unsubscribe?.();
     };
   }, [restaurantId, bookingDate, bookingTime, numberOfGuests, setValue]);
 
@@ -173,7 +221,7 @@ function BookingPage() {
       .map(([tableId]) => tableId);
     const fullTableIds = Object.keys(fullTableSelections);
     const primaryTableId = seatTableIds[0] || fullTableIds[0] || "";
-    setValue("tableId", primaryTableId, { shouldValidate: false });
+      setValue("tableId", primaryTableId, { shouldValidate: true });
   }, [seatSelections, fullTableSelections, setValue]);
 
   const bookingPolicy = (restaurant && restaurant.bookingPaymentPolicy) || {};
@@ -182,10 +230,10 @@ function BookingPage() {
       return "No advance is required. Pay at the restaurant.";
     }
     if (bookingPolicy.paymentType === "FULL_PREORDER") {
-      return "The full pre-order amount is charged in advance to confirm your booking.";
+      return `A fixed advance of ${formatCurrency(bookingPolicy.fixedAmount)} is always charged. If you add pre-order food, the full pre-order total applies instead.`;
     }
     if (bookingPolicy.paymentType === "PERCENTAGE") {
-      return `An advance of ${bookingPolicy.percentage}% of your pre-order value is charged to confirm (up to ${formatCurrency(bookingPolicy.maximumAmount)}).`;
+      return `A fixed advance of ${formatCurrency(bookingPolicy.fixedAmount)} is always charged. With pre-order food, ${bookingPolicy.percentage}% of the food total applies (up to ${formatCurrency(bookingPolicy.maximumAmount)}).`;
     }
     return `An advance of ${formatCurrency(bookingPolicy.fixedAmount)} is charged to confirm your booking.`;
   })();
@@ -225,24 +273,38 @@ function BookingPage() {
     const offerDiscount = selectedOffer
       ? computeOfferDiscount(selectedOffer, preOrderTotal)
       : 0;
-    const advance = bookingPolicy.type === "PAY_TO_BOOK" ? preOrderTotal : 0;
-    const totalNow =
-      bookingPolicy.type === "PAY_TO_BOOK" &&
-      bookingPolicy.paymentType === "FULL_PREORDER"
-        ? Math.max(advance - offerDiscount, 0)
-        : advance;
+    const fixed = Number(bookingPolicy.fixedAmount) || 0;
+    let totalNow = fixed;
+    if (bookingPolicy.type === "PAY_TO_BOOK") {
+      if (bookingPolicy.paymentType === "PERCENTAGE") {
+        const pctAmount =
+          (preOrderTotal * (Number(bookingPolicy.percentage) || 0)) / 100;
+        const maxAmt = Number(bookingPolicy.maximumAmount) || 200;
+        totalNow = Math.min(Math.max(fixed, pctAmount), maxAmt);
+      } else if (bookingPolicy.paymentType === "FULL_PREORDER") {
+        totalNow = Math.max(fixed, preOrderTotal - offerDiscount);
+      }
+    }
     return {
       preOrderTotal,
       offerDiscount,
-      advance,
       totalNow,
-      remaining: bookingPolicy.type === "PAY_TO_BOOK" ? 0 : 0,
+      remaining: 0,
     };
-  }, [bookingPolicy.type, bookingPolicy.paymentType, preOrderTotal, availableOffers, selectedOfferId]);
+  }, [
+    bookingPolicy.type,
+    bookingPolicy.paymentType,
+    bookingPolicy.fixedAmount,
+    bookingPolicy.percentage,
+    bookingPolicy.maximumAmount,
+    preOrderTotal,
+    availableOffers,
+    selectedOfferId,
+  ]);
 
   const onSubmit = async (data) => {
     if (!hasSelection) {
-      toast.error("Please select at least one table.");
+      toast.error("Select Table");
       return;
     }
     if (selectedSeatCount > data.numberOfGuests) {
@@ -317,7 +379,7 @@ function BookingPage() {
       // the advance is captured — never call bookingApi.create here (the
       // server rejects direct customer bookings for these restaurants).
       if (bookingPolicy.type === "PAY_TO_BOOK") {
-        await payAdvance({
+        const paymentRequest = {
           bookingData: {
             restaurantId,
             tables,
@@ -345,7 +407,12 @@ function BookingPage() {
           },
           onDismiss: () => {},
           onFailure: () => {},
-        });
+        };
+        if (IS_RAZORPAY_TEST_MODE) {
+          setTestPaymentRequest(paymentRequest);
+          return;
+        }
+        await payAdvance(paymentRequest);
         return;
       }
 
@@ -451,7 +518,14 @@ function BookingPage() {
           the booking based on the restaurant’s payment policy.
         </p>
       </div>
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form
+        onSubmit={handleSubmit(onSubmit, (formErrors) => {
+          if (formErrors.tableId) {
+            toast.error("Select Table");
+          }
+        })}
+        className="space-y-6"
+      >
         <Card className="p-6">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="text-lg font-semibold text-text">When & How Many</h2>
@@ -542,6 +616,11 @@ function BookingPage() {
                 }}
                 guestCount={numberOfGuests}
               />
+              {errors.tableId?.message && !hasSelection && (
+                <p className="mt-3 text-sm font-medium text-red-600 dark:text-red-400">
+                  {errors.tableId.message}
+                </p>
+              )}
               {hasSelection && (
                 <div className="mt-4 flex flex-wrap gap-2">
                   <Badge variant="primary">
@@ -689,46 +768,126 @@ function BookingPage() {
             {...register("specialRequest")}
           />
         </Card>
-        <Card className="p-5">
-          <div className="flex items-start gap-3">
-            <CreditCard size={18} className="mt-0.5 shrink-0 text-primary" />
-            <div className="flex-1">
-            <p className="text-sm font-semibold text-text">Booking summary</p>
-            <p className="mt-0.5 text-xs text-muted">{policyNotice}</p>
-            <div className="mt-3 grid gap-2 text-sm">
-              <div className="flex justify-between gap-4">
-                <span className="text-muted">Pre-order total</span>
-                <span className="font-semibold text-text">{formatCurrency(summary.preOrderTotal)}</span>
-              </div>
-              {summary.offerDiscount > 0 && (
-                <div className="flex justify-between gap-4">
-                  <span className="text-muted">Offer discount</span>
-                  <span className="font-semibold text-success">
-                    -{formatCurrency(summary.offerDiscount)}
-                  </span>
+        <div className="space-y-4">
+          {IS_RAZORPAY_TEST_MODE && bookingPolicy.type === "PAY_TO_BOOK" && (
+            <Card className="w-full border-primary/20 bg-primary/5 p-5 dark:border-primary/30 dark:bg-primary/10 lg:max-w-md">
+              <div className="flex items-start gap-3">
+                <CreditCard size={18} className="mt-0.5 shrink-0 text-primary" />
+                <div>
+                  <p className="text-sm font-semibold text-text">Test card details</p>
+                  <p className="mt-3 font-mono text-base font-semibold tracking-wide text-text">
+                    4100 2800 0000 1007
+                  </p>
+                  <p className="mt-2 text-xs text-muted">
+                    Use a random CVV and any future date.
+                  </p>
+                  <p className="mt-1 text-xs text-muted">
+                    If OTP is requested, skip it in test mode.
+                  </p>
                 </div>
-              )}
-              <div className="flex justify-between gap-4">
-                <span className="text-muted">Pay now</span>
-                <span className="font-semibold text-text">{bookingPolicy.type === "PAY_TO_BOOK" ? formatCurrency(summary.totalNow) : "No online payment"}</span>
               </div>
-              {bookingPolicy.type === "PAY_ON_SPOT" ? (
-                <p className="rounded-xl border border-border bg-surface-secondary/60 px-3 py-2 text-xs text-muted">
-                  Payment will be handled at the restaurant after you arrive.
-                </p>
-              ) : (
-                <p className="rounded-xl border border-border bg-surface-secondary/60 px-3 py-2 text-xs text-muted">
-                  Pay and confirm your booking now.
-                </p>
-              )}
+            </Card>
+          )}
+          <Card className="p-5">
+            <div className="flex items-start gap-3">
+              <CreditCard size={18} className="mt-0.5 shrink-0 text-primary" />
+              <div className="flex-1">
+                <p className="text-sm font-semibold text-text">Booking summary</p>
+                <p className="mt-0.5 text-xs text-muted">{policyNotice}</p>
+                <div className="mt-3 grid gap-2 text-sm">
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Pre-order total</span>
+                    <span className="font-semibold text-text">{formatCurrency(summary.preOrderTotal)}</span>
+                  </div>
+                  {summary.offerDiscount > 0 && (
+                    <div className="flex justify-between gap-4">
+                      <span className="text-muted">Offer discount</span>
+                      <span className="font-semibold text-success">
+                        -{formatCurrency(summary.offerDiscount)}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex justify-between gap-4">
+                    <span className="text-muted">Pay now</span>
+                    <span className="font-semibold text-text">{bookingPolicy.type === "PAY_TO_BOOK" ? formatCurrency(summary.totalNow) : "No online payment"}</span>
+                  </div>
+                  {bookingPolicy.type === "PAY_ON_SPOT" ? (
+                    <p className="rounded-xl border border-border bg-surface-secondary/60 px-3 py-2 text-xs text-muted">
+                      Payment will be handled at the restaurant after you arrive.
+                    </p>
+                  ) : (
+                    <p className="rounded-xl border border-border bg-surface-secondary/60 px-3 py-2 text-xs text-muted">
+                      Pay and confirm your booking now.
+                    </p>
+                  )}
+                </div>
+              </div>
             </div>
-            </div>
-          </div>
-        </Card>
+          </Card>
+        </div>
         <Button type="submit" className="w-full" isLoading={isSubmitting} loadingText="Confirming Booking..." disabled={isSubmitting}>
           {bookingPolicy.type === "PAY_TO_BOOK" ? "Pay & Confirm Booking" : "Confirm Booking"}
         </Button>
       </form>
+      {testPaymentRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm">
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="test-payment-title"
+            className="w-full max-w-md rounded-2xl border border-border bg-surface p-6 shadow-2xl"
+          >
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-primary">
+                  Razorpay test mode
+                </p>
+                <h2 id="test-payment-title" className="mt-1 text-xl font-semibold text-text">
+                  Test card details
+                </h2>
+              </div>
+              <button
+                type="button"
+                aria-label="Close test payment instructions"
+                className="rounded-lg px-2 py-1 text-xl leading-none text-muted hover:bg-surface-secondary hover:text-text"
+                onClick={() => setTestPaymentRequest(null)}
+              >
+                ×
+              </button>
+            </div>
+            <div className="mt-5 space-y-3 rounded-xl border border-border bg-surface-secondary/60 p-4 text-sm">
+              <div>
+                <p className="text-muted">Test card:</p>
+                <p className="mt-1 font-mono text-lg font-semibold tracking-wide text-text">
+                  4100 2800 0000 1007
+                </p>
+              </div>
+              <p className="text-text"><span className="text-muted">CVV:</span> Any random CVV</p>
+              <p className="text-text"><span className="text-muted">Expiry:</span> Any future date</p>
+              <p className="text-text"><span className="text-muted">OTP:</span> Skip if requested</p>
+              <p className="text-text"><span className="text-muted">Result:</span> Select Success or Failure in Razorpay</p>
+            </div>
+            <Button
+              type="button"
+              className="mt-5 w-full"
+              isLoading={isSubmitting}
+              loadingText="Opening Razorpay..."
+              onClick={async () => {
+                const request = testPaymentRequest;
+                setTestPaymentRequest(null);
+                setIsSubmitting(true);
+                try {
+                  await payAdvance(request);
+                } finally {
+                  setIsSubmitting(false);
+                }
+              }}
+            >
+              GO
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

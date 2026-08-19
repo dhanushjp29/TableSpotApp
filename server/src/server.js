@@ -4,6 +4,7 @@ import app from "./app.js";
 import connectDatabase, { closeDatabase } from "./config/database.js";
 import { assertProductionEnvironment } from "./config/env.js";
 import { assertRazorpayMockModesSafe } from "./config/razorpay.js";
+import { getRazorpayMode, getTestRazorpayAccountId } from "./config/razorpay.js";
 import { startDeadlineCron } from "./services/deadlineCron.service.js";
 import { startOfferCron } from "./services/offerCron.service.js";
 import {
@@ -20,6 +21,18 @@ const startServer = async () => {
   try {
     assertProductionEnvironment();
     assertRazorpayMockModesSafe();
+
+    const razorpayMode = getRazorpayMode();
+    const testAccountId = getTestRazorpayAccountId();
+    if (testAccountId) {
+      console.log(
+        `[Razorpay] TEST Route account override is ACTIVE (mode=${razorpayMode}). ` +
+        `All payment flows will use ${testAccountId} as the Route destination.`
+      );
+    } else {
+      console.log(`[Razorpay] mode=${razorpayMode}. Route account override is inactive.`);
+    }
+
     await connectDatabase();
 
     const server = http.createServer(app);

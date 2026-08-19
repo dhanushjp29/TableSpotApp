@@ -156,13 +156,17 @@ export const handlePaymentCaptured = async ({
   paymentMethod,
   transactionNotes = "",
 }) => {
+  console.log(`[PAY-DIAG] handlePaymentCaptured ENTER orderId=${razorpayOrderId} paymentId=${razorpayPaymentId} method=${paymentMethod}`);
   const paymentRecord = await Payment.findOne({ razorpayOrderId });
 
   if (!paymentRecord) {
+    console.error(`[PAY-DIAG] handlePaymentCaptured ABORT: no payment record for orderId=${razorpayOrderId}`);
     throw new Error(`No payment record found for order ${razorpayOrderId}`);
   }
+  console.log(`[PAY-DIAG] handlePaymentCaptured found payment id=${paymentRecord._id} status=${paymentRecord.paymentStatus} amount=${paymentRecord.amount} bookingId=${paymentRecord.bookingId} bookingData=${!!paymentRecord.bookingData} bookingCreationStatus=${paymentRecord.bookingCreationStatus}`);
 
   if (paymentRecord.paymentStatus === PAYMENT_TRANSACTION_STATUS.CAPTURED) {
+    console.log(`[PAY-DIAG] handlePaymentCaptured IDEMPOTENCY: payment already CAPTURED, checking for booking...`);
     let booking = paymentRecord.bookingId
       ? await Booking.findById(paymentRecord.bookingId)
       : null;
@@ -175,6 +179,7 @@ export const handlePaymentCaptured = async ({
     }
 
     if (booking) {
+      console.log(`[PAY-DIAG] handlePaymentCaptured IDEMPOTENCY: found existing booking id=${booking._id} advanceAmount=${booking.advanceAmount} bookingStatus=${booking.bookingStatus} — returning duplicate`);
       if (!paymentRecord.bookingId) {
         paymentRecord.bookingId = booking._id;
         await paymentRecord.save();
@@ -183,6 +188,7 @@ export const handlePaymentCaptured = async ({
       return { duplicate: true, paymentRecord };
     }
 
+    console.log(`[PAY-DIAG] handlePaymentCaptured IDEMPOTENCY: CAPTURED but NO booking found — resetting to PENDING for retry`);
     // A previously captured payment without a linked booking is recoverable.
     // Leave the gateway status captured and retry booking materialization.
     paymentRecord.bookingCreationStatus = PAYMENT_BOOKING_STATUS.PENDING;
@@ -191,6 +197,7 @@ export const handlePaymentCaptured = async ({
     await paymentRecord.save();
   }
 
+  console.log(`[PAY-DIAG] handlePaymentCaptured SETTING CAPTURED: before save paymentStatus=${paymentRecord.paymentStatus} amount=${paymentRecord.amount}`);
   paymentRecord.razorpayPaymentId = razorpayPaymentId;
   paymentRecord.paymentStatus = PAYMENT_TRANSACTION_STATUS.CAPTURED;
   paymentRecord.paymentMethod = paymentMethod || PAYMENT_METHOD.CARD;
@@ -200,6 +207,7 @@ export const handlePaymentCaptured = async ({
     paymentRecord.bookingCreationStatus = PAYMENT_BOOKING_STATUS.SUCCEEDED;
   }
   await paymentRecord.save();
+  console.log(`[PAY-DIAG] handlePaymentCaptured SAVED as CAPTURED: id=${paymentRecord._id} paymentStatus=${paymentRecord.paymentStatus} bookingId=${paymentRecord.bookingId} bookingCreationStatus=${paymentRecord.bookingCreationStatus}`);
 
   try {
     await createAuditLog({
@@ -228,8 +236,10 @@ export const handlePaymentCaptured = async ({
   let booking = paymentRecord.bookingId
     ? await Booking.findById(paymentRecord.bookingId)
     : null;
+  console.log(`[PAY-DIAG] handlePaymentCaptured AFTER CAPTURE save: existing booking=${booking ? booking._id : null}`);
 
   if (!booking && !paymentRecord.bookingData && !paymentRecord.billId) {
+    console.error(`[PAY-DIAG] handlePaymentCaptured NO bookingData and NO billId — marking reconciliation required`);
     await markBookingReconciliationRequired({
       paymentRecord,
       error: new Error("Captured payment has no booking snapshot or linked booking."),
@@ -241,16 +251,20 @@ export const handlePaymentCaptured = async ({
   }
 
   if (!booking && paymentRecord.bookingData) {
+    console.log(`[PAY-DIAG] handlePaymentCaptured CREATING booking from payment (no existing booking, has bookingData)...`);
     try {
       const created = await createBookingFromPayment({ paymentRecord });
       booking = created.booking;
+      console.log(`[PAY-DIAG] handlePaymentCaptured BOOKING CREATED: id=${booking._id} advanceAmount=${booking.advanceAmount} totalAmount=${booking.totalAmount} bookingStatus=${booking.bookingStatus} paymentStatus=${booking.paymentStatus}`);
 
       paymentRecord.bookingId = booking._id;
       paymentRecord.bookingCreationStatus = PAYMENT_BOOKING_STATUS.SUCCEEDED;
       paymentRecord.bookingFailureReason = "";
       paymentRecord.bookingFailureAt = null;
       await paymentRecord.save();
+      console.log(`[PAY-DIAG] handlePaymentCaptured PAYMENT UPDATED with bookingId=${booking._id}`);
     } catch (error) {
+      console.error(`[PAY-DIAG] handlePaymentCaptured BOOKING CREATION FAILED: ${error.message}`, error.stack);
       // A booking may have been inserted before a later side effect failed or
       // before a concurrent verification request completed. Reuse it when it
       // exists; otherwise persist a durable reconciliation state.
@@ -292,6 +306,7 @@ export const handlePaymentCaptured = async ({
     }
 
     await booking.save();
+    console.log(`[PAY-DIAG] handlePaymentCaptured BOOKING FINALIZED: id=${booking._id} advanceAmount=${booking.advanceAmount} totalAmount=${booking.totalAmount} bookingStatus=${booking.bookingStatus} paymentStatus=${booking.paymentStatus} billId=${booking.billId}`);
 
     if (booking.billId) {
       try {
@@ -375,6 +390,7 @@ export const handlePaymentCaptured = async ({
 
   void sendPaymentEventEmail({ paymentId: paymentRecord._id, event: "successful" }).catch((error) => console.error("Payment success email error:", error.message));
 
+  console.log(`[PAY-DIAG] handlePaymentCaptured EXIT: duplicate=${false} paymentRecordId=${paymentRecord._id} status=${paymentRecord.paymentStatus} bookingId=${paymentRecord.bookingId}`);
   return { duplicate: false, paymentRecord };
 };
 

@@ -89,6 +89,18 @@ export const initSocket = (server) => {
         // When no restaurantId is given, an owner joins all of their
         // restaurants' rooms.
         const joinRestaurantRooms = async (restaurantId) => {
+            if (socket.user.role === USER_ROLE.CUSTOMER) {
+                if (!restaurantId) return [];
+                const restaurant = await Restaurant.findById(restaurantId).select(
+                    "_id isActive isDeleted"
+                );
+                if (!restaurant || !restaurant.isActive || restaurant.isDeleted) {
+                    throw new Error("Restaurant not found.");
+                }
+                socket.join(`restaurant_${restaurantId}`);
+                return [String(restaurantId)];
+            }
+
             if (socket.user.role === USER_ROLE.ADMIN) {
                 if (restaurantId) {
                     socket.join(`restaurant_${restaurantId}`);

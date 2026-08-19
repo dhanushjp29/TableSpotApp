@@ -25,6 +25,7 @@ import {
   TABLE_STATUS,
   USER_ROLE,
 } from "../utils/constants.js";
+import { getTestRazorpayAccountId } from "../config/razorpay.js";
 
 const TABLE_DEFAULTS = {
   tableType: "Normal",
@@ -175,7 +176,10 @@ export const createRestaurant = async ({
     throw new ApiError(404, "Owner not found.");
   }
 
-  if (owner.role !== USER_ROLE.ADMIN && requirePaymentAccount) {
+  const testRazorpayAccountId = getTestRazorpayAccountId();
+  const hasTestPaymentAccount = Boolean(testRazorpayAccountId);
+
+  if (owner.role !== USER_ROLE.ADMIN && requirePaymentAccount && !hasTestPaymentAccount) {
     if (
       !owner.razorpayAccountId ||
       owner.razorpayAccountStatus !== RAZORPAY_ACCOUNT_STATUS.CONNECTED
@@ -262,9 +266,15 @@ export const createRestaurant = async ({
     averageCostForTwo,
     gstin: gstin.trim(),
     razorpayAccountId:
-      owner.role !== USER_ROLE.ADMIN ? owner.razorpayAccountId : "",
+      owner.role !== USER_ROLE.ADMIN
+        ? testRazorpayAccountId || owner.razorpayAccountId
+        : "",
     razorpayAccountStatus:
-      owner.role !== USER_ROLE.ADMIN ? owner.razorpayAccountStatus : "",
+      owner.role !== USER_ROLE.ADMIN
+        ? testRazorpayAccountId
+          ? RAZORPAY_ACCOUNT_STATUS.CONNECTED
+          : owner.razorpayAccountStatus
+        : "",
     bookingPaymentPolicy,
     cancellationPolicy,
     customerWaitingPeriod,

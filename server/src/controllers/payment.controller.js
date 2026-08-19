@@ -44,6 +44,7 @@ import {
 import { getOwnedRestaurantIds } from "../middleware/ownership.js";
 import { assertRestaurantOwnedByUser } from "../middleware/ownership.js";
 import { getIO } from "../sockets/socket.handler.js";
+import { getTestRazorpayAccountId } from "../config/razorpay.js";
 
 const ONLINE_PAYMENT_METHODS = new Set([
   PAYMENT_METHOD.UPI,
@@ -70,6 +71,19 @@ const PURPOSE_LABELS = {
 const roundAmount = (value) => Math.round(Number(value || 0) * 100) / 100;
 
 const getConnectedOwnerPaymentAccount = async (restaurant) => {
+  // TEST/DEMO override: when RAZORPAY_MODE=test and TEST_RAZORPAY_ACCOUNT_ID
+  // is configured, use that single Route account for all payment flows instead
+  // of requiring each owner to have their own connected account.
+  const testAccountId = getTestRazorpayAccountId();
+  if (testAccountId) {
+    return {
+      owner: await User.findById(restaurant.ownerId).select(
+        "_id bookingStatus razorpayAccountId razorpayAccountStatus"
+      ),
+      razorpayAccountId: testAccountId,
+    };
+  }
+
   const owner = await User.findById(restaurant.ownerId).select(
     "_id bookingStatus razorpayAccountId razorpayAccountStatus"
   );
@@ -137,7 +151,7 @@ const ensurePaymentFirstHold = async ({ paymentRecord }) => {
     bookingEnd,
     customerId: paymentRecord.customerId,
     holdToken,
-    ttlMinutes: 15,
+    ttlMinutes: 2,
   });
 
   const updated = await Payment.findOneAndUpdate(
@@ -873,7 +887,7 @@ const createPaymentFirstOrder = async ({
       bookingEnd,
       customerId: req.user._id,
       holdToken,
-      ttlMinutes: 15,
+      ttlMinutes: 2,
     });
 
     let paymentRecord;
@@ -973,6 +987,8 @@ export const verifyPayment = asyncHandler(async (req, res) => {
         paymentMethod,
     } = req.body;
 
+    console.log(`[PAY-DIAG] verifyPayment ENTER orderId=${razorpay_order_id} paymentId=${razorpay_payment_id} bookingId=${bookingId} method=${paymentMethod} userId=${req.user._id}`);
+
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
         throw new ApiError(400, "All Razorpay payment attributes are required.");
     }
@@ -980,8 +996,10 @@ export const verifyPayment = asyncHandler(async (req, res) => {
     // Find standalone Payment record
     const paymentRecord = await Payment.findOne({ razorpayOrderId: razorpay_order_id });
     if (!paymentRecord) {
+        console.error(`[PAY-DIAG] verifyPayment ABORT: no payment record for orderId=${razorpay_order_id}`);
         throw new ApiError(404, "Associated payment transaction not found.");
     }
+    console.log(`[PAY-DIAG] verifyPayment found payment id=${paymentRecord._id} status=${paymentRecord.paymentStatus} amount=${paymentRecord.amount} bookingId=${paymentRecord.bookingId} razorpayPaymentId=${paymentRecord.razorpayPaymentId}`);
 
     // Only the customer who owns the payment (or an admin) may verify it —
     // never another customer.
@@ -1019,6 +1037,7 @@ export const verifyPayment = asyncHandler(async (req, res) => {
     // not be processed twice. A captured payment-first record without a
     // booking must continue through materialization so customer retries can
     // recover it instead of returning a false success.
+    console.log(`[PAY-DIAG] verifyPayment IDEMPOTENCY CHECK: paymentStatus=${paymentRecord.paymentStatus} CAPTURED=${PAYMENT_TRANSACTION_STATUS.CAPTURED} match=${paymentRecord.razorpayPaymentId === razorpay_payment_id} bookingId=${paymentRecord.bookingId}`);
     if (
       paymentRecord.paymentStatus === PAYMENT_TRANSACTION_STATUS.CAPTURED &&
       paymentRecord.razorpayPaymentId === razorpay_payment_id &&
@@ -1040,6 +1059,7 @@ export const verifyPayment = asyncHandler(async (req, res) => {
 
     try {
         // Verify Signature
+        console.log(`[PAY-DIAG] verifyPayment VERIFYING SIGNATURE...`);
         razorpayService.verifyPaymentSignature({
             razorpayOrderId: razorpay_order_id,
             razorpayPaymentId: razorpay_payment_id,
@@ -1063,6 +1083,7 @@ export const verifyPayment = asyncHandler(async (req, res) => {
 
     paymentRecord.razorpaySignature = razorpay_signature;
     await paymentRecord.save();
+    console.log(`[PAY-DIAG] verifyPayment SIGNATURE VERIFIED, saved razorpaySignature`);
 
     // Use the payment method supplied by the client for this transaction when
     // available; otherwise derive it from the stored payment record, and only
@@ -1071,6 +1092,7 @@ export const verifyPayment = asyncHandler(async (req, res) => {
         ? paymentMethod
         : paymentRecord.paymentMethod || PAYMENT_METHOD.CARD;
 
+    console.log(`[PAY-DIAG] verifyPayment CALLING handlePaymentCaptured with orderId=${razorpay_order_id} paymentId=${razorpay_payment_id} method=${resolvedPaymentMethod}`);
     await handlePaymentCaptured({
       razorpayOrderId: razorpay_order_id,
       razorpayPaymentId: razorpay_payment_id,
@@ -1078,6 +1100,7 @@ export const verifyPayment = asyncHandler(async (req, res) => {
       transactionNotes: `Paid via Razorpay. Order ID: ${razorpay_order_id}`,
     });
 
+    console.log(`[PAY-DIAG] verifyPayment handlePaymentCaptured COMPLETED`);
     // handlePaymentCaptured may have created the booking (payment-first), so
     // re-read the payment record to pick up the newly linked booking id.
     const freshPayment = await Payment.findById(paymentRecord._id);
@@ -1086,6 +1109,7 @@ export const verifyPayment = asyncHandler(async (req, res) => {
       linkedBooking = await Booking.findById(freshPayment.bookingId);
     }
 
+    console.log(`[PAY-DIAG] verifyPayment RESPONSE: freshPaymentId=${freshPayment._id} freshPaymentStatus=${freshPayment.paymentStatus} freshPaymentBookingId=${freshPayment.bookingId} linkedBookingId=${linkedBooking?._id} linkedBookingAdvanceAmount=${linkedBooking?.advanceAmount} linkedBookingPaymentStatus=${linkedBooking?.paymentStatus}`);
     res.status(200).json(
         new ApiResponse(200, "Payment verified and booking confirmed successfully.", {
             bookingId: linkedBooking?._id || freshPayment.bookingId || null,

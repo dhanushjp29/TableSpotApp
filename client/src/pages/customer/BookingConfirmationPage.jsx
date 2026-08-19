@@ -31,7 +31,10 @@ export default function BookingConfirmationPage() {
   if (error) return <div className="mx-auto max-w-5xl px-4 py-8"><ErrorState title="Unable to load booking" description={error} onRetry={fetchBooking} /></div>;
   if (!booking) return <div className="mx-auto max-w-5xl px-4 py-8"><ErrorState title="Booking not found" /></div>;
 
-  const paymentActive = !["Cancelled", "Completed", "No Show"].includes(booking.bookingStatus) && ["Pending", "Partially Paid"].includes(booking.paymentStatus);
+  const paymentActive =
+    !["Cancelled", "Completed", "No Show"].includes(booking.bookingStatus) &&
+    booking.paymentStatus === "Pending" &&
+    booking.sourcePaymentId?.paymentStatus !== "Captured";
   const advanceAmount = Number(booking.advanceAmount || 0);
   const handleShare = async () => {
     try {

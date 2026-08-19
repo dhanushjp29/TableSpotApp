@@ -66,6 +66,19 @@ export default function BookingDetailsSummary({ booking, offerRecipient = null }
     : booking.sourcePaymentId?.amount
       ? [booking.sourcePaymentId]
       : [];
+  const advancePaid = bill
+    ? Number(bill.payment?.advancePaid || 0)
+    : booking.sourcePaymentId?.paymentStatus === "Captured"
+      ? Number(booking.sourcePaymentId.amount || booking.advanceAmount || 0)
+      : booking.paymentStatus === "Paid"
+        ? Number(booking.advanceAmount || 0)
+        : 0;
+  const remainingAmount = bill
+    ? Number(bill.payment?.balanceDue || 0)
+    : Math.max(
+        0,
+        Number(booking.totalAmount || 0) - advancePaid
+      );
   const offer = booking.offerId && typeof booking.offerId === "object" ? booking.offerId : null;
   const offerStatus = offerRecipient?.status || (offer ? "CLAIMED" : null);
   const tables = tableEntries(booking);
@@ -156,8 +169,8 @@ export default function BookingDetailsSummary({ booking, offerRecipient = null }
         <Section icon={CreditCard} title="Payment">
           <Row label="Total booking amount" value={formatCurrency(booking.totalAmount)} />
           <Row label="Advance required" value={formatCurrency(booking.advanceAmount)} />
-          <Row label="Advance paid" value={bill ? formatCurrency(bill.payment?.advancePaid) : booking.paymentStatus === "Paid" ? formatCurrency(booking.advanceAmount) : "—"} />
-          <Row label="Remaining" value={bill ? formatCurrency(bill.payment?.balanceDue) : "—"} />
+          <Row label="Advance paid" value={advancePaid > 0 ? formatCurrency(advancePaid) : "—"} />
+          <Row label="Remaining" value={formatCurrency(remainingAmount)} />
           <Row label="Payment status" value={bill?.payment?.paymentStatus || booking.paymentStatus} />
           {payments.length > 0 && <div className="mt-3 border-t border-border pt-2"><p className="mb-1 text-xs font-bold uppercase tracking-wide text-muted">Payments</p>{payments.map((payment, index) => <div key={index} className="flex justify-between gap-3 py-2 text-sm"><span className="text-muted">{payment.paymentMethod || "Payment"}{payment.transactionId ? ` · ${payment.transactionId}` : ""}</span><span className="font-semibold text-text">{formatCurrency(payment.amount)}</span></div>)}</div>}
         </Section>

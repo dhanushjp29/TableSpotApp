@@ -7,6 +7,7 @@ import { useNavigate } from "react-router-dom";
 
 import { paymentApi } from "../../api/payment.api.js";
 import { uploadApi } from "../../api/upload.api.js";
+import Select from "../../components/ui/Select.jsx";
 import {
   createRestaurant,
   fetchRestaurants,
@@ -79,9 +80,9 @@ const PRICE_RANGE_LABELS = {
 };
 
 const PAYMENT_TYPE_LABELS = {
-  [BOOKING_PAYMENT_TYPE.FIXED_AMOUNT]: "Fixed amount (₹) at booking",
-  [BOOKING_PAYMENT_TYPE.PERCENTAGE]: "Percentage of booking total",
-  [BOOKING_PAYMENT_TYPE.FULL_PREORDER]: "Full pre-order total",
+  [BOOKING_PAYMENT_TYPE.FIXED_AMOUNT]: "Fixed amount only",
+  [BOOKING_PAYMENT_TYPE.PERCENTAGE]: "Fixed + Percentage of booking total",
+  [BOOKING_PAYMENT_TYPE.FULL_PREORDER]: "Fixed + Full pre-order total",
 };
 
 function SectionLabel({ children }) {
@@ -336,24 +337,20 @@ export function CreateRestaurantForm({ restaurant = null, onSuccess, onCancel })
           toast.error("Select a payment type for Pay Amount to Book.");
           return;
         }
-        if (policy.paymentType === BOOKING_PAYMENT_TYPE.FIXED_AMOUNT) {
-          const fixedAmount = Number(policy.fixedAmount);
-          if (
-            !Number.isInteger(fixedAmount) ||
-            fixedAmount < 1 ||
-            fixedAmount > MAX_BOOKING_ADVANCE_AMOUNT
-          ) {
-            toast.error(
-              `Fixed amount must be a whole number between ₹1 and ₹${MAX_BOOKING_ADVANCE_AMOUNT}.`
-            );
-            return;
-          }
-          bookingPaymentPolicy = {
-            type: BOOKING_PAYMENT_POLICY.PAY_TO_BOOK,
-            paymentType: BOOKING_PAYMENT_TYPE.FIXED_AMOUNT,
-            fixedAmount,
-          };
-        } else if (policy.paymentType === BOOKING_PAYMENT_TYPE.PERCENTAGE) {
+        // Fixed Amount is always mandatory for PAY_TO_BOOK
+        const fixedAmount = Number(policy.fixedAmount);
+        if (
+          !Number.isInteger(fixedAmount) ||
+          fixedAmount < 1 ||
+          fixedAmount > MAX_BOOKING_ADVANCE_AMOUNT
+        ) {
+          toast.error(
+            `Fixed amount must be a whole number between ₹1 and ₹${MAX_BOOKING_ADVANCE_AMOUNT}.`
+          );
+          return;
+        }
+
+        if (policy.paymentType === BOOKING_PAYMENT_TYPE.PERCENTAGE) {
           const percentage = Number(policy.percentage);
           if (!Number.isInteger(percentage) || percentage < 1 || percentage > 100) {
             toast.error("Percentage must be a whole number between 1 and 100.");
@@ -378,13 +375,15 @@ export function CreateRestaurantForm({ restaurant = null, onSuccess, onCancel })
           bookingPaymentPolicy = {
             type: BOOKING_PAYMENT_POLICY.PAY_TO_BOOK,
             paymentType: BOOKING_PAYMENT_TYPE.PERCENTAGE,
+            fixedAmount,
             percentage,
             ...(maximumAmount !== undefined ? { maximumAmount } : {}),
           };
         } else {
           bookingPaymentPolicy = {
             type: BOOKING_PAYMENT_POLICY.PAY_TO_BOOK,
-            paymentType: BOOKING_PAYMENT_TYPE.FULL_PREORDER,
+            paymentType: policy.paymentType,
+            fixedAmount,
           };
         }
       }
@@ -849,41 +848,38 @@ export function CreateRestaurantForm({ restaurant = null, onSuccess, onCancel })
           {policy.type === BOOKING_PAYMENT_POLICY.PAY_TO_BOOK && (
             <div className="space-y-3">
               <div>
-                <span className="mb-1 block text-xs font-medium text-text">
-                  Payment type *
-                </span>
-                <select
+                <label className="mb-1 block text-xs font-medium text-text">
+                  Fixed advance amount (₹) *
+                </label>
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_BOOKING_ADVANCE_AMOUNT}
+                  value={policy.fixedAmount}
+                  onChange={(e) => updatePolicy("fixedAmount", e.target.value)}
+                  className="input-field w-full"
+                  placeholder={`₹1 - ₹${MAX_BOOKING_ADVANCE_AMOUNT}`}
+                />
+                <p className="mt-1 text-xs text-muted">
+                  Minimum advance charged for every booking, even without
+                  pre-order food. Capped at ₹{MAX_BOOKING_ADVANCE_AMOUNT}.
+                </p>
+              </div>
+
+              <div>
+                <Select
+                  label="Additional payment type"
+                  hint="Optional. Fixed amount is always charged."
                   value={policy.paymentType}
                   onChange={(e) => updatePolicy("paymentType", e.target.value)}
-                  className="input-field w-full"
                 >
                   {Object.values(BOOKING_PAYMENT_TYPE).map((value) => (
                     <option key={value} value={value}>
                       {PAYMENT_TYPE_LABELS[value]}
                     </option>
                   ))}
-                </select>
+                </Select>
               </div>
-
-              {policy.paymentType === BOOKING_PAYMENT_TYPE.FIXED_AMOUNT && (
-                <div>
-                  <label className="mb-1 block text-xs font-medium text-text">
-                    Fixed advance amount (₹) *
-                  </label>
-                  <input
-                    type="number"
-                    min={1}
-                    max={MAX_BOOKING_ADVANCE_AMOUNT}
-                    value={policy.fixedAmount}
-                    onChange={(e) => updatePolicy("fixedAmount", e.target.value)}
-                    className="input-field w-full"
-                    placeholder={`₹1 - ₹${MAX_BOOKING_ADVANCE_AMOUNT}`}
-                  />
-                  <p className="mt-1 text-xs text-muted">
-                    Advance per booking, capped at ₹{MAX_BOOKING_ADVANCE_AMOUNT}.
-                  </p>
-                </div>
-              )}
 
               {policy.paymentType === BOOKING_PAYMENT_TYPE.PERCENTAGE && (
                 <>
@@ -927,7 +923,7 @@ export function CreateRestaurantForm({ restaurant = null, onSuccess, onCancel })
               {policy.paymentType === BOOKING_PAYMENT_TYPE.FULL_PREORDER && (
                 <p className="text-xs text-muted">
                   Customers pay the full pre-order total to confirm their
-                  booking.
+                  booking. If no food is pre-ordered, the fixed advance applies.
                 </p>
               )}
             </div>

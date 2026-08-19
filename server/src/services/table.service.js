@@ -889,12 +889,28 @@ export const getTablesWithAvailability = async ({
         }
 
         const tableBookings = bookingsByTable.get(String(table._id)) || [];
+        const now = new Date();
+        const activeHolds = (table.bookingHolds || []).filter(
+            (hold) =>
+                hold.expiresAt > now &&
+                hold.bookingDateTime < end &&
+                hold.bookingEndTime > start
+        );
+        const hasFullTableHold = activeHolds.some((hold) => hold.fullTable === true);
         const isSeatMode =
             table.seatSelectionMode === SEAT_SELECTION_MODE.INDIVIDUAL_SEATS;
 
         const occupiedSeatIds = new Set();
         tableBookings.forEach((booking) => {
             (booking.seatIds || []).forEach((id) =>
+                occupiedSeatIds.add(String(id))
+            );
+        });
+        activeHolds.forEach((hold) => {
+            if (hold.fullTable) {
+                return;
+            }
+            (hold.seatIds || []).forEach((id) =>
                 occupiedSeatIds.add(String(id))
             );
         });
@@ -921,14 +937,16 @@ export const getTablesWithAvailability = async ({
         let available = false;
 
         if (isSeatMode) {
-            freeSeatIds = activeSeats
-                .filter((seat) => !occupiedSeatIds.has(String(seat._id)))
-                .filter(
-                    (seat) =>
-                        !seat.status ||
-                        seat.status === SEAT_STATUS.AVAILABLE
-                )
-                .map((seat) => String(seat._id));
+            freeSeatIds = hasFullTableHold
+                ? []
+                : activeSeats
+                    .filter((seat) => !occupiedSeatIds.has(String(seat._id)))
+                    .filter(
+                        (seat) =>
+                            !seat.status ||
+                            seat.status === SEAT_STATUS.AVAILABLE
+                    )
+                    .map((seat) => String(seat._id));
 
             // Any free seat is selectable: multiple tables can be combined to
             // reach the requested guest count.
@@ -936,13 +954,13 @@ export const getTablesWithAvailability = async ({
         } else {
             // Whole tables stay selectable regardless of capacity so a party
             // can reserve several tables to reach the requested guest count.
-            available = tableBookings.length === 0;
+            available = tableBookings.length === 0 && !hasFullTableHold;
         }
 
         return {
             table: serializeTable(table),
             available,
-            fullyAvailable: tableBookings.length === 0,
+            fullyAvailable: tableBookings.length === 0 && !hasFullTableHold,
             freeSeatIds,
             freeSeatCount: freeSeatIds.length,
             occupiedSeatCount: unavailableSeatCount,

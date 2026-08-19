@@ -16,3 +16,6 @@ if (isProductionBuild && clientOrderMock) {
   throw new Error("VITE_RAZORPAY_ORDER_MOCK must be false in a production build.");
 }
 export const IS_RAZORPAY_ORDER_MOCK = clientOrderMock;
+
+export const IS_RAZORPAY_TEST_MODE =
+  String(import.meta.env.VITE_RAZORPAY_MODE || "live").toLowerCase() === "test";

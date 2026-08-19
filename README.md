@@ -6,6 +6,18 @@ A full-stack **restaurant reservation, billing and review platform** built with 
 
 ---
 
+## Quick Login Credentials
+
+Use these pre-seeded accounts to log in instantly from the landing page Quick Login panel:
+
+| Role | Email | Password |
+|------|-------|----------|
+| **Customer** | `customer@tablespot.app` | `tablespot123` |
+| **Owner** | `owner@tablespot.app` | `tablespot123` |
+| **Admin** | `admin@tablespot.app` | `tablespot123` |
+
+---
+
 ## Table of Contents
 
 1. [Project Overview](#1-project-overview)

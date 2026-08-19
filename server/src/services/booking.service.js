@@ -1529,6 +1529,7 @@ export const validateBookingDraft = async ({
  * totalAmount is the pre-order total resolved from current food prices.
  */
 export const createBookingFromPayment = async ({ paymentRecord }) => {
+  console.log(`[BOOK-DIAG] createBookingFromPayment ENTER paymentId=${paymentRecord._id} amount=${paymentRecord.amount} bookingCreationStatus=${paymentRecord.bookingCreationStatus} hasBookingData=${!!paymentRecord.bookingData} sourcePaymentId=${paymentRecord.sourcePaymentId}`);
   const bookingData = paymentRecord.bookingData;
 
   if (!bookingData) {
@@ -1566,6 +1567,7 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
     isDeleted: false,
   });
   if (existingBooking) {
+    console.log(`[BOOK-DIAG] createBookingFromPayment EXISTING BOOKING FOUND id=${existingBooking._id} advanceAmount=${existingBooking.advanceAmount} bookingStatus=${existingBooking.bookingStatus} — returning early`);
     if (!paymentRecord.bookingId) {
       paymentRecord.bookingId = existingBooking._id;
       await paymentRecord.save();
@@ -1595,6 +1597,7 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
 
   const totalAmount = calculateOrderedFoodsTotal(orderedFoods);
   const advanceAmount = roundAmount(paymentRecord.amount || 0);
+  console.log(`[BOOK-DIAG] createBookingFromPayment AMOUNTS: paymentRecord.amount=${paymentRecord.amount} advanceAmount=${advanceAmount} totalAmount=${totalAmount}`);
 
   // A claimed offer is carried through the payment snapshot and validated
   // when the booking is materialized from the payment.
@@ -1632,6 +1635,7 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
   );
 
   const holdToken = paymentRecord.reservationHoldToken;
+  console.log(`[BOOK-DIAG] createBookingFromPayment CREATING BOOKING: bookingCode=<generating> advanceAmount=${advanceAmount} totalAmount=${totalAmount} paymentStatus=${paymentStatus} restaurantId=${restaurant._id} bookingAt=${bookingAt} holdToken=${holdToken}`);
   const booking = await Booking.create({
     bookingCode,
     userId,
@@ -1658,6 +1662,8 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
     sourcePaymentId: paymentRecord._id,
     cancellationCutoffAt,
   });
+
+  console.log(`[BOOK-DIAG] createBookingFromPayment BOOKING CREATED: id=${booking._id} bookingCode=${booking.bookingCode} advanceAmount=${booking.advanceAmount} totalAmount=${booking.totalAmount} bookingStatus=${booking.bookingStatus} paymentStatus=${booking.paymentStatus} sourcePaymentId=${booking.sourcePaymentId}`);
 
   if (claimedOfferId) {
     await attachBookingToClaimedOffer({
@@ -1702,6 +1708,7 @@ export const createBookingFromPayment = async ({ paymentRecord }) => {
   });
   paymentRecord.bookingId = booking._id;
   await paymentRecord.save();
+  console.log(`[BOOK-DIAG] createBookingFromPayment PAYMENT LINKED: paymentId=${paymentRecord._id} bookingId=${booking._id}`);
 
   try {
     const io = getIO();

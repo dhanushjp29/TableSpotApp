@@ -37,3 +37,21 @@ export const isRazorpayMockEnabled = (flag) => {
   assertRazorpayMockModesSafe();
   return parseBoolean(process.env[flag]);
 };
+
+/**
+ * Returns the TEST_RAZORPAY_ACCOUNT_ID when running in Razorpay test mode.
+ * Returns null when:
+ *   - RAZORPAY_MODE is not "test"
+ *   - TEST_RAZORPAY_ACCOUNT_ID is not set
+ *   - TEST_RAZORPAY_ACCOUNT_ID is empty or whitespace-only
+ *
+ * In live mode this always returns null regardless of the env value, so the
+ * setting can never accidentally leak into production flows.
+ */
+export const getTestRazorpayAccountId = () => {
+  const mode = getRazorpayMode();
+  if (mode !== "test") return null;
+
+  const id = String(process.env.TEST_RAZORPAY_ACCOUNT_ID || "").trim();
+  return id || null;
+};

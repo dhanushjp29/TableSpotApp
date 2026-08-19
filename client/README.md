@@ -6,6 +6,18 @@ The TableSpot web application frontend. A React 19 single-page application built
 
 ---
 
+## Quick Login Credentials
+
+Use these pre-seeded accounts to log in instantly from the landing page Quick Login panel:
+
+| Role | Email | Password |
+|------|-------|----------|
+| **Customer** | `customer@tablespot.app` | `tablespot123` |
+| **Owner** | `owner@tablespot.app` | `tablespot123` |
+| **Admin** | `admin@tablespot.app` | `tablespot123` |
+
+---
+
 ## Table of Contents
 
 1. [Overview](#overview)

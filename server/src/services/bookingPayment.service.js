@@ -28,13 +28,12 @@ export const getEffectiveBookingPaymentPolicy = (restaurant) => {
  *
  * Rules (from spec):
  * - PAY_ON_SPOT            -> 0
- * - PAY_TO_BOOK / FIXED    -> min(fixedAmount, maximumAmount)  (<= Rs.200)
- * - PAY_TO_BOOK / PERCENT  -> min(round(total * pct / 100), maximumAmount)
- * - PAY_TO_BOOK / FULL     -> full pre-order total, reduced by an applied
- *                             offer discount (the discount only ever affects
- *                             a FULL pre-payment; partial advances are a % /
- *                             flat amount of the undiscounted total and the
- *                             offer applies at bill time).
+ * - PAY_TO_BOOK / FIXED    -> min(fixedAmount, maximumAmount)
+ * - PAY_TO_BOOK / PERCENT  -> max(fixedAmount, min(round(total * pct / 100), maximumAmount))
+ *                             fixedAmount is the fallback when food total is 0 or
+ *                             the computed percentage is below the fixed floor.
+ * - PAY_TO_BOOK / FULL     -> max(fixedAmount, round(total - discount))
+ *                             fixedAmount is the fallback when no food is ordered.
  */
 export const calculateRequiredBookingPayment = ({
   restaurant,
@@ -57,18 +56,20 @@ export const calculateRequiredBookingPayment = ({
     return 0;
   }
 
+  const fixed = roundAmount(policy.fixedAmount);
+
   switch (policy.paymentType) {
     case BOOKING_PAYMENT_TYPE.FIXED_AMOUNT:
-      return Math.min(policy.fixedAmount, policy.maximumAmount);
+      return Math.min(fixed, policy.maximumAmount);
     case BOOKING_PAYMENT_TYPE.PERCENTAGE:
       return Math.min(
-        roundAmount((total * policy.percentage) / 100),
+        Math.max(fixed, roundAmount((total * policy.percentage) / 100)),
         policy.maximumAmount
       );
     case BOOKING_PAYMENT_TYPE.FULL_PREORDER:
-      return Math.max(roundAmount(total - discount), 0);
+      return Math.max(fixed, roundAmount(total - discount));
     default:
-      return 0;
+      return fixed;
   }
 };
 

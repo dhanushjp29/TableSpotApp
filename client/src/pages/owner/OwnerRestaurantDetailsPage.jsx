@@ -334,7 +334,7 @@ export default function OwnerRestaurantDetailsPage() {
                       )}
 
                       {rev.comment && (
-                        <p className="mt-3 rounded-lg bg-gray-50/80 p-3 text-sm italic text-text">
+                        <p className="mt-3 rounded-lg bg-gray-50/80 p-3 text-sm italic text-text dark:border dark:border-white/10 dark:bg-surface-elevated dark:text-gray-200">
                           "{rev.comment}"
                         </p>
                       )}

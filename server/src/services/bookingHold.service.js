@@ -2,6 +2,31 @@ import mongoose from "mongoose";
 import RestaurantTable from "../models/RestaurantTable.js";
 import ApiError from "../utils/ApiError.js";
 import { SEAT_SELECTION_MODE } from "../utils/constants.js";
+import { getIO } from "../sockets/socket.handler.js";
+
+const emitAvailabilityChanged = (restaurantIds = []) => {
+  try {
+    const io = getIO();
+    [...new Set(restaurantIds.filter(Boolean).map(String))].forEach(
+      (restaurantId) => {
+        io.to(`restaurant_${restaurantId}`).emit("table:updated", {
+          restaurantId,
+          reason: "booking_hold_changed",
+        });
+      }
+    );
+  } catch {
+    // Socket.IO is not initialized in some CLI/test contexts.
+  }
+};
+
+const scheduleHoldExpiryNotification = ({ restaurantId, ttlMinutes }) => {
+  const timer = setTimeout(
+    () => emitAvailabilityChanged([restaurantId]),
+    Math.max(1, Number(ttlMinutes) || 20) * 60 * 1000 + 250
+  );
+  timer.unref?.();
+};
 
 const roundDate = (value) => new Date(new Date(value).getTime());
 
@@ -181,11 +206,17 @@ export const acquireBookingHolds = async ({
     acquiredTableIds.push(table._id);
   }
 
+  emitAvailabilityChanged([restaurantId]);
+  scheduleHoldExpiryNotification({ restaurantId, ttlMinutes });
   return { holdToken, tableIds: acquiredTableIds };
 };
 
 export const releaseBookingHolds = async ({ tableIds = [], holdToken }) => {
   if (!holdToken || !tableIds.length) return;
+
+  const tables = await RestaurantTable.find({
+    _id: { $in: tableIds },
+  }).select("restaurantId").lean();
 
   await Promise.all(
     tableIds.map((tableId) =>
@@ -199,6 +230,8 @@ export const releaseBookingHolds = async ({ tableIds = [], holdToken }) => {
       )
     )
   );
+
+  emitAvailabilityChanged(tables.map((table) => table.restaurantId));
 };
 
 export const findActiveHoldByToken = async ({ tableIds = [], holdToken }) => {

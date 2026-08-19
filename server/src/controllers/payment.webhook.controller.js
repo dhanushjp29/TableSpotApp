@@ -141,6 +141,8 @@ export const handleWebhook = asyncHandler(async (req, res) => {
         throw new ApiError(400, "Webhook expects a raw JSON body.");
     }
 
+    console.log(`[WEBHOOK-DIAG] handleWebhook ENTER signature=${signature?.substring(0, 20)}...`);
+
     razorpayService.verifyWebhookSignature({
         rawBody,
         signature,
@@ -169,13 +171,17 @@ export const handleWebhook = asyncHandler(async (req, res) => {
         entity,
     });
 
+    console.log(`[WEBHOOK-DIAG] handleWebhook event=${event} eventId=${eventId} orderId=${entity.order_id} paymentId=${entity.id} method=${entity.method} duplicate=${claim.duplicate}`);
+
     if (claim.duplicate) {
+        console.log(`[WEBHOOK-DIAG] handleWebhook DUPLICATE — returning 200`);
         return res.status(200).json({ success: true, received: true, duplicate: true });
     }
 
     try {
       switch (event) {
         case "payment.captured":
+            console.log(`[WEBHOOK-DIAG] handleWebhook PAYMENT.CAPTURED orderId=${entity.order_id} paymentId=${entity.id}`);
             if (entity.order_id && entity.id) {
                 await handlePaymentCaptured({
                     razorpayOrderId: entity.order_id,

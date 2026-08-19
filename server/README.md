@@ -6,6 +6,18 @@ The TableSpot backend API. An Express 5 + Mongoose 9 REST API with JWT auth, Raz
 
 ---
 
+## Quick Login Credentials
+
+Use these pre-seeded accounts to log in instantly from the landing page Quick Login panel:
+
+| Role | Email | Password |
+|------|-------|----------|
+| **Customer** | `customer@tablespot.app` | `tablespot123` |
+| **Owner** | `owner@tablespot.app` | `tablespot123` |
+| **Admin** | `admin@tablespot.app` | `tablespot123` |
+
+---
+
 ## Table of Contents
 
 1. [Overview](#overview)

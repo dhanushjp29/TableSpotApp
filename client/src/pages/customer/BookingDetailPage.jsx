@@ -50,7 +50,13 @@ export default function BookingDetailPage() {
 
   const status = booking.bookingStatus || "Pending";
   const canCancel = !["Cancelled", "Completed", "No Show"].includes(status);
-  const paymentActive = canCancel && ["Pending", "Partially Paid"].includes(booking.paymentStatus);
+  // `Partially Paid` means the advance was captured but the remaining bill
+  // is still due. It must not make the advance-payment banner reappear.
+  const advancePaymentPending =
+    Number(booking.advanceAmount || 0) > 0 &&
+    booking.paymentStatus === "Pending" &&
+    booking.sourcePaymentId?.paymentStatus !== "Captured";
+  const paymentActive = canCancel && advancePaymentPending;
   const handleCancel = async () => {
     if (!window.confirm("Are you sure you want to cancel this booking?")) return;
     setIsCancelling(true);

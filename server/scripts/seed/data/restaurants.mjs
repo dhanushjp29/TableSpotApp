@@ -17,7 +17,7 @@ const WEEKDAYS = [
 const openEveryDay = (open = "11:00", close = "23:00") =>
   WEEKDAYS.map((day) => ({ day, isOpen: true, open, close }));
 
-const policy = (type, paymentType, { fixedAmount = 0, percentage = 0, maximumAmount = 200 } = {}) => ({
+const policy = (type, paymentType, { fixedAmount = 100, percentage = 0, maximumAmount = 200 } = {}) => ({
   type,
   paymentType,
   fixedAmount,
@@ -111,9 +111,8 @@ export const RESTAURANTS_SPEC = [
     priceRange: "₹₹",
     averageCostForTwo: 1100,
     operatingHours: openEveryDay("12:00", "23:00"),
-    bookingPaymentPolicy: policy("PAY_TO_BOOK", "PERCENTAGE", { percentage: 10, maximumAmount: 200 }),
+    bookingPaymentPolicy: policy("PAY_TO_BOOK", "PERCENTAGE", { fixedAmount: 100, percentage: 10, maximumAmount: 200 }),
     cancellationPolicy: cancellation({ refundPercentage: 80 }),
-    verificationStatus: "Verified",
     gstin: "33AACCO9012K1Z9",
   },
   {
@@ -165,7 +164,7 @@ export const RESTAURANTS_SPEC = [
     priceRange: "₹₹",
     averageCostForTwo: 850,
     operatingHours: openEveryDay("11:30", "23:30"),
-    bookingPaymentPolicy: policy("PAY_TO_BOOK", "PERCENTAGE", { percentage: 15, maximumAmount: 200 }),
+    bookingPaymentPolicy: policy("PAY_TO_BOOK", "PERCENTAGE", { fixedAmount: 100, percentage: 15, maximumAmount: 200 }),
     cancellationPolicy: cancellation(),
     verificationStatus: "Verified",
     gstin: "29AABCB6789H1Z2",
@@ -219,7 +218,7 @@ export const RESTAURANTS_SPEC = [
     priceRange: "₹₹₹",
     averageCostForTwo: 1400,
     operatingHours: openEveryDay("12:00", "00:00"),
-    bookingPaymentPolicy: policy("PAY_TO_BOOK", "FULL_PREORDER", { maximumAmount: 200 }),
+    bookingPaymentPolicy: policy("PAY_TO_BOOK", "FULL_PREORDER", { fixedAmount: 100, maximumAmount: 200 }),
     cancellationPolicy: cancellation({ hoursBeforeBooking: 8, refundPercentage: 50 }),
     verificationStatus: "Verified",
     gstin: "29AACCP5678J1Z4",
@@ -327,7 +326,7 @@ export const RESTAURANTS_SPEC = [
     priceRange: "₹₹",
     averageCostForTwo: 900,
     operatingHours: openEveryDay("11:30", "23:30"),
-    bookingPaymentPolicy: policy("PAY_TO_BOOK", "PERCENTAGE", { percentage: 20, maximumAmount: 200 }),
+    bookingPaymentPolicy: policy("PAY_TO_BOOK", "PERCENTAGE", { fixedAmount: 100, percentage: 20, maximumAmount: 200 }),
     cancellationPolicy: cancellation(),
     verificationStatus: "Verified",
     gstin: "36AABCH4444E1Z1",
@@ -435,7 +434,7 @@ export const RESTAURANTS_SPEC = [
     priceRange: "₹₹",
     averageCostForTwo: 950,
     operatingHours: openEveryDay("11:00", "23:00"),
-    bookingPaymentPolicy: policy("PAY_TO_BOOK", "PERCENTAGE", { percentage: 10, maximumAmount: 200 }),
+    bookingPaymentPolicy: policy("PAY_TO_BOOK", "PERCENTAGE", { fixedAmount: 100, percentage: 10, maximumAmount: 200 }),
     cancellationPolicy: cancellation(),
     verificationStatus: "Pending",
     gstin: "",
@@ -489,7 +488,7 @@ export const RESTAURANTS_SPEC = [
     priceRange: "₹₹₹",
     averageCostForTwo: 1600,
     operatingHours: openEveryDay("12:00", "23:30"),
-    bookingPaymentPolicy: policy("PAY_TO_BOOK", "FULL_PREORDER", { maximumAmount: 200 }),
+    bookingPaymentPolicy: policy("PAY_TO_BOOK", "FULL_PREORDER", { fixedAmount: 100, maximumAmount: 200 }),
     cancellationPolicy: cancellation(),
     verificationStatus: "Rejected",
     rejectionReason:

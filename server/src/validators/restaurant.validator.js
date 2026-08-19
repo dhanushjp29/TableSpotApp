@@ -98,18 +98,18 @@ const bookingPaymentPolicySchema = z
       return;
     }
 
-    if (policy.paymentType === BOOKING_PAYMENT_TYPE.FIXED_AMOUNT) {
-      if (
-        policy.fixedAmount === undefined ||
-        policy.fixedAmount <= 0 ||
-        policy.fixedAmount > MAX_BOOKING_ADVANCE_AMOUNT
-      ) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["fixedAmount"],
-          message: `Fixed amount must be between ₹1 and ₹${MAX_BOOKING_ADVANCE_AMOUNT}.`,
-        });
-      }
+    // Fixed Amount is always required and must be ≥ 1 for PAY_TO_BOOK
+    if (
+      policy.fixedAmount === undefined ||
+      policy.fixedAmount === null ||
+      policy.fixedAmount < 1 ||
+      policy.fixedAmount > MAX_BOOKING_ADVANCE_AMOUNT
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["fixedAmount"],
+        message: `Fixed amount must be between ₹1 and ₹${MAX_BOOKING_ADVANCE_AMOUNT}.`,
+      });
     }
 
     if (policy.paymentType === BOOKING_PAYMENT_TYPE.PERCENTAGE) {

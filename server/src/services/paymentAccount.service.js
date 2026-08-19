@@ -6,7 +6,10 @@ import {
   RAZORPAY_ACCOUNT_STATUS,
   RAZORPAY_ACCOUNT_CREATION_STATUS,
 } from "../utils/constants.js";
-import { isRazorpayMockEnabled } from "../config/razorpay.js";
+import {
+  getTestRazorpayAccountId,
+  isRazorpayMockEnabled,
+} from "../config/razorpay.js";
 import {
   createPaymentAccount,
   createPaymentAccountOnboardingLink,
@@ -134,6 +137,17 @@ const storeCreatedAccount = async ({ ownerId, attemptId, account }) => {
 export const connectPaymentAccount = async ({ ownerId }) => {
   const startedAt = Date.now();
   let owner = await getOwnerOrThrow(ownerId);
+  const testRazorpayAccountId = getTestRazorpayAccountId();
+
+  if (testRazorpayAccountId) {
+    return {
+      accountId: testRazorpayAccountId,
+      status: RAZORPAY_ACCOUNT_STATUS.CONNECTED,
+      onboardingLink: "",
+      activationStatus: "activated",
+      testMode: true,
+    };
+  }
 
   // Clear stale mock linked accounts so a real account is created instead of
   // sending an acc_mock_ id to the live gateway (400 "not a valid id").
@@ -214,6 +228,16 @@ export const connectPaymentAccount = async ({ ownerId }) => {
  */
 export const refreshPaymentAccountStatus = async ({ ownerId }) => {
   const owner = await getOwnerOrThrow(ownerId);
+  const testRazorpayAccountId = getTestRazorpayAccountId();
+
+  if (testRazorpayAccountId) {
+    return {
+      accountId: testRazorpayAccountId,
+      status: RAZORPAY_ACCOUNT_STATUS.CONNECTED,
+      activationStatus: "activated",
+      testMode: true,
+    };
+  }
 
   // A stale mock account id must not be sent to the live gateway.
   if (isStaleMockAccountId(owner.razorpayAccountId)) {

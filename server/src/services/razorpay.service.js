@@ -93,6 +93,7 @@ export const createPaymentOrder = async ({
   razorpayAccountId,
   receipt = "",
 }) => {
+    console.log(`[RAZ-DIAG] createPaymentOrder ENTER bookingId=${bookingId} amount=${amount} account=${razorpayAccountId || "none"} receipt=${receipt} isOrderMock=${isOrderMock()}`);
     // RAZORPAY_ORDER_MOCK=true short-circuits the real gateway call (the
     // sandbox key used in automated tests does not support live orders) so the
     // full payment-first flow can be exercised deterministically. It MUST be
@@ -153,8 +154,10 @@ export const createPaymentOrder = async ({
 
     try {
         const order = await razorpay.orders.create(options);
+        console.log(`[RAZ-DIAG] createPaymentOrder SUCCESS orderId=${order.id} amount=${order.amount} currency=${order.currency} status=${order.status}`);
         return order;
     } catch (error) {
+        console.error(`[RAZ-DIAG] createPaymentOrder FAILED:`, error?.error || error?.response?.data || error.message);
         throwRazorpayError(
             "order creation",
             "Razorpay order creation failed. Please try again later.",
@@ -234,10 +237,12 @@ export const createRefundForPayment = async ({
  * @returns {boolean} True if signature matches, throws ApiError otherwise
  */
 export const verifyPaymentSignature = ({ razorpayOrderId, razorpayPaymentId, razorpaySignature }) => {
+    console.log(`[RAZ-DIAG] verifyPaymentSignature ENTER orderId=${razorpayOrderId} paymentId=${razorpayPaymentId} isOrderMock=${isOrderMock()}`);
     // RAZORPAY_ORDER_MOCK=true skips the HMAC check because the checkout is
     // simulated (no real gateway signature exists). Test-only; MUST be removed
     // in production.
     if (isOrderMock()) {
+        console.log(`[RAZ-DIAG] verifyPaymentSignature MOCK MODE — skipping HMAC`);
         return true;
     }
 
@@ -252,9 +257,11 @@ export const verifyPaymentSignature = ({ razorpayOrderId, razorpayPaymentId, raz
         .digest("hex");
 
     if (generatedSignature !== razorpaySignature) {
+        console.error(`[RAZ-DIAG] verifyPaymentSignature MISMATCH: expected=${generatedSignature} received=${razorpaySignature}`);
         throw new ApiError(400, "Invalid Razorpay payment signature verification failed.");
     }
 
+    console.log(`[RAZ-DIAG] verifyPaymentSignature VERIFIED OK`);
     return true;
 };
 
